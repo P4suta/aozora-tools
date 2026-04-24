@@ -14,14 +14,23 @@ authors      = ["aozora-tools contributors"]
 repository   = "local-only"
 
 [workspace.dependencies]
-# afm library surface — path deps into the sibling `afm` repo.
-# When afm is ready to cut a tag, flip these to
-#   afm-parser = { git = "https://github.com/P4suta/afm", tag = "v0.1.0" }
-# per ADR-0009 (in the afm repo).
-afm-parser   = { path = "../afm/crates/afm-parser" }
-afm-lexer    = { path = "../afm/crates/afm-lexer" }
-afm-syntax   = { path = "../afm/crates/afm-syntax" }
-afm-encoding = { path = "../afm/crates/afm-encoding" }
+# afm library surface — tag-pinned git dep.
+#
+# Currently a `file://` URL pointing at the local `afm` checkout so
+# the v0.1.0 tag resolution flow is exercised end-to-end without
+# needing GitHub availability. When afm is pushed public, swap the
+# URL with a single sd invocation:
+#
+#   sd 'file:///home/yasunobu/projects/afm' \
+#      'https://github.com/P4suta/afm' Cargo.toml
+#
+# The `tag = "v0.1.0"` pin is stable across that switch; any
+# Cargo.lock entries downstream remain valid because the commit
+# SHA the tag resolves to is identical on either origin.
+afm-parser   = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
+afm-lexer    = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
+afm-syntax   = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
+afm-encoding = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
 
 # Internal workspace members
 aozora-fmt = { path = "crates/aozora-fmt" }

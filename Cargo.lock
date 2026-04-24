@@ -20,6 +20,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 [[package]]
 name = "afm-encoding"
 version = "0.1.0"
+source = "git+file:///home/yasunobu/projects/afm?tag=v0.1.0#4962e4a4d56e2650aaed359d82b98f1ae0aee1d1"
 dependencies = [
  "afm-syntax",
  "encoding_rs",
@@ -32,6 +33,7 @@ dependencies = [
 [[package]]
 name = "afm-lexer"
 version = "0.1.0"
+source = "git+file:///home/yasunobu/projects/afm?tag=v0.1.0#4962e4a4d56e2650aaed359d82b98f1ae0aee1d1"
 dependencies = [
  "afm-encoding",
  "afm-syntax",
@@ -42,6 +44,7 @@ dependencies = [
 [[package]]
 name = "afm-parser"
 version = "0.1.0"
+source = "git+file:///home/yasunobu/projects/afm?tag=v0.1.0#4962e4a4d56e2650aaed359d82b98f1ae0aee1d1"
 dependencies = [
  "afm-lexer",
  "afm-syntax",
@@ -55,6 +58,7 @@ dependencies = [
 [[package]]
 name = "afm-syntax"
 version = "0.1.0"
+source = "git+file:///home/yasunobu/projects/afm?tag=v0.1.0#4962e4a4d56e2650aaed359d82b98f1ae0aee1d1"
 dependencies = [
  "miette",
  "thiserror",
@@ -282,6 +286,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 [[package]]
 name = "comrak"
 version = "0.52.0"
+source = "git+file:///home/yasunobu/projects/afm?tag=v0.1.0#4962e4a4d56e2650aaed359d82b98f1ae0aee1d1"
 dependencies = [
  "afm-syntax",
  "caseless",
