@@ -1,0 +1,7 @@
+{
+  "aozora.lsp.path": "${workspaceFolder}/../target/release/aozora-lsp",
+  "aozora.trace.server": "messages",
+  "files.associations": {
+    "*.afm": "aozora"
+  }
+}

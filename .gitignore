@@ -8,5 +8,12 @@ editors/vscode/*.vsix
 
 # Editor state
 .idea/
-.vscode/
 *.swp
+
+# VS Code per-folder settings: ignore everything by default, but keep
+# the files we ship for Extension Host debugging and the sample
+# workspace wiring.
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json

@@ -27,7 +27,8 @@
     "lsp"
   ],
   "activationEvents": [
-    "onLanguage:aozora"
+    "onLanguage:aozora",
+    "onLanguage:plaintext"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -45,6 +46,13 @@
           ".aozora.txt"
         ],
         "configuration": "./language-configuration.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "aozora.setLanguageMode",
+        "title": "Aozora: Set language mode to aozora",
+        "category": "Aozora"
       }
     ],
     "configuration": {
@@ -65,6 +73,11 @@
           ],
           "default": "off",
           "description": "Trace LSP messages between VS Code and aozora-lsp."
+        },
+        "aozora.autoDetect.plaintext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open-time heuristic: if a plaintext .txt file's leading content contains aozora annotation markers (［＃, ｜X《, or the standard header-separator line), switch the document to the aozora language automatically."
         }
       }
     }
