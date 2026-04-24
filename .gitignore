@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+
+# VS Code extension build artefacts
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
+
+# Editor state
+.idea/
+.vscode/
+*.swp

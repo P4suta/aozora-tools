@@ -1,0 +1,85 @@
+{
+  "name": "aozora-vscode",
+  "displayName": "aozora — aozora-flavored markdown",
+  "description": "Formatter, diagnostics, and gaiji hover for aozora-flavored-markdown documents, powered by aozora-lsp.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "local-only"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "aozora",
+    "japanese",
+    "markdown",
+    "ruby",
+    "bouten",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:aozora"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "aozora",
+        "aliases": [
+          "Aozora",
+          "aozora-flavored-markdown",
+          "aozora"
+        ],
+        "extensions": [
+          ".afm",
+          ".aozora",
+          ".aozora.txt"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "aozora",
+      "properties": {
+        "aozora.lsp.path": {
+          "type": "string",
+          "default": "aozora-lsp",
+          "description": "Path to the aozora-lsp executable. Defaults to looking it up on PATH."
+        },
+        "aozora.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace LSP messages between VS Code and aozora-lsp."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build": "bun run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,23 @@
+[package]
+name         = "aozora-fmt"
+description  = "Idempotent formatter for aozora-flavored-markdown"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+
+[[bin]]
+name = "aozora-fmt"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+afm-parser = { workspace = true }
+clap       = { workspace = true }
+anyhow     = { workspace = true }
+
+[lints]
+workspace = true
