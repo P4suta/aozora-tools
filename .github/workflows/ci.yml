@@ -1,0 +1,81 @@
+# CI for aozora-tools.
+#
+# This is a dormant workflow — the repo is local-only for now
+# (see ADR-0009 in the sibling afm repo). When the repo becomes
+# public, this workflow runs on every push and PR and is
+# the automated gate before merge.
+#
+# The workflow intentionally depends on the sibling `afm` repo
+# being checked out next to this one; when that's not possible
+# in CI, we check `afm` out by ref.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout aozora-tools
+        uses: actions/checkout@v4
+        with:
+          path: aozora-tools
+
+      # The Cargo.toml uses path = "../afm/..." so afm must live
+      # next to the aozora-tools checkout. Pin afm to v0.1.0 once
+      # that tag exists; until then, pin to the main branch.
+      - name: Checkout sibling afm repository
+        uses: actions/checkout@v4
+        with:
+          repository: P4suta/afm
+          path: afm
+          ref: main
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aozora-tools
+
+      - name: fmt (check)
+        working-directory: aozora-tools
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        working-directory: aozora-tools
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: build
+        working-directory: aozora-tools
+        run: cargo build --workspace --all-targets
+
+      - name: test
+        working-directory: aozora-tools
+        run: cargo test --workspace
+
+  vscode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Install
+        working-directory: editors/vscode
+        run: bun install --frozen-lockfile
+      - name: Typecheck / build
+        working-directory: editors/vscode
+        run: bun run compile
