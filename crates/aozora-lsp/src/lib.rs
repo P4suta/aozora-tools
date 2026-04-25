@@ -1,17 +1,17 @@
 //! `aozora-lsp` — Language Server for aozora-flavored-markdown.
 //!
-//! The server is built on top of the stable `afm` library surface
-//! defined by ADR-0009 in the sibling `afm` repository. It exposes
+//! The server is built on top of the stable `aozora` library surface
+//! defined by ADR-0009 in the sibling `aozora` repository. It exposes
 //! three LSP capabilities today:
 //!
-//! - `textDocument/publishDiagnostics` — every `afm_lexer::Diagnostic`
+//! - `textDocument/publishDiagnostics` — every `aozora::Diagnostic`
 //!   variant is mapped to an LSP `Diagnostic` with a byte-range span
 //!   converted into line/UTF-16-column coordinates.
 //! - `textDocument/formatting` — runs `parse ∘ serialize` (via
 //!   `aozora_fmt::format_source`) and returns a single document-replace
 //!   `TextEdit`.
 //! - `textDocument/hover` — when the cursor sits inside a
-//!   `※［＃…］` gaiji reference, resolves via `afm_encoding::gaiji`
+//!   `※［＃…］` gaiji reference, resolves via `aozora_encoding::gaiji`
 //!   and returns a Markdown explanation.
 //!
 //! The public surface is the [`Backend`] type plus the pure helper
@@ -22,13 +22,35 @@
 #![forbid(unsafe_code)]
 
 mod backend;
+mod code_actions;
+mod commands;
+mod completion;
 mod diagnostics;
 mod formatting;
+mod gaiji_spans;
+mod half_width_emmet;
 mod hover;
+mod incremental;
+mod inlay_hints;
+mod line_index;
+mod linked_editing;
+pub mod metrics;
 mod position;
+pub mod segment_cache;
+mod text_edit;
 
 pub use backend::Backend;
-pub use diagnostics::compute_diagnostics;
+pub use code_actions::wrap_selection_actions;
+pub use commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
+pub use completion::completion_at;
+pub use half_width_emmet::emmet_completions;
+pub use diagnostics::{
+    compute_diagnostics, compute_diagnostics_from_iter, compute_diagnostics_from_parsed,
+};
 pub use formatting::format_edits;
 pub use hover::hover_at;
+pub use incremental::{IncrementalDoc, input_edit};
+pub use inlay_hints::inlay_hints;
+pub use linked_editing::linked_editing_at;
 pub use position::{byte_offset_to_position, position_to_byte_offset};
+pub use text_edit::{EditError, LocalTextEdit, apply_edits};

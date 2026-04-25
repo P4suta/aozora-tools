@@ -17,6 +17,11 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+import { registerGaijiFold } from "./gaijiFold";
+import { registerNotationGuideCommand } from "./notationGuide";
+import { registerPreviewCommand } from "./preview";
+import { registerWrapCommands } from "./wrap";
+
 let client: LanguageClient | undefined;
 
 export async function activate(context: ExtensionContext): Promise<void> {
@@ -88,6 +93,25 @@ export async function activate(context: ExtensionContext): Promise<void> {
   for (const doc of workspace.textDocuments) {
     autoDetect(doc);
   }
+
+  // Wire the preview pane command BEFORE starting the client — the
+  // command itself only sends a request after `client.start()` resolves
+  // but registering the disposable up front matches the pattern every
+  // other contribution in this file uses.
+  registerPreviewCommand(context, client);
+  // Wrap-selection commands are pure client-side WorkspaceEdits: no
+  // LSP roundtrip needed for trivial open/close splices. The same 7
+  // wraps are also exposed via the LSP `code_action` handler so
+  // editors that talk LSP only (helix, neovim) get them too.
+  registerWrapCommands(context);
+  // Inline-fold gaiji spans — `※[#…]` collapses to its resolved
+  // glyph when the cursor is elsewhere; expands back when cursor
+  // enters the span. Driven by the LSP `aozora/gaijiSpans` request.
+  registerGaijiFold(context, client);
+  // `Aozora: 記法ガイドを開く` — webview pane rendering the
+  // shipped Markdown reference. Discoverable from the command
+  // palette, the editor context menu, and the welcome walkthrough.
+  registerNotationGuideCommand(context);
 
   try {
     await client.start();

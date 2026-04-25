@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/aozora-fmt",
     "crates/aozora-lsp",
+    "crates/tree-sitter-aozora",
 ]
 
 [workspace.package]
@@ -14,23 +15,25 @@ authors      = ["aozora-tools contributors"]
 repository   = "local-only"
 
 [workspace.dependencies]
-# afm library surface — tag-pinned git dep.
+# aozora library surface — top-level façade over the borrowed-AST
+# pipeline (`Document::parse() → AozoraTree<'_>`, structured
+# `Diagnostic`s, `PairLink` side-table, `SLUGS` catalogue,
+# `canonicalise_slug`, `node_at_source`).
 #
-# Currently a `file://` URL pointing at the local `afm` checkout so
-# the v0.1.0 tag resolution flow is exercised end-to-end without
-# needing GitHub availability. When afm is pushed public, swap the
-# URL with a single sd invocation:
+# `aozora-encoding` is needed separately for the `gaiji::resolve`
+# entry the hover handler calls into.
 #
-#   sd 'file:///home/yasunobu/projects/afm' \
-#      'https://github.com/P4suta/afm' Cargo.toml
+# Currently a `file://` URL pointing at the local `aozora` checkout so
+# the tag resolution flow is exercised end-to-end without needing
+# GitHub availability. When aozora is pushed public, swap the URL with
+# a single sd invocation:
 #
-# The `tag = "v0.1.0"` pin is stable across that switch; any
-# Cargo.lock entries downstream remain valid because the commit
-# SHA the tag resolves to is identical on either origin.
-afm-parser   = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
-afm-lexer    = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
-afm-syntax   = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
-afm-encoding = { git = "file:///home/yasunobu/projects/afm", tag = "v0.1.0" }
+#   sd 'file:///home/yasunobu/projects/aozora' \
+#      'https://github.com/P4suta/aozora' Cargo.toml
+#
+# The `tag = "v0.1.0"` pin is stable across that switch.
+aozora          = { git = "file:///home/yasunobu/projects/aozora", tag = "v0.1.0" }
+aozora-encoding = { git = "file:///home/yasunobu/projects/aozora", tag = "v0.1.0" }
 
 # Internal workspace members
 aozora-fmt = { path = "crates/aozora-fmt" }
@@ -41,12 +44,38 @@ anyhow = "1.0"
 
 # LSP runtime
 tower-lsp          = "0.20"
-tokio              = { version = "1", features = ["rt-multi-thread", "io-std", "macros", "sync"] }
+tokio              = { version = "1", features = ["rt-multi-thread", "io-std", "macros", "sync", "time"] }
 serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
 dashmap            = "6"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# Test-only
+proptest = "1"
+# Randomized concurrency model checker. Used in
+# `aozora-lsp/tests/shuttle_doc_state.rs` to explore arbitrary
+# interleavings of multi-threaded `Arc<DashMap<Url, DocState>>`
+# operations without needing a custom sync primitive (where Loom
+# would have been the choice). Gated behind a `shuttle` feature so
+# the dependency is opt-in.
+shuttle = "0.7"
+
+# Latency histogram for per-document Metrics. Mean alone hides tail
+# latency (p99 / max); HDRHistogram gives constant-memory percentile
+# tracking with bounded relative error.
+hdrhistogram = { version = "7.5", default-features = false }
+
+# Local-development override: while the v0.1.0 tag is being iterated
+# on, point the aozora-* crates at the local checkout so the
+# workspace picks up uncommitted-to-tag changes without needing a tag
+# force-move on every iteration. The plan's intended public-release
+# form is `tag = "v0.1.0"` against an `https://github.com/P4suta/aozora`
+# remote; this override is committed but only matters for `file://`
+# sources, so a `sd file:// https://` flip removes its effect cleanly.
+[patch."file:///home/yasunobu/projects/aozora"]
+aozora          = { path = "/home/yasunobu/projects/aozora/crates/aozora" }
+aozora-encoding = { path = "/home/yasunobu/projects/aozora/crates/aozora-encoding" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

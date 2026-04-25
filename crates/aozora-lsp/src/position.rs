@@ -2,8 +2,20 @@
 //!
 //! LSP 3.17 `Position` is `{ line: u32, character: u32 }` where
 //! `character` is measured in **UTF-16 code units** relative to the
-//! start of the line. afm's lexer works in byte offsets. These
+//! start of the line. The aozora lexer works in byte offsets. These
 //! helpers bridge the two coordinate systems.
+//!
+//! # Performance
+//!
+//! Both conversions are `O(byte_offset)` in the worst case (line
+//! counting + UTF-16 column). The byte-level newline scans below use
+//! `str::matches('\n')` / `str::rfind('\n')` / `str::match_indices`,
+//! which the standard library lowers to `memchr`/`memrchr` for
+//! single-byte ASCII patterns — that gives SIMD-accelerated scanning
+//! over the prefix without pulling in an extra dependency. The UTF-16
+//! column count walks only the current line slice, so the total
+//! per-call cost is dominated by the SIMD newline scan over the
+//! prefix plus a short char-by-char walk on the trailing line.
 
 use tower_lsp::lsp_types::Position;
 
@@ -11,26 +23,20 @@ use tower_lsp::lsp_types::Position;
 ///
 /// Clamps to `source.len()` if `byte_offset` overshoots — LSP clients
 /// treat an out-of-range position as end-of-buffer anyway, and
-/// failing loudly here would just translate afm's "probably a bug"
-/// into "definitely a panic".
+/// failing loudly here would just translate the lexer's "probably a
+/// bug" into "definitely a panic".
 #[must_use]
 pub fn byte_offset_to_position(source: &str, byte_offset: usize) -> Position {
     let byte_offset = byte_offset.min(source.len());
-    let mut line: u32 = 0;
-    let mut line_start: usize = 0;
-    for (i, b) in source.as_bytes().iter().enumerate() {
-        if i >= byte_offset {
-            break;
-        }
-        if *b == b'\n' {
-            line += 1;
-            line_start = i + 1;
-        }
-    }
-    let col = source[line_start..byte_offset]
-        .encode_utf16()
-        .count()
-        .min(u32::MAX as usize) as u32;
+    let prefix = &source[..byte_offset];
+    // `str::matches(char)` / `rfind(char)` use `memchr`/`memrchr`
+    // for single-byte ASCII patterns, so both calls scan with SIMD
+    // rather than the iterator-byte-byte loop the previous version
+    // used.
+    let line = u32::try_from(prefix.matches('\n').count()).unwrap_or(u32::MAX);
+    let line_start = prefix.rfind('\n').map_or(0, |idx| idx + 1);
+    let col =
+        u32::try_from(source[line_start..byte_offset].encode_utf16().count()).unwrap_or(u32::MAX);
     Position::new(line, col)
 }
 
@@ -41,21 +47,17 @@ pub fn byte_offset_to_position(source: &str, byte_offset: usize) -> Position {
 /// line end (matching most LSP clients' own behaviour).
 #[must_use]
 pub fn position_to_byte_offset(source: &str, position: Position) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut current_line: u32 = 0;
-    let mut line_start: usize = 0;
-    for (i, b) in bytes.iter().enumerate() {
-        if current_line == position.line {
-            break;
-        }
-        if *b == b'\n' {
-            current_line += 1;
-            line_start = i + 1;
-        }
-    }
-    if current_line != position.line {
-        return None;
-    }
+    // Locate the start of `position.line`. Line N starts immediately
+    // after the (N-1)-th `\n` in source order; line 0 starts at byte 0.
+    let line_start = if position.line == 0 {
+        0
+    } else {
+        let target_index = (position.line as usize).checked_sub(1)?;
+        // `match_indices('\n')` lowers to `memchr_iter`, so this
+        // walks newlines at SIMD speed instead of byte-by-byte.
+        let (newline_pos, _) = source.match_indices('\n').nth(target_index)?;
+        newline_pos + 1
+    };
     let line_end = source[line_start..]
         .find('\n')
         .map_or(source.len(), |p| line_start + p);
@@ -65,7 +67,7 @@ pub fn position_to_byte_offset(source: &str, position: Position) -> Option<usize
         if utf16_cursor >= position.character {
             return Some(line_start + byte_i);
         }
-        utf16_cursor = utf16_cursor.saturating_add(ch.len_utf16() as u32);
+        utf16_cursor = utf16_cursor.saturating_add(u32::try_from(ch.len_utf16()).unwrap_or(2));
     }
     Some(line_end)
 }
@@ -149,7 +151,10 @@ mod tests {
             }
             let pos = byte_offset_to_position(src, byte);
             let round = position_to_byte_offset(src, pos).expect("round-trip");
-            assert_eq!(round, byte, "byte {byte} round-tripped to {round} via {pos:?}");
+            assert_eq!(
+                round, byte,
+                "byte {byte} round-tripped to {round} via {pos:?}"
+            );
         }
     }
 }

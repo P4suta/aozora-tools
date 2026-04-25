@@ -51,7 +51,8 @@ fn hover_on_known_gaiji_mentions_resolved_character() {
         HoverContents::Markup(m) => m.value,
         _ => panic!("expected Markdown hover"),
     };
-    assert!(md.contains("榁") || md.contains("6903"));
+    // JIS X 0213:2004 plane 1 row 85 cell 54 = 枘 (U+6798).
+    assert!(md.contains("枘") || md.contains("6798"));
 }
 
 #[test]

@@ -1,0 +1,29 @@
+[package]
+name        = "tree-sitter-aozora"
+description = "Tree-sitter grammar for aozora-flavored markdown — used by aozora-lsp for incremental parsing"
+version     = "0.1.0"
+edition     = "2024"
+license     = "Apache-2.0 OR MIT"
+publish     = false
+
+[lib]
+path = "bindings/rust/lib.rs"
+
+[dependencies]
+tree-sitter-language = "0.1"
+
+[build-dependencies]
+cc = { version = "1", features = ["parallel"] }
+
+[dev-dependencies]
+tree-sitter = "0.26"
+
+# This crate's parser.c is committed (generated via `tree-sitter
+# generate` from grammar.js). Building it requires only a C toolchain;
+# regenerating requires the tree-sitter CLI plus node, neither of
+# which is needed by downstream consumers.
+[lints.rust]
+# tree-sitter generates parser.c with assorted warnings (unused
+# function args, signedness comparisons). Suppressing them here keeps
+# the workspace `-D warnings` policy intact for hand-written code.
+unused = "allow"

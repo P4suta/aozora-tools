@@ -1,5 +1,16 @@
 # Stage 3: core-library extraction (deferred)
 
+> **SUPERSEDED — 2026-04-25.** The decision recorded here (extract
+> the parser into `P4suta/afm-core` with crate names kept as
+> `afm-*`) has been replaced by `afm/docs/adr/0010-extract-aozora-core.md`,
+> which extracts into a repo named `aozora` and renames the crates
+> to `aozora-*`. The mechanical filter-repo recipe below is still
+> the migration backbone; pair it with `--path-rename
+> crates/afm-syntax:crates/aozora-syntax` (and the other five
+> rename pairs) when executing. This document is retained for
+> archival reference; new work should treat ADR-0010 as the
+> source of truth.
+
 This is the **deferred** stage of the rollout described in
 `afm/docs/adr/0009-authoring-tools-live-in-sibling-repositories.md`.
 It documents *how* to split the afm parser into its own repository

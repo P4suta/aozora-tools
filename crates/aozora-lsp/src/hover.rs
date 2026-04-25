@@ -2,7 +2,7 @@
 //!
 //! When the cursor sits inside a `※［＃description、mencode］` (or the
 //! `U+XXXX` variant) token, returns a Markdown block that shows the
-//! resolved character (via `afm_encoding::gaiji::resolve`), the raw
+//! resolved character (via `aozora_encoding::gaiji::resolve`), the raw
 //! description, and the mencode. Misses (cursor not in a gaiji span,
 //! malformed body) return `None` and the editor falls back to no hover.
 //!
@@ -14,8 +14,7 @@
 //! window is ignored — we'd rather show nothing than a wrong
 //! resolution.
 
-use afm_encoding::gaiji::{self, Resolution};
-use afm_syntax::Gaiji;
+use aozora_encoding::gaiji;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
 
 use crate::position::{byte_offset_to_position, position_to_byte_offset};
@@ -30,13 +29,12 @@ pub fn hover_at(source: &str, position: Position) -> Option<Hover> {
     let span = find_gaiji_span(source, byte_offset)?;
     let body = &source[span.start + GAIJI_OPEN.len()..span.end - GAIJI_CLOSE.len()];
     let (description, mencode) = parse_gaiji_body(body);
-    let node = Gaiji {
-        description: description.clone().into_boxed_str(),
-        ucs: None,
-        mencode: mencode.clone().map(String::into_boxed_str),
-    };
-    let resolution = gaiji::resolve(&node);
-    let markdown = render_markdown(&description, mencode.as_deref(), &resolution);
+    // `gaiji::lookup` returns `Option<Resolved>`; `Resolved` carries
+    // either a single Unicode scalar (>99% of hits) or a static
+    // combining sequence (the 25 plane-1 cells like か゚, IPA tone
+    // marks). The hover renderer formats both shapes uniformly.
+    let resolved = gaiji::lookup(None, mencode.as_deref(), &description);
+    let markdown = render_markdown(&description, mencode.as_deref(), resolved);
     Some(Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
@@ -52,22 +50,69 @@ pub fn hover_at(source: &str, position: Position) -> Option<Hover> {
 /// Byte-range of a `※［＃…］` span that contains `byte_offset`, or
 /// `None` if no such span exists around the cursor.
 ///
-/// Walks every `※［＃` occurrence so that a cursor sitting exactly on
-/// `※` itself (byte offset == span start) still matches — the earlier
-/// `rfind`-on-prefix approach missed that boundary because the prefix
-/// ending at `byte_offset` did not yet contain the full trigram.
+/// # Locality bound
+///
+/// A correct gaiji span is at most a few-hundred bytes long (the
+/// description plus the mencode plus optional page-line ref). The
+/// hover handler runs on every cursor move, so a full-document scan
+/// here was `O(n)` per stroke — easily 1 MB walked on a long
+/// translation. We bound the search to a window of
+/// [`MAX_GAIJI_SPAN_LEN`] bytes either side of the cursor, snapped
+/// to UTF-8 boundaries; that gives `O(1)` lookup independent of
+/// document size while still covering the realistic span lengths
+/// used by Aozora Bunko.
+///
+/// # Boundary correctness
+///
+/// An earlier `rfind` version missed cursors sitting exactly on the
+/// `※` byte (the prefix ending at `byte_offset` doesn't yet contain
+/// the trigram). We instead extend the window forward by the same
+/// margin, so the `match_indices` walk catches a `※［＃` whose start
+/// index equals the cursor itself. The walk inside the window stays
+/// `O(window_size)` in the worst case, which is constant.
+const MAX_GAIJI_SPAN_LEN: usize = 512;
+
 fn find_gaiji_span(source: &str, byte_offset: usize) -> Option<std::ops::Range<usize>> {
-    for (start, _) in source.match_indices(GAIJI_OPEN) {
-        let after_open = start + GAIJI_OPEN.len();
-        let Some(end_rel) = source.get(after_open..).and_then(|s| s.find(GAIJI_CLOSE)) else {
+    if source.is_empty() {
+        return None;
+    }
+    let win_start =
+        snap_to_char_boundary_left(source, byte_offset.saturating_sub(MAX_GAIJI_SPAN_LEN));
+    let win_end = snap_to_char_boundary_right(
+        source,
+        byte_offset
+            .saturating_add(MAX_GAIJI_SPAN_LEN)
+            .min(source.len()),
+    );
+    let window = &source[win_start..win_end];
+    let win_offset = byte_offset.saturating_sub(win_start);
+
+    for (start_in_win, _) in window.match_indices(GAIJI_OPEN) {
+        let after_open = start_in_win + GAIJI_OPEN.len();
+        let Some(end_rel) = window.get(after_open..).and_then(|s| s.find(GAIJI_CLOSE)) else {
             continue;
         };
-        let end = after_open + end_rel + GAIJI_CLOSE.len();
-        if (start..end).contains(&byte_offset) {
-            return Some(start..end);
+        let end_in_win = after_open + end_rel + GAIJI_CLOSE.len();
+        if (start_in_win..end_in_win).contains(&win_offset) {
+            return Some((win_start + start_in_win)..(win_start + end_in_win));
         }
     }
     None
+}
+
+fn snap_to_char_boundary_left(s: &str, mut idx: usize) -> usize {
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
+}
+
+fn snap_to_char_boundary_right(s: &str, mut idx: usize) -> usize {
+    let len = s.len();
+    while idx < len && !s.is_char_boundary(idx) {
+        idx += 1;
+    }
+    idx
 }
 
 /// Split a gaiji body (`「description」、mencode[、page-line]`) into
@@ -101,16 +146,39 @@ fn parse_gaiji_body(body: &str) -> (String, Option<String>) {
     (description, mencode)
 }
 
-fn render_markdown(description: &str, mencode: Option<&str>, resolution: &Resolution) -> String {
+fn render_markdown(
+    description: &str,
+    mencode: Option<&str>,
+    resolved: Option<gaiji::Resolved>,
+) -> String {
+    use core::fmt::Write as _;
     let mut md = String::from("**外字 (gaiji)**\n\n");
-    if let Some(ch) = resolution.character {
-        md.push_str(&format!("- 解決: `{ch}` (U+{:04X})\n", ch as u32));
-    } else {
-        md.push_str("- 解決: (辞書にマッチせず — 記述で代替表示)\n");
+    match resolved {
+        Some(gaiji::Resolved::Char(ch)) => {
+            // `write!` into the existing buffer avoids the intermediate
+            // `format!() -> String` allocation that the workspace
+            // `format_push_string` lint flags.
+            let _ = writeln!(md, "- 解決: `{ch}` (U+{:04X})", ch as u32);
+        }
+        Some(gaiji::Resolved::Multi(s)) => {
+            // Multi-codepoint cells render their full sequence plus
+            // the explicit list of constituent scalars so the user
+            // can see the composition (`か゚` = U+304B + U+309A).
+            let codepoints: Vec<String> =
+                s.chars().map(|c| format!("U+{:04X}", c as u32)).collect();
+            let _ = writeln!(
+                md,
+                "- 解決: `{s}` (合成シーケンス: {})",
+                codepoints.join(" + ")
+            );
+        }
+        None => {
+            md.push_str("- 解決: (辞書にマッチせず — 記述で代替表示)\n");
+        }
     }
-    md.push_str(&format!("- 記述: `{description}`\n"));
+    let _ = writeln!(md, "- 記述: `{description}`");
     if let Some(m) = mencode {
-        md.push_str(&format!("- mencode: `{m}`\n"));
+        let _ = writeln!(md, "- mencode: `{m}`");
     }
     md
 }
@@ -130,11 +198,15 @@ mod tests {
             _ => panic!("expected markdown hover"),
         };
         assert!(md.contains("外字"), "hover missing 外字 header: {md}");
-        assert!(md.contains("木＋吶のつくり"), "hover missing description: {md}");
-        // 第3水準1-85-54 → 榁 (U+6903)
         assert!(
-            md.contains("榁") || md.contains("6903"),
-            "hover missing resolved character U+6903 (榁): {md}",
+            md.contains("木＋吶のつくり"),
+            "hover missing description: {md}"
+        );
+        // JIS X 0213:2004 plane 1 row 85 cell 54 = 枘 (U+6798).
+        // (`木＋吶のつくり` = 木+内 = 枘.)
+        assert!(
+            md.contains("枘") || md.contains("6798"),
+            "hover missing resolved character U+6798 (枘): {md}",
         );
     }
 

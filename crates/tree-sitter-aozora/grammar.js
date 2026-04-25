@@ -1,0 +1,116 @@
+/**
+ * tree-sitter-aozora — incremental grammar for aozora-flavored markdown.
+ *
+ * Goal: enable size-independent LSP responses (hover, inlay, codeAction)
+ * by exposing a tree the LSP can query in microseconds even on 100k+
+ * docs. The semantic Rust parser (`aozora-parser`) stays the source
+ * of truth for HTML rendering / formatting / diagnostics; this grammar
+ * is the *syntactic skeleton* used by the LSP request handlers.
+ *
+ * Coverage (Stage 1):
+ *   - gaiji          ※［＃...］
+ *   - slug           ［＃...］
+ *   - explicit_ruby  ｜base《reading》
+ *   - implicit_ruby  kanji-run《reading》
+ *   - text / newline (catch-all)
+ *
+ * Disambiguation:
+ *   - The body of a slug is captured via `token.immediate(/[^］\n]+/)`
+ *     so the lexer locks onto "everything until ］" the moment it
+ *     sees `［＃`. Without this, kanji inside the body collide with
+ *     the `ruby_base_implicit` token's lookahead.
+ *   - The reading inside `《...》` uses the same trick: `token.immediate`
+ *     after `《` consumes the reading body atomically.
+ *   - Implicit-ruby base uses `prec.dynamic` so it only wins when
+ *     followed by `《`; otherwise the kanji-run is just text.
+ *
+ * Out of scope (Stage 2+):
+ *   - 〔...〕 accent decomposition
+ *   - 《《...》》 double-bracket emphasis
+ *   - kaeriten / 縦中横
+ */
+
+module.exports = grammar({
+  name: 'aozora',
+
+  extras: $ => [],
+
+  conflicts: $ => [],
+
+  rules: {
+    document: $ => repeat($._element),
+
+    _element: $ => choice(
+      $.gaiji,
+      $.slug,
+      $.explicit_ruby,
+      $.implicit_ruby,
+      $.text,
+      $.newline,
+    ),
+
+    // ※［＃description, mencode］ — annotation marker for "this glyph
+    // is not in the base character set; here is its description and
+    // its JIS/Unicode reference".
+    gaiji: $ => seq(
+      $.gaiji_marker,
+      $.slug,
+    ),
+
+    gaiji_marker: $ => '※',
+
+    // ［＃...］ — bare annotation slug. When preceded by ※ it binds
+    // into a `gaiji` node above; standalone slugs are typesetting
+    // directives (e.g. ［＃改ページ］).
+    slug: $ => seq(
+      '［＃',
+      field('body', $.slug_body),
+      '］',
+    ),
+
+    // `token.immediate` — the body is consumed atomically as soon as
+    // `［＃` is seen; no other tokenisation interleaves until the
+    // closing ］ arrives. Required to keep CJK chars inside the
+    // body from racing with `ruby_base_implicit`.
+    slug_body: $ => token.immediate(/[^］\n]+/),
+
+    // ｜base《reading》 — explicit-delimiter ruby. The pipe pins the
+    // base run; the reading is whatever sits between 《 and 》.
+    explicit_ruby: $ => seq(
+      '｜',
+      field('base', $.ruby_base_explicit),
+      '《',
+      field('reading', $.ruby_reading),
+      '》',
+    ),
+
+    ruby_base_explicit: $ => token.immediate(/[^《｜\n]+/),
+
+    // kanji-run《reading》 — implicit ruby. The base is the longest
+    // preceding kanji run; aozora typesetters rely on this when the
+    // base is unambiguous. `prec.dynamic` so the parser prefers
+    // `implicit_ruby` over plain `text` *only* when the lookahead
+    // confirms a following `《`.
+    implicit_ruby: $ => prec.dynamic(1, seq(
+      field('base', $.ruby_base_implicit),
+      '《',
+      field('reading', $.ruby_reading),
+      '》',
+    )),
+
+    // CJK kanji + iteration marks + small Katakana that count as
+    // kanji in the aozora implicit-ruby scanner.
+    ruby_base_implicit: $ => /[一-鿿㐀-䶿豈-﫿々ヵヶ]+/,
+
+    ruby_reading: $ => token.immediate(/[^》\n]+/),
+
+    // Catch-all text: any run of chars that aren't markup-significant.
+    // The `|.` fallback matches a single char so the grammar never
+    // gets stuck on a stray markup char (e.g. a lone 》 that didn't
+    // close a ruby). Tree-sitter's error-recovery picks it up as
+    // plain text.
+    text: $ => /[^\n《》｜［］＃※]+|[》］＃]/,
+
+    newline: $ => /\n/,
+  },
+});

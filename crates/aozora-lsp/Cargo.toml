@@ -15,11 +15,11 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-afm-parser   = { workspace = true }
-afm-lexer    = { workspace = true }
-afm-syntax   = { workspace = true }
-afm-encoding = { workspace = true }
-aozora-fmt      = { workspace = true }
+aozora             = { workspace = true }
+aozora-encoding    = { workspace = true }
+aozora-fmt         = { workspace = true }
+tree-sitter-aozora = { path = "../tree-sitter-aozora" }
+tree-sitter        = "0.26"
 
 tower-lsp          = { workspace = true }
 tokio              = { workspace = true }
@@ -29,6 +29,23 @@ dashmap            = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow             = { workspace = true }
+hdrhistogram       = { workspace = true }
+thiserror          = "2"
+# Optional: enabled via `--features shuttle-tests` to run the
+# randomized-schedule check in tests/shuttle_doc_state.rs. Off by
+# default so routine `cargo test` doesn't pull in the shuttle dep.
+shuttle            = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[features]
+default       = []
+# Opt-in: enables the `shuttle_doc_state` randomized-schedule test
+# (the only test that depends on the shuttle crate). Gating it
+# behind a feature keeps the default `cargo test` fast and avoids
+# pulling shuttle into the dependency graph for routine builds.
+shuttle-tests = ["dep:shuttle"]
 
 [lints]
 workspace = true

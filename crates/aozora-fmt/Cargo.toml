@@ -15,7 +15,7 @@ path = "src/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-afm-parser = { workspace = true }
+aozora     = { workspace = true }
 clap       = { workspace = true }
 anyhow     = { workspace = true }
 

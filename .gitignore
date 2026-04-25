@@ -1,6 +1,12 @@
 /target
 **/*.rs.bk
 
+# Local Cargo cache (large registry/git blobs not to be committed)
+/.cargo/
+
+# Huge stress-test fixtures (built from corpus, not source-of-truth)
+samples/tsumi-to-batsu-x100.afm
+
 # VS Code extension build artefacts
 editors/vscode/node_modules/
 editors/vscode/out/

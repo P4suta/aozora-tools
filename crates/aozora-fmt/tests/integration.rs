@@ -39,12 +39,7 @@ fn check_on_canonical_input_exits_zero() {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn aozora-fmt");
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(b"hello\n")
-        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(b"hello\n").unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(out.status.success(), "canonical input must pass --check");
 }

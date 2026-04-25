@@ -23,8 +23,8 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use aozora_fmt::format_source;
 use anyhow::{Context, Result, bail};
+use aozora_fmt::format_source;
 use clap::Parser;
 
 /// Formatter for aozora-flavored-markdown.
@@ -32,7 +32,7 @@ use clap::Parser;
 #[command(
     name = "aozora-fmt",
     about = "Idempotent formatter for aozora-flavored-markdown",
-    version,
+    version
 )]
 struct Cli {
     /// File to format. Use `-` (or omit) to read from stdin.
@@ -48,7 +48,7 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
-    match run(Cli::parse()) {
+    match run(&Cli::parse()) {
         Ok(code) => code,
         Err(err) => {
             eprintln!("aozora-fmt: {err:#}");
@@ -57,7 +57,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: Cli) -> Result<ExitCode> {
+fn run(cli: &Cli) -> Result<ExitCode> {
     let (source, source_path) = read_input(cli.path.as_deref())?;
     let formatted = format_source(&source);
     let changed = formatted != source;
@@ -98,7 +98,6 @@ fn read_input(path: Option<&Path>) -> Result<(String, Option<PathBuf>)> {
         return Ok((buf, None));
     }
     let path = path.expect("stdin branch handled above");
-    let text =
-        fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    let text = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     Ok((text, Some(path.to_path_buf())))
 }
