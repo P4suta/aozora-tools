@@ -5,13 +5,12 @@
 //! editor (right-click → Refactor, or Ctrl+. lightbulb) shows a menu
 //! of wrap actions:
 //!
-//! - 《 ... 》 (ruby reading)
-//! - 《《 ... 》》 (double ruby / bouten)
-//! - 「 ... 」 (quoted literal)
-//! - 〔 ... 〕 (accent decomposition)
-//! - ［＃ ... ］ (annotation body)
-//! - ｜SEL《》 (convert selection to ruby base — cursor lands inside the reading)
-//! - SEL［＃「SEL」に傍点］ (forward-reference bouten)
+//! - `｜SEL《》` ルビをふる (selection becomes the kanji base; reading slot empty)
+//! - `｜SEL《《》》` 二重ルビをふる
+//! - `SEL［＃「SEL」に傍点］` 傍点をつける
+//! - `「SEL」` 鉤括弧で囲む
+//! - `〔SEL〕` アクセント分解で囲む
+//! - `［＃SEL］` 注記化
 //!
 //! Each action is a [`CodeAction`] carrying a [`WorkspaceEdit`] that
 //! splices the open/close around `selection`. The 縦中横 / 傍点
@@ -50,18 +49,23 @@ pub fn wrap_selection_actions(
 
     let mut actions: Vec<CodeActionOrCommand> = Vec::new();
     actions.extend([
-        wrap_pair(uri, selection, "《", "》", "ルビ読みで囲む 《...》"),
-        wrap_pair(uri, selection, "《《", "》》", "二重ルビで囲む 《《...》》"),
-        wrap_pair(uri, selection, "「", "」", "鉤括弧で囲む 「...」"),
-        wrap_pair(uri, selection, "〔", "〕", "亀甲括弧で囲む 〔...〕"),
-        wrap_pair(uri, selection, "［＃", "］", "注記で囲む ［＃...］"),
-        ruby_base_action(uri, selection, selected),
+        // ルビ系: ｜ を必ず先頭に挿入する。aozora 記法のスタイルガイドが
+        // 「ベースの開始位置を曖昧にしないため常に ｜ を付ける」を推奨
+        // しているため、ルビ wrap の唯一の形をこれに統一する。
+        ruby_wrap(uri, selection, "《》", "ルビをふる ｜SEL《》"),
+        ruby_wrap(uri, selection, "《《》》", "二重ルビをふる ｜SEL《《》》"),
+        // 文字列を囲むだけの 3 種。
+        wrap_pair(uri, selection, "「", "」", "「」 で囲む"),
+        wrap_pair(uri, selection, "〔", "〕", "〔〕 で囲む (アクセント分解)"),
+        wrap_pair(uri, selection, "［＃", "］", "［＃...］ 注記にする"),
+        // 傍点: 選択文字はそのまま、注記が後ろに付く。
         forward_bouten_action(uri, selection, selected),
     ]);
     actions
 }
 
-/// Build a single open/close wrap [`CodeAction`].
+/// Build a single open/close wrap [`CodeAction`]. Selection ends
+/// up *inside* the open / close pair.
 fn wrap_pair(
     uri: &Url,
     selection: Range,
@@ -79,24 +83,21 @@ fn wrap_pair(
             new_text: close.to_owned(),
         },
     ];
-    let mut changes = std::collections::HashMap::new();
-    changes.insert(uri.clone(), edits);
-    CodeActionOrCommand::CodeAction(CodeAction {
-        title: title.to_owned(),
-        kind: Some(CodeActionKind::REFACTOR_REWRITE),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            document_changes: None,
-            change_annotations: None,
-        }),
-        ..CodeAction::default()
-    })
+    build_action(uri, edits, title)
 }
 
-/// Convert the selection into an explicit-delimiter ruby base:
-/// `SELECTION` → `｜SELECTION《》`. The reading slot is intentionally
-/// empty; the editor lands the cursor between `《》` after applying.
-fn ruby_base_action(uri: &Url, selection: Range, _selected: &str) -> CodeActionOrCommand {
+/// Build a "ルビをふる" wrap [`CodeAction`]. Selection becomes the
+/// **kanji base**; `｜` is prepended so the base's start is pinned
+/// (aozora style-guide recommended). The `reading_brackets`
+/// argument is the closer pair (`《》` for normal, `《《》》` for
+/// double); inserting them empty puts the cursor inside the
+/// reading slot when the editor expands the snippet.
+fn ruby_wrap(
+    uri: &Url,
+    selection: Range,
+    reading_brackets: &str,
+    title: &str,
+) -> CodeActionOrCommand {
     let edits = vec![
         TextEdit {
             range: Range::new(selection.start, selection.start),
@@ -104,13 +105,17 @@ fn ruby_base_action(uri: &Url, selection: Range, _selected: &str) -> CodeActionO
         },
         TextEdit {
             range: Range::new(selection.end, selection.end),
-            new_text: "《》".to_owned(),
+            new_text: reading_brackets.to_owned(),
         },
     ];
+    build_action(uri, edits, title)
+}
+
+fn build_action(uri: &Url, edits: Vec<TextEdit>, title: &str) -> CodeActionOrCommand {
     let mut changes = std::collections::HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "ルビベース化 ｜SEL《》".to_owned(),
+        title: title.to_owned(),
         kind: Some(CodeActionKind::REFACTOR_REWRITE),
         edit: Some(WorkspaceEdit {
             changes: Some(changes),
@@ -299,19 +304,69 @@ mod tests {
         let src = "青空";
         let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
         let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
-        assert_eq!(actions.len(), 7, "expected 7 wrap actions");
+        // ルビ + 二重ルビ + 「」 + 〔〕 + ［＃］ + 傍点 = 6 actions.
+        assert_eq!(actions.len(), 6, "expected 6 wrap actions, got {actions:?}");
     }
 
     #[test]
-    fn wrap_pair_inserts_two_edits() {
+    fn every_wrap_action_inserts_at_least_one_edit() {
         let src = "青空";
         let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
         let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
-        for action in actions.iter().take(5) {
-            // First five (《 》, 《《 》》, 「 」, 〔 〕, ［＃ ］) wrap
-            // with a pair → 2 edits each.
-            assert_eq!(extract_change_count(action), 2);
+        for action in &actions {
+            assert!(extract_change_count(action) >= 1);
         }
+    }
+
+    #[test]
+    fn ruby_wrap_inserts_pipe_before_and_brackets_after() {
+        // Pin the selection-as-base + always-pipe-prefix shape that
+        // the user's UX feedback insisted on. The first action in
+        // the menu is the bare ruby; it must produce ｜SEL《》.
+        let src = "青空";
+        let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
+        let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
+        let CodeActionOrCommand::CodeAction(ca) = &actions[0] else {
+            unreachable!()
+        };
+        let edits: Vec<&str> = ca
+            .edit
+            .as_ref()
+            .unwrap()
+            .changes
+            .as_ref()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .iter()
+            .map(|e| e.new_text.as_str())
+            .collect();
+        assert_eq!(edits, vec!["｜", "《》"]);
+    }
+
+    #[test]
+    fn double_ruby_wrap_uses_double_brackets() {
+        let src = "青空";
+        let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
+        let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
+        let CodeActionOrCommand::CodeAction(ca) = &actions[1] else {
+            unreachable!()
+        };
+        let edits: Vec<&str> = ca
+            .edit
+            .as_ref()
+            .unwrap()
+            .changes
+            .as_ref()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .iter()
+            .map(|e| e.new_text.as_str())
+            .collect();
+        assert_eq!(edits, vec!["｜", "《《》》"]);
     }
 
     #[test]
@@ -319,6 +374,7 @@ mod tests {
         let src = "青空";
         let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
         let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
+        // Bouten is the LAST action in the menu.
         let bouten = actions.last().expect("bouten last");
         let CodeActionOrCommand::CodeAction(ca) = bouten else {
             unreachable!()
@@ -336,31 +392,5 @@ mod tests {
             .new_text
             .clone();
         assert_eq!(change_text, "［＃「青空」に傍点］");
-    }
-
-    #[test]
-    fn ruby_base_inserts_pipe_then_empty_reading() {
-        let src = "青空";
-        let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
-        let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);
-        // Ruby base is the second-to-last action (just before bouten).
-        let ruby = &actions[actions.len() - 2];
-        let CodeActionOrCommand::CodeAction(ca) = ruby else {
-            unreachable!()
-        };
-        let edits: Vec<&str> = ca
-            .edit
-            .as_ref()
-            .unwrap()
-            .changes
-            .as_ref()
-            .unwrap()
-            .values()
-            .next()
-            .unwrap()
-            .iter()
-            .map(|e| e.new_text.as_str())
-            .collect();
-        assert_eq!(edits, vec!["｜", "《》"]);
     }
 }

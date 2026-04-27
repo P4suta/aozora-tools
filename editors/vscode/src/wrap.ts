@@ -51,14 +51,16 @@ interface WrapShape {
 
 const WRAP_SHAPES = [
   // Most common typesetter action: kanji selected, attach reading.
-  // Implicit ruby — no leading pipe — works when the base is a
-  // pure kanji run with no ambiguity in front of it.
-  { id: "aozora.wrap.ruby",       template: "BASE《$0》" },
-  // Explicit ruby — leading ｜ pins the start of the base, useful
-  // when the base mixes kanji + kana or sits next to other kanji.
-  { id: "aozora.wrap.pipeRuby",   template: "｜BASE《$0》" },
-  // 二重ルビ for emphasis; rare but supported.
-  { id: "aozora.wrap.doubleRuby", template: "BASE《《$0》》" },
+  // The leading `｜` is always inserted — aozora style guides
+  // recommend it unconditionally because it pins the base's start
+  // even when surrounding context would otherwise be ambiguous.
+  // We picked the safe default rather than offering a "no-pipe"
+  // variant because the no-pipe form is *only* equivalent when the
+  // preceding char is non-kanji, and surfacing two near-identical
+  // commands invited the user to pick the wrong one.
+  { id: "aozora.wrap.ruby",       template: "｜BASE《$0》" },
+  // 二重ルビ for emphasis; rare but supported. Same pipe rule.
+  { id: "aozora.wrap.doubleRuby", template: "｜BASE《《$0》》" },
   // 傍点 forward-reference: selection stays plain, the bouten note
   // appears after it with the same text repeated as the target.
   { id: "aozora.wrap.bouten",     template: "BASE［＃「BASE」に傍点］$0" },

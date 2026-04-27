@@ -71,19 +71,13 @@
       },
       {
         "command": "aozora.wrap.ruby",
-        "title": "選択した字にルビをふる (例: 青空 → 青空《あおぞら》)",
-        "category": "Aozora",
-        "enablement": "editorLangId == aozora && editorHasSelection"
-      },
-      {
-        "command": "aozora.wrap.pipeRuby",
-        "title": "選択した字に明示ルビをふる ｜ 付き (例: ｜青空《あおぞら》)",
+        "title": "選択した字にルビをふる (例: 青空 → ｜青空《あおぞら》)",
         "category": "Aozora",
         "enablement": "editorLangId == aozora && editorHasSelection"
       },
       {
         "command": "aozora.wrap.doubleRuby",
-        "title": "選択した字に二重ルビをふる (例: 青空《《あおぞら》》)",
+        "title": "選択した字に二重ルビをふる (例: 青空 → ｜青空《《あおぞら》》)",
         "category": "Aozora",
         "enablement": "editorLangId == aozora && editorHasSelection"
       },
@@ -149,12 +143,8 @@
           "group": "1_ruby@1"
         },
         {
-          "command": "aozora.wrap.pipeRuby",
-          "group": "1_ruby@2"
-        },
-        {
           "command": "aozora.wrap.doubleRuby",
-          "group": "1_ruby@3"
+          "group": "1_ruby@2"
         },
         {
           "command": "aozora.wrap.bouten",
