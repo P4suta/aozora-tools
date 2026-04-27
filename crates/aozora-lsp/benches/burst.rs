@@ -132,6 +132,10 @@ fn bench_inlay(c: &mut Criterion) {
     g.finish();
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "one cohesive criterion bench group; splitting per-bench helpers spreads the same loop pattern across multiple fns without clarifying anything"
+)]
 fn bench_subcomponents(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let mut g = c.benchmark_group("subcomponents");
@@ -184,10 +188,10 @@ fn bench_subcomponents(c: &mut Criterion) {
         });
     });
 
-    // Isolate the tree-sitter incremental edit — should be O(small)
-    // because TS only marks the changed range; the next `with_tree`
-    // parse is incremental.
-    g.bench_function("ts_apply_edit_one_char_bouten_6mb", |b| {
+    // Isolate the tree-sitter incremental edit at OFFSET 0 — the
+    // worst case for incremental reuse because every byte after the
+    // edit shifts. tree-sitter must invalidate (almost) every node.
+    g.bench_function("ts_apply_edit_offset_0_bouten_6mb", |b| {
         b.iter_batched(
             || {
                 let doc = IncrementalDoc::new();
@@ -196,13 +200,66 @@ fn bench_subcomponents(c: &mut Criterion) {
             },
             |doc| {
                 let edit = input_edit(0, 0, 1);
-                // Pre-mutate text to mirror the apply_changes contract:
-                // the buffer passed to apply_edit is the POST-change
-                // text but the InputEdit references pre-change offsets.
                 let mut new_text = String::with_capacity(text.len() + 1);
                 new_text.push(' ');
                 new_text.push_str(&text);
                 doc.apply_edit(&new_text, edit);
+                std::hint::black_box(doc);
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // Same benchmark but the edit is in the middle of the document.
+    // Tree-sitter's incremental reparse should reuse most subtrees;
+    // the cost should drop from ~200 ms (offset-0 worst case) down to
+    // a fraction. Exact ratio is the whole point of the measurement.
+    g.bench_function("ts_apply_edit_mid_doc_bouten_6mb", |b| {
+        let mid = nearest_char_boundary(&text, text.len() / 2);
+        let text_for_setup = text.clone();
+        let text_for_run = text.clone();
+        b.iter_batched(
+            move || {
+                let doc = IncrementalDoc::new();
+                doc.parse_full(&text_for_setup);
+                doc
+            },
+            |doc| {
+                let edit = input_edit(mid, mid, mid + 1);
+                let mut new_text = String::with_capacity(text_for_run.len() + 1);
+                new_text.push_str(&text_for_run[..mid]);
+                new_text.push(' ');
+                new_text.push_str(&text_for_run[mid..]);
+                doc.apply_edit(&new_text, edit);
+                std::hint::black_box(doc);
+            },
+            BatchSize::PerIteration,
+        );
+    });
+
+    // Cold parse on a small sub-slice of the doc — this is the
+    // measurement that motivates per-paragraph segmentation. If a
+    // 60 KB paragraph parses in ~3 ms, then a per-paragraph design
+    // turns the per-edit TS cost from 220 ms into 3 ms.
+    g.bench_function("ts_parse_full_60kb_slice_bouten", |b| {
+        let slice_end = nearest_char_boundary(&text, 60 * 1024);
+        let small = &text[..slice_end];
+        b.iter_batched(
+            IncrementalDoc::new,
+            |doc| {
+                doc.parse_full(small);
+                std::hint::black_box(doc);
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    g.bench_function("ts_parse_full_600kb_slice_bouten", |b| {
+        let slice_end = nearest_char_boundary(&text, 600 * 1024);
+        let small = &text[..slice_end];
+        b.iter_batched(
+            IncrementalDoc::new,
+            |doc| {
+                doc.parse_full(small);
                 std::hint::black_box(doc);
             },
             BatchSize::PerIteration,
