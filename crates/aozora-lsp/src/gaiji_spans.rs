@@ -26,9 +26,10 @@
 //! refresh cost is `O(gaiji count)` and so is bounded by document
 //! size, not request rate.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use tree_sitter::{Node, Tree};
+use tree_sitter::{InputEdit, Node, Tree};
 use tree_sitter_aozora::kind;
 
 /// One `※［＃description、mencode］` occurrence.
@@ -144,10 +145,191 @@ pub fn spans_in_byte_range(
     &spans[lo..hi.max(lo)]
 }
 
+/// Build the next snapshot's gaiji span store **incrementally** from
+/// the prior snapshot.
+///
+/// Algorithm (overall cost: `O(log n + k)` where `k` is the number of
+/// spans within the changed byte ranges):
+///
+/// 1. `old_tree.changed_ranges(new_tree)` — tree-sitter returns the
+///    byte ranges (in `new_text` coordinates) where the new tree's
+///    structure differs from the old. These are the regions the
+///    parser had to re-parse.
+/// 2. For every span in `old_spans`, apply the cumulative `edits`
+///    delta to translate its `(start_byte, end_byte)` into new-text
+///    coordinates. If the new range intersects any changed range, or
+///    if any edit splits the span itself, drop the span — it will be
+///    re-extracted from the new tree. Otherwise, carry it forward
+///    with the shifted offsets.
+/// 3. For each changed range, walk the new tree restricted to that
+///    range and extract any gaiji nodes. Re-walk reuses the same
+///    iterative `TreeCursor` pattern as the cold-start path.
+///
+/// The savings vs full re-walk are dramatic for typical edits
+/// (cursor in the middle of the doc): only the small local region
+/// needs a fresh walk, the surrounding ~24 k spans pass through
+/// almost free. For pathological edits (insert at offset 0, every
+/// byte shifts), `changed_ranges` covers the whole document and
+/// the algorithm degenerates to full re-walk — same cost as the
+/// cold path, no regression.
+#[must_use]
+pub fn extract_gaiji_spans_incremental(
+    old_tree: &Tree,
+    new_tree: &Tree,
+    old_spans: &BTreeMap<u32, GaijiSpan>,
+    edits: &[InputEdit],
+    new_text: &str,
+) -> BTreeMap<u32, GaijiSpan> {
+    // Tree-sitter `changed_ranges` returns byte ranges (NEW tree
+    // coordinates) where structure differs. On worst-case edits
+    // (insert at offset 0 → every token shifts) the iterator can
+    // emit thousands of small ranges; we sort + merge them once
+    // here so the per-span check below stays `O(log m)` and the
+    // walker stays `O(visits * log m)` instead of degenerating to
+    // `O(n * m)`.
+    let mut raw: Vec<(u32, u32)> = old_tree
+        .changed_ranges(new_tree)
+        .filter_map(|r| {
+            let s = u32::try_from(r.start_byte).ok()?;
+            let e = u32::try_from(r.end_byte).ok()?;
+            if s < e { Some((s, e)) } else { None }
+        })
+        .collect();
+    raw.sort_unstable_by_key(|&(s, _)| s);
+    let changed = merge_sorted_ranges(raw);
+
+    let mut out = BTreeMap::new();
+
+    // 1. Carry forward old spans that don't intersect any merged
+    //    changed range (in NEW coordinates). Each span goes through
+    //    `shift_through_edits` then a `O(log m)` binary-search check.
+    for span in old_spans.values() {
+        let Some((new_start, new_end)) = shift_through_edits(span.start_byte, span.end_byte, edits)
+        else {
+            // Edit clipped through the span; will be re-extracted.
+            continue;
+        };
+        if intersects_sorted(new_start, new_end, &changed) {
+            continue;
+        }
+        out.insert(
+            new_start,
+            GaijiSpan {
+                start_byte: new_start,
+                end_byte: new_end,
+                description: span.description.clone(),
+                mencode: span.mencode.clone(),
+            },
+        );
+    }
+
+    // 2. Single iterative tree walk that prunes against the merged
+    //    range set — visits only subtrees that intersect at least
+    //    one changed range. Re-extracts any gaiji nodes there.
+    walk_against_ranges(new_tree.root_node(), new_text, &changed, &mut out);
+
+    out
+}
+
+/// Merge a sorted list of `(start, end)` ranges into a non-overlapping
+/// set. Adjacent ranges (`end == next.start`) are coalesced.
+fn merge_sorted_ranges(sorted: Vec<(u32, u32)>) -> Vec<(u32, u32)> {
+    let mut out: Vec<(u32, u32)> = Vec::with_capacity(sorted.len());
+    for (s, e) in sorted {
+        match out.last_mut() {
+            Some(last) if last.1 >= s => last.1 = last.1.max(e),
+            _ => out.push((s, e)),
+        }
+    }
+    out
+}
+
+/// Binary-search whether `[start, end)` intersects any of the
+/// sorted, non-overlapping `ranges`. `O(log n)`.
+fn intersects_sorted(start: u32, end: u32, ranges: &[(u32, u32)]) -> bool {
+    // First range whose end > start.
+    let i = ranges.partition_point(|&(_, e)| e <= start);
+    i < ranges.len() && ranges[i].0 < end
+}
+
+/// Translate `(start, end)` byte offsets through the cumulative
+/// `edits` list. Returns `None` if any edit modifies bytes inside the
+/// span itself (the span needs re-extraction in that case).
+///
+/// Each `InputEdit` shifts subsequent bytes by
+/// `new_end_byte - old_end_byte`. Applied in order.
+fn shift_through_edits(start: u32, end: u32, edits: &[InputEdit]) -> Option<(u32, u32)> {
+    let mut start = i64::from(start);
+    let mut end = i64::from(end);
+    for edit in edits {
+        // Source byte offsets carried by tree-sitter `InputEdit` are
+        // `usize`. Documents we care about cap well under `i64::MAX`,
+        // so these casts can't overflow on real inputs.
+        let edit_old_start = i64::try_from(edit.start_byte).unwrap_or(i64::MAX);
+        let edit_old_end = i64::try_from(edit.old_end_byte).unwrap_or(i64::MAX);
+        let edit_new_end = i64::try_from(edit.new_end_byte).unwrap_or(i64::MAX);
+        let delta = edit_new_end - edit_old_end;
+        if start >= edit_old_end {
+            // Span entirely after this edit — shift by delta.
+            start += delta;
+            end += delta;
+        } else if end <= edit_old_start {
+            // Span entirely before this edit — no shift.
+        } else {
+            // Span overlaps the edit region — needs re-extraction.
+            return None;
+        }
+    }
+    if start < 0 || end < 0 {
+        return None;
+    }
+    Some((
+        u32::try_from(start).unwrap_or(u32::MAX),
+        u32::try_from(end).unwrap_or(u32::MAX),
+    ))
+}
+
+/// Single iterative tree walk that descends only into subtrees
+/// intersecting one of the sorted, non-overlapping `ranges`. Visits
+/// every gaiji node within those ranges and inserts its span into
+/// `out`. Per-node intersection check is `O(log ranges)` via
+/// [`intersects_sorted`].
+fn walk_against_ranges(
+    root: Node<'_>,
+    source: &str,
+    ranges: &[(u32, u32)],
+    out: &mut BTreeMap<u32, GaijiSpan>,
+) {
+    if ranges.is_empty() {
+        return;
+    }
+    let mut cursor = root.walk();
+    'walk: loop {
+        let node = cursor.node();
+        let start = u32::try_from(node.start_byte()).unwrap_or(u32::MAX);
+        let end = u32::try_from(node.end_byte()).unwrap_or(u32::MAX);
+        if !intersects_sorted(start, end, ranges) {
+            // Outside every changed range — skip without descending.
+        } else if node.kind() == kind::GAIJI {
+            if let Some(span) = build_span(node, source) {
+                out.insert(span.start_byte, span);
+            }
+            // gaiji is a leaf — fall through to lateral move.
+        } else if cursor.goto_first_child() {
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                break 'walk;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tree_sitter::Parser;
+    use tree_sitter::{Parser, Point};
 
     fn parse(src: &str) -> Tree {
         let mut parser = Parser::new();
@@ -155,6 +337,47 @@ mod tests {
             .set_language(&tree_sitter_aozora::LANGUAGE.into())
             .unwrap();
         parser.parse(src, None).unwrap()
+    }
+
+    fn cold_btree(src: &str) -> BTreeMap<u32, GaijiSpan> {
+        let tree = parse(src);
+        extract_gaiji_spans(&tree, src)
+            .iter()
+            .map(|s| (s.start_byte, s.clone()))
+            .collect()
+    }
+
+    /// Apply one `InputEdit` to `(text, tree)` and return `(new_text, new_tree, edit)`.
+    fn edit_once(
+        old_text: &str,
+        old_tree: &Tree,
+        start_byte: usize,
+        old_end_byte: usize,
+        new_substr: &str,
+    ) -> (String, Tree, InputEdit) {
+        let new_text = format!(
+            "{}{}{}",
+            &old_text[..start_byte],
+            new_substr,
+            &old_text[old_end_byte..]
+        );
+        let new_end_byte = start_byte + new_substr.len();
+        let edit = InputEdit {
+            start_byte,
+            old_end_byte,
+            new_end_byte,
+            start_position: Point::default(),
+            old_end_position: Point::default(),
+            new_end_position: Point::default(),
+        };
+        let mut edited = old_tree.clone();
+        edited.edit(&edit);
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_aozora::LANGUAGE.into())
+            .unwrap();
+        let new_tree = parser.parse(&new_text, Some(&edited)).unwrap();
+        (new_text, new_tree, edit)
     }
 
     #[test]
@@ -194,6 +417,96 @@ mod tests {
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].description, "desc-only");
         assert!(spans[0].mencode.is_none());
+    }
+
+    /// Editing in the middle of a doc, away from any gaiji nodes,
+    /// must produce the same span set as a full re-walk against the
+    /// new tree. The carry-forward path with byte-shift should
+    /// preserve every existing span.
+    #[test]
+    fn incremental_matches_full_after_isolated_text_edit() {
+        let src = "※［＃「a」、X］\nplain plain plain\n※［＃「b」、Y］";
+        let old_tree = parse(src);
+        let old_spans = cold_btree(src);
+        // Insert "ZZ" inside the plain region (between the two gaijis).
+        let plain_offset = src.find("plain").unwrap();
+        let (new_text, new_tree, edit) =
+            edit_once(src, &old_tree, plain_offset, plain_offset, "ZZ");
+        let inc =
+            extract_gaiji_spans_incremental(&old_tree, &new_tree, &old_spans, &[edit], &new_text);
+        let cold = cold_btree(&new_text);
+        assert_eq!(inc, cold, "incremental result must equal cold rebuild");
+    }
+
+    /// Editing the description of an existing gaiji must
+    /// re-extract its span (with the new description) — the
+    /// overlapping-edit guard must drop the old span and the
+    /// changed-range walk must surface the new one.
+    #[test]
+    fn incremental_re_extracts_changed_gaiji() {
+        let src = "※［＃「old」、X］";
+        let old_tree = parse(src);
+        let old_spans = cold_btree(src);
+        // Replace "old" with "renamed".
+        let r_start = src.find("old").unwrap();
+        let (new_text, new_tree, edit) =
+            edit_once(src, &old_tree, r_start, r_start + "old".len(), "renamed");
+        let inc =
+            extract_gaiji_spans_incremental(&old_tree, &new_tree, &old_spans, &[edit], &new_text);
+        let cold = cold_btree(&new_text);
+        assert_eq!(inc, cold);
+        // Sanity: the new doc's only span carries the new description.
+        let only = inc.values().next().expect("one span");
+        assert_eq!(only.description, "renamed");
+    }
+
+    /// Inserting a brand-new gaiji must add it to the `BTreeMap`
+    /// without disturbing the existing spans' offsets (modulo the
+    /// edit shift).
+    #[test]
+    fn incremental_picks_up_newly_inserted_gaiji() {
+        let src = "before\nafter";
+        let old_tree = parse(src);
+        let old_spans = cold_btree(src);
+        let insert_at = src.find("\nafter").unwrap();
+        let new_chunk = "\n※［＃「new」、X］";
+        let (new_text, new_tree, edit) = edit_once(src, &old_tree, insert_at, insert_at, new_chunk);
+        let inc =
+            extract_gaiji_spans_incremental(&old_tree, &new_tree, &old_spans, &[edit], &new_text);
+        let cold = cold_btree(&new_text);
+        assert_eq!(inc, cold);
+        assert_eq!(inc.len(), 1);
+    }
+
+    /// Worst case: insert at byte 0 shifts every span. The
+    /// incremental algorithm must still yield the cold result —
+    /// either via shifting carry-forward or via a full re-walk
+    /// fallback.
+    #[test]
+    fn incremental_handles_offset_zero_insert() {
+        let src = "※［＃「a」、X］後";
+        let old_tree = parse(src);
+        let old_spans = cold_btree(src);
+        let (new_text, new_tree, edit) = edit_once(src, &old_tree, 0, 0, "Z");
+        let inc =
+            extract_gaiji_spans_incremental(&old_tree, &new_tree, &old_spans, &[edit], &new_text);
+        let cold = cold_btree(&new_text);
+        assert_eq!(inc, cold);
+    }
+
+    /// Removing every gaiji should yield an empty result. The
+    /// drop-on-overlap guard must catch deletions through the spans.
+    #[test]
+    fn incremental_handles_deletion_of_only_gaiji() {
+        let src = "※［＃「a」、X］";
+        let old_tree = parse(src);
+        let old_spans = cold_btree(src);
+        let (new_text, new_tree, edit) = edit_once(src, &old_tree, 0, src.len(), "");
+        let inc =
+            extract_gaiji_spans_incremental(&old_tree, &new_tree, &old_spans, &[edit], &new_text);
+        let cold = cold_btree(&new_text);
+        assert_eq!(inc, cold);
+        assert!(inc.is_empty());
     }
 
     #[test]

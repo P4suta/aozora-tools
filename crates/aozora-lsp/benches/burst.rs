@@ -80,7 +80,36 @@ fn bench_apply_changes(c: &mut Criterion) {
             BatchSize::PerIteration,
         );
     });
+
+    // Mid-document edit — exercises the **incremental** snapshot
+    // rebuild path. Insert one space at a UTF-8 boundary near the
+    // doc midpoint; tree-sitter's `changed_ranges` should localise
+    // the work to a small region around the cursor, dropping the
+    // gaiji-span re-walk from 67 ms (cold) down to a few hundred μs
+    // (carry-forward + sub-walk only).
+    g.bench_function("insert_one_char_mid_doc_bouten_6mb", |b| {
+        let mid_offset = nearest_char_boundary(&text, text.len() / 2);
+        b.iter_batched(
+            || DocState::new(text.clone()),
+            move |state| {
+                let _ = state
+                    .apply_changes(&[LocalTextEdit::new(mid_offset..mid_offset, " ".to_owned())]);
+            },
+            BatchSize::PerIteration,
+        );
+    });
     g.finish();
+}
+
+/// Find the nearest UTF-8 char boundary at or before `target` so we
+/// can construct a valid mid-document edit range without triggering
+/// `apply_edits`'s `NonCharBoundary` rejection.
+fn nearest_char_boundary(text: &str, target: usize) -> usize {
+    let mut idx = target.min(text.len());
+    while idx > 0 && !text.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    idx
 }
 
 fn bench_inlay(c: &mut Criterion) {

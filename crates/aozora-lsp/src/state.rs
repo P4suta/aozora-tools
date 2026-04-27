@@ -62,9 +62,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
-use tree_sitter::Tree;
+use tree_sitter::{InputEdit, Tree};
 
-use crate::gaiji_spans::{GaijiSpan, extract_gaiji_spans};
+use crate::gaiji_spans::{GaijiSpan, extract_gaiji_spans, extract_gaiji_spans_incremental};
 use crate::incremental::{IncrementalDoc, input_edit};
 use crate::line_index::LineIndex;
 use crate::metrics::Metrics;
@@ -94,13 +94,14 @@ impl BufferState {
     }
 
     /// Apply a batch of edits to `text` and propagate the edits into
-    /// the tree-sitter incremental tree. Returns `true` on success,
-    /// `false` if validation rejected the batch (text and tree
-    /// remain at the prior state).
-    fn apply_edits(&mut self, edits: &[LocalTextEdit]) -> bool {
+    /// the tree-sitter incremental tree. Returns the list of
+    /// `InputEdit`s applied (for the snapshot rebuild's incremental
+    /// gaiji-span shift), or `None` if validation rejected the batch
+    /// (text and tree remain at the prior state).
+    fn apply_edits(&mut self, edits: &[LocalTextEdit]) -> Option<Vec<InputEdit>> {
         // Snapshot byte ranges BEFORE mutating `self.text` so the
         // tree-sitter `InputEdit` references pre-change offsets.
-        let ts_edits: Vec<tree_sitter::InputEdit> = edits
+        let ts_edits: Vec<InputEdit> = edits
             .iter()
             .map(|e| input_edit(e.range.start, e.range.end, e.range.start + e.new_text.len()))
             .collect();
@@ -110,7 +111,7 @@ impl BufferState {
                 for edit in &ts_edits {
                     self.incremental.apply_edit(&self.text, *edit);
                 }
-                true
+                Some(ts_edits)
             }
             Err(err) => {
                 tracing::warn!(
@@ -118,7 +119,7 @@ impl BufferState {
                     text_bytes = self.text.len(),
                     "rejecting incremental edit batch; document state unchanged",
                 );
-                false
+                None
             }
         }
     }
@@ -147,12 +148,15 @@ pub struct Snapshot {
     pub text: Arc<str>,
     pub line_index: Arc<LineIndex>,
     /// Sorted gaiji span store keyed by `start_byte`. `BTreeMap`
-    /// rather than `Vec` so future incremental rebuilds can update
-    /// only the spans that intersect a tree-sitter `changed_range` —
-    /// `O(log n + k)` instead of the current `O(n)` full re-walk.
-    /// Today the snapshot is always rebuilt from scratch; the data
-    /// structure is the load-bearing choice.
+    /// rather than `Vec` so the incremental rebuild can update only
+    /// the spans intersecting a tree-sitter `changed_range` —
+    /// `O(log n + k)` instead of `O(n)` full re-walk.
     pub gaiji_spans: Arc<BTreeMap<u32, GaijiSpan>>,
+    /// The tree-sitter tree this snapshot was built from. Held here
+    /// (cheap shallow `Arc` clone) so the next incremental rebuild
+    /// can call `Tree::changed_ranges(&old_tree, &new_tree)` to
+    /// localise the work to changed bytes.
+    pub tree: Option<Tree>,
     /// `DocState::edit_version` value this snapshot was computed
     /// from. May lag the live version by one rebuild while typing
     /// bursts catch up.
@@ -160,18 +164,51 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
-    /// Build a snapshot from cheap-cloned buffer inputs. Runs OFF the
-    /// buffer mutex; called by both the synchronous `DocState::new`
-    /// path (initial snapshot) and the bg snapshot rebuild task.
-    fn build(text: Arc<str>, tree: Option<&Tree>, version: u64) -> Self {
+    /// Cold-start snapshot: full extract via [`extract_gaiji_spans`].
+    /// Used by [`DocState::new`] and as the fallback when no prior
+    /// snapshot exists for the incremental algorithm.
+    fn build_cold(text: Arc<str>, tree: Option<Tree>, version: u64) -> Self {
         let line_index = Arc::new(LineIndex::new(&text));
         let gaiji_spans = tree
+            .as_ref()
             .map(|t| spans_to_btree(&extract_gaiji_spans(t, &text)))
             .unwrap_or_default();
         Self {
             text,
             line_index,
             gaiji_spans: Arc::new(gaiji_spans),
+            tree,
+            version,
+        }
+    }
+
+    /// Incremental snapshot: reuse spans from `prior` whose byte
+    /// range doesn't intersect the changed regions between the prior
+    /// tree and `new_tree`, walking only the changed regions for
+    /// fresh extraction.
+    fn build_incremental(
+        text: Arc<str>,
+        new_tree: Tree,
+        prior: &Snapshot,
+        edits: &[InputEdit],
+        version: u64,
+    ) -> Self {
+        let line_index = Arc::new(LineIndex::new(&text));
+        let gaiji_spans = match prior.tree.as_ref() {
+            Some(old_tree) => extract_gaiji_spans_incremental(
+                old_tree,
+                &new_tree,
+                &prior.gaiji_spans,
+                edits,
+                &text,
+            ),
+            None => spans_to_btree(&extract_gaiji_spans(&new_tree, &text)),
+        };
+        Self {
+            text,
+            line_index,
+            gaiji_spans: Arc::new(gaiji_spans),
+            tree: Some(new_tree),
             version,
         }
     }
@@ -196,6 +233,13 @@ pub struct DocState {
     /// snapshot was built from; a bg task observes the lag and
     /// rebuilds.
     edit_version: AtomicU64,
+    /// Per-edit `InputEdit` log, tagged with the edit version.
+    /// Pushed under the buffer mutex on every accepted edit. The
+    /// snapshot rebuild reads the entries with version above the
+    /// prior snapshot's, then prunes them after a successful install.
+    /// On a failed install (RCU lost to a newer snapshot) the entries
+    /// stay so the next rebuild still sees them.
+    pending_edits: Mutex<Vec<(u64, InputEdit)>>,
     pub metrics: Arc<Metrics>,
 }
 
@@ -217,11 +261,12 @@ impl DocState {
     pub fn new(text: String) -> Arc<Self> {
         let buffer = BufferState::new(text);
         let (text_arc, tree) = buffer.snapshot_inputs();
-        let initial_snapshot = Snapshot::build(text_arc, tree.as_ref(), 0);
+        let initial_snapshot = Snapshot::build_cold(text_arc, tree, 0);
         let state = Arc::new(Self {
             buffer: Mutex::new(buffer),
             snapshot: ArcSwap::from_pointee(initial_snapshot),
             edit_version: AtomicU64::new(0),
+            pending_edits: Mutex::new(Vec::new()),
             metrics: Arc::new(Metrics::default()),
         });
         // Run the segment-cache reparse so didOpen returns ready for
@@ -269,25 +314,39 @@ impl DocState {
     pub fn apply_changes(self: &Arc<Self>, edits: &[LocalTextEdit]) -> Option<u64> {
         let new_version = {
             let mut buffer = self.buffer.lock();
-            if !buffer.apply_edits(edits) {
-                return None;
-            }
+            let ts_edits = buffer.apply_edits(edits)?;
             self.metrics.record_edit();
             // fetch_add returns the prior value — we want the post.
-            self.edit_version.fetch_add(1, Ordering::SeqCst) + 1
+            let v = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
+            // Record edits in the pending log under the same lock so
+            // the version they're tagged with strictly matches the
+            // buffer mutation order.
+            let mut log = self.pending_edits.lock();
+            for edit in ts_edits {
+                log.push((v, edit));
+            }
+            v
         };
         self.spawn_snapshot_rebuild(new_version);
         Some(new_version)
     }
 
     /// Replace the buffer wholesale. Same ratcheting as
-    /// [`Self::apply_changes`].
+    /// [`Self::apply_changes`]. A full replacement invalidates every
+    /// gaiji span, so the pending edit log is cleared (any edits
+    /// before this replacement are now meaningless against the new
+    /// buffer state) and the snapshot will rebuild via the cold path.
     pub fn replace_text(self: &Arc<Self>, new_text: String) -> u64 {
         let new_version = {
             let mut buffer = self.buffer.lock();
             buffer.replace(new_text);
             self.metrics.record_edit();
-            self.edit_version.fetch_add(1, Ordering::SeqCst) + 1
+            let v = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
+            // Clear pending edit log — replace_text breaks the
+            // incremental algorithm's invariants (no input-edit chain
+            // from old text to new). Cold rebuild will follow.
+            self.pending_edits.lock().clear();
+            v
         };
         self.spawn_snapshot_rebuild(new_version);
         new_version
@@ -299,30 +358,65 @@ impl DocState {
     /// then `ArcSwap::rcu`s it into place if our version is at
     /// least as fresh as what's already there. Older parallel
     /// rebuilds lose the race silently.
+    ///
+    /// Picks the **incremental** rebuild path when both the prior
+    /// snapshot has a tree and the pending edit log covers the
+    /// version gap; falls back to the cold path otherwise. The
+    /// incremental path uses [`Snapshot::build_incremental`] which
+    /// only walks the tree-sitter `changed_ranges` for fresh gaiji
+    /// extraction and shifts the rest by the cumulative edit delta.
     pub fn rebuild_snapshot_now(&self) {
-        let (text, tree, version) = {
+        let (text, new_tree, version) = {
             let buffer = self.buffer.lock();
             let (text, tree) = buffer.snapshot_inputs();
-            // Snap the version under the same lock that observes the
-            // buffer state — guarantees the snapshot really matches.
             let version = self.edit_version.load(Ordering::SeqCst);
             (text, tree, version)
         };
-        let candidate = Arc::new(Snapshot::build(text, tree.as_ref(), version));
-        self.install_if_newer(&candidate);
+
+        let prior = self.snapshot.load_full();
+        let candidate = match new_tree {
+            Some(new_tree) if prior.tree.is_some() && version > prior.version => {
+                // Collect edits since the prior snapshot's version.
+                let edits: Vec<InputEdit> = {
+                    let log = self.pending_edits.lock();
+                    log.iter()
+                        .filter(|(v, _)| *v > prior.version && *v <= version)
+                        .map(|(_, e)| *e)
+                        .collect()
+                };
+                Arc::new(Snapshot::build_incremental(
+                    text, new_tree, &prior, &edits, version,
+                ))
+            }
+            other_tree => Arc::new(Snapshot::build_cold(text, other_tree, version)),
+        };
+
+        if self.install_if_newer(&candidate) {
+            // Successful install — drop edits up to the installed
+            // version. Drops the prefix only; later edits (from
+            // writes that happened during this rebuild) stay so the
+            // next rebuild can apply them incrementally.
+            let mut log = self.pending_edits.lock();
+            log.retain(|(v, _)| *v > candidate.version);
+        }
     }
 
-    fn install_if_newer(&self, candidate: &Arc<Snapshot>) {
+    fn install_if_newer(&self, candidate: &Arc<Snapshot>) -> bool {
         // RCU loop: install our candidate iff its version is at least
         // as fresh as the current snapshot's. ArcSwap retries on
         // contention so concurrent installers don't lose data.
+        // Returns true iff the candidate ended up installed.
+        let mut installed = false;
         self.snapshot.rcu(|current| {
             if candidate.version >= current.version {
+                installed = true;
                 Arc::clone(candidate)
             } else {
+                installed = false;
                 Arc::clone(current)
             }
         });
+        installed
     }
 
     fn spawn_snapshot_rebuild(self: &Arc<Self>, target_version: u64) {
@@ -481,6 +575,7 @@ mod tests {
             text: Arc::from("STALE"),
             line_index: Arc::new(LineIndex::new("STALE")),
             gaiji_spans: Arc::new(BTreeMap::new()),
+            tree: None,
             version: 3,
         });
         state.install_if_newer(&stale_snap);
@@ -503,6 +598,7 @@ mod tests {
             text: Arc::clone(&snap.text),
             line_index: Arc::clone(&snap.line_index),
             gaiji_spans: Arc::clone(&snap.gaiji_spans),
+            tree: snap.tree.clone(),
             version: snap.version,
         });
         state.install_if_newer(&replacement);
