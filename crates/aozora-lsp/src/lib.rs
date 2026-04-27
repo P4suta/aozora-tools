@@ -26,6 +26,8 @@ mod code_actions;
 mod commands;
 mod completion;
 mod diagnostics;
+mod document_symbol;
+mod folding_range;
 mod formatting;
 mod gaiji_spans;
 mod half_width_emmet;
@@ -37,6 +39,7 @@ mod linked_editing;
 pub mod metrics;
 mod position;
 pub mod segment_cache;
+mod semantic_tokens;
 mod state;
 mod text_edit;
 
@@ -47,6 +50,8 @@ pub use completion::completion_at;
 pub use diagnostics::{
     compute_diagnostics, compute_diagnostics_from_iter, compute_diagnostics_from_parsed,
 };
+pub use document_symbol::document_symbols;
+pub use folding_range::folding_ranges;
 pub use formatting::format_edits;
 pub use gaiji_spans::{GaijiSpan, extract_gaiji_spans as extract_gaiji_spans_for_bench};
 pub use half_width_emmet::emmet_completions;
@@ -56,5 +61,6 @@ pub use inlay_hints::inlay_hints;
 pub use line_index::LineIndex;
 pub use linked_editing::linked_editing_at;
 pub use position::{byte_offset_to_position, position_to_byte_offset};
+pub use semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
 pub use state::{BufferState, DocState, Snapshot};
 pub use text_edit::{EditError, LocalTextEdit, apply_edits};

@@ -39,13 +39,21 @@ use tower_lsp::lsp_types::{
     CodeActionOptions, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, ExecuteCommandOptions, ExecuteCommandParams, Hover, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    LinkedEditingRangeParams, LinkedEditingRangeServerCapabilities, LinkedEditingRanges,
-    MessageType, OneOf, Range, ServerCapabilities, ServerInfo, TextDocumentContentChangeEvent,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+    DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+    ExecuteCommandOptions, ExecuteCommandParams, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, InitializedParams, LinkedEditingRangeParams,
+    LinkedEditingRangeServerCapabilities, LinkedEditingRanges, MessageType, OneOf, Range,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, ServerInfo, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
 };
 use tower_lsp::{Client, LanguageServer};
+
+use crate::document_symbol::document_symbols;
+use crate::folding_range::folding_ranges;
+use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
 
 use crate::position::position_to_byte_offset;
 
@@ -387,6 +395,21 @@ impl LanguageServer for Backend {
                         ..CodeActionOptions::default()
                     },
                 )),
+                folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            work_done_progress_options: WorkDoneProgressOptions::default(),
+                            legend: SemanticTokensLegend {
+                                token_types: semantic_token_legend(),
+                                token_modifiers: Vec::new(),
+                            },
+                            range: Some(false),
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                        },
+                    ),
+                ),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -645,6 +668,60 @@ impl LanguageServer for Backend {
             tracing::warn!(error = %err, "applyEdit failed");
         }
         Ok(None)
+    }
+
+    #[tracing::instrument(skip_all, fields(uri = %p.text_document.uri))]
+    async fn folding_range(&self, p: FoldingRangeParams) -> Result<Option<Vec<FoldingRange>>> {
+        let uri = p.text_document.uri;
+        let Some(state) = self.lookup(&uri) else {
+            return Ok(None);
+        };
+        // Pure text-scan against the snapshot — no parser invoked.
+        // Wait-free: a single ArcSwap load + a linear pass over the
+        // immutable `Arc<str>`.
+        let snap = state.snapshot();
+        let ranges = folding_ranges(&snap.text);
+        if ranges.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(ranges))
+        }
+    }
+
+    #[tracing::instrument(skip_all, fields(uri = %p.text_document.uri))]
+    async fn document_symbol(
+        &self,
+        p: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = p.text_document.uri;
+        let Some(state) = self.lookup(&uri) else {
+            return Ok(None);
+        };
+        let snap = state.snapshot();
+        let symbols: Vec<DocumentSymbol> = document_symbols(&snap.text, &snap.line_index);
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+        }
+    }
+
+    #[tracing::instrument(skip_all, fields(uri = %p.text_document.uri))]
+    async fn semantic_tokens_full(
+        &self,
+        p: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = p.text_document.uri;
+        let Some(state) = self.lookup(&uri) else {
+            return Ok(None);
+        };
+        let snap = state.snapshot();
+        let Some(tree) = snap.tree.as_ref() else {
+            return Ok(None);
+        };
+        // Tree-sitter tree walk against the snapshot — wait-free.
+        let tokens: SemanticTokens = semantic_tokens_full(tree, &snap.text, &snap.line_index);
+        Ok(Some(SemanticTokensResult::Tokens(tokens)))
     }
 
     async fn shutdown(&self) -> Result<()> {
