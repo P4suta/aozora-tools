@@ -218,6 +218,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "aozora-tools-xtask"
+version = "0.1.0"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "aozora-veb"
 version = "0.1.0"
 

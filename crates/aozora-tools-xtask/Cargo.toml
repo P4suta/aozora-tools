@@ -1,0 +1,21 @@
+[package]
+name        = "aozora-tools-xtask"
+version.workspace     = true
+edition.workspace     = true
+rust-version.workspace = true
+license.workspace     = true
+authors.workspace     = true
+repository.workspace  = true
+publish     = false
+
+description = "Developer tooling for the aozora-tools workspace (samply LSP profiler runner)."
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { workspace = true }
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

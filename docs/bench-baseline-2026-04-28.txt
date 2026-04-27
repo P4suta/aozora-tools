@@ -1,0 +1,66 @@
+   Compiling aozora-lsp v0.1.0 (/home/yasunobu/projects/aozora-tools/crates/aozora-lsp)
+    Finished `bench` profile [optimized] target(s) in 10.79s
+     Running benches/burst.rs (target/release/deps/burst-3e45d0c189755e7d)
+Gnuplot not found, using plotters backend
+Benchmarking subcomponents/line_index_build_bouten_6mb
+Benchmarking subcomponents/line_index_build_bouten_6mb: Warming up for 2.0000 s
+Benchmarking subcomponents/line_index_build_bouten_6mb: Collecting 20 samples in estimated 5.7074 s (1470 iterations)
+Benchmarking subcomponents/line_index_build_bouten_6mb: Analyzing
+subcomponents/line_index_build_bouten_6mb
+                        time:   [3.7245 ms 3.7404 ms 3.7607 ms]
+                        change: [+15.433% +16.255% +17.156%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking subcomponents/gaiji_span_extract_bouten_6mb
+Benchmarking subcomponents/gaiji_span_extract_bouten_6mb: Warming up for 2.0000 s
+
+Warning: Unable to complete 20 samples in 5.0s. You may wish to increase target time to 5.5s, or reduce sample count to 10.
+Benchmarking subcomponents/gaiji_span_extract_bouten_6mb: Collecting 20 samples in estimated 5.5448 s (20 iterations)
+Benchmarking subcomponents/gaiji_span_extract_bouten_6mb: Analyzing
+subcomponents/gaiji_span_extract_bouten_6mb
+                        time:   [70.338 ms 71.500 ms 72.764 ms]
+                        change: [−7.6267% −5.7570% −3.8599%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 20 measurements (5.00%)
+  1 (5.00%) high mild
+Benchmarking subcomponents/ts_parse_full_bouten_6mb
+Benchmarking subcomponents/ts_parse_full_bouten_6mb: Warming up for 2.0000 s
+Benchmarking subcomponents/ts_parse_full_bouten_6mb: Collecting 20 samples in estimated 9.3575 s (40 iterations)
+Benchmarking subcomponents/ts_parse_full_bouten_6mb: Analyzing
+subcomponents/ts_parse_full_bouten_6mb
+                        time:   [213.11 ms 215.01 ms 217.00 ms]
+                        change: [−11.645% −8.2748% −5.5459%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking subcomponents/apply_edits_insert_one_char_bouten_6mb
+Benchmarking subcomponents/apply_edits_insert_one_char_bouten_6mb: Warming up for 2.0000 s
+Benchmarking subcomponents/apply_edits_insert_one_char_bouten_6mb: Collecting 20 samples in estimated 5.0629 s (16k iterations)
+Benchmarking subcomponents/apply_edits_insert_one_char_bouten_6mb: Analyzing
+subcomponents/apply_edits_insert_one_char_bouten_6mb
+                        time:   [311.64 µs 321.21 µs 330.27 µs]
+Benchmarking subcomponents/ts_apply_edit_one_char_bouten_6mb
+Benchmarking subcomponents/ts_apply_edit_one_char_bouten_6mb: Warming up for 2.0000 s
+
+Warning: Unable to complete 20 samples in 5.0s. You may wish to increase target time to 7.8s, or reduce sample count to 10.
+Benchmarking subcomponents/ts_apply_edit_one_char_bouten_6mb: Collecting 20 samples in estimated 7.7701 s (20 iterations)
+Benchmarking subcomponents/ts_apply_edit_one_char_bouten_6mb: Analyzing
+subcomponents/ts_apply_edit_one_char_bouten_6mb
+                        time:   [198.61 ms 201.72 ms 205.08 ms]
+
+Benchmarking apply_changes/insert_one_char_bouten_6mb
+Benchmarking apply_changes/insert_one_char_bouten_6mb: Warming up for 2.0000 s
+
+Warning: Unable to complete 20 samples in 5.0s. You may wish to increase target time to 11.9s, or reduce sample count to 10.
+Benchmarking apply_changes/insert_one_char_bouten_6mb: Collecting 20 samples in estimated 11.948 s (20 iterations)
+Benchmarking apply_changes/insert_one_char_bouten_6mb: Analyzing
+apply_changes/insert_one_char_bouten_6mb
+                        time:   [259.76 ms 266.06 ms 274.02 ms]
+                        change: [−3.1777% −0.3873% +2.7437%] (p = 0.81 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 20 measurements (10.00%)
+  2 (10.00%) high severe
+Benchmarking apply_changes/burst_100_inserts_bouten_6mb
+Benchmarking apply_changes/burst_100_inserts_bouten_6mb: Warming up for 2.0000 s
+
+Warning: Unable to complete 20 samples in 5.0s. You may wish to increase target time to 619.3s, or reduce sample count to 10.
+Benchmarking apply_changes/burst_100_inserts_bouten_6mb: Collecting 20 samples in estimated 619.31 s (20 iterations)

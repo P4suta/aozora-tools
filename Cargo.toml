@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/aozora-fmt",
     "crates/aozora-lsp",
+    "crates/aozora-tools-xtask",
     "crates/tree-sitter-aozora",
 ]
 
@@ -89,3 +90,12 @@ lto           = "thin"
 codegen-units = 1
 strip         = "symbols"
 opt-level     = 3
+
+# Bench profile inherits release optimisation but keeps debug info so
+# `samply record --` against a `cargo bench --no-run` binary can
+# symbolicate stack frames. Lives next to `[profile.release]` because
+# it intentionally diverges only on those two knobs.
+[profile.bench]
+inherits = "release"
+strip    = "none"
+debug    = 1
