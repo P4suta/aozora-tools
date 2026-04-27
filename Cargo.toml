@@ -59,6 +59,11 @@ parking_lot        = "0.12"
 # Reads are wait-free (a single load); writers atomically install a
 # fresh snapshot without invalidating in-flight readers.
 arc-swap           = "1.7"
+# `ropey` — chunked Rope for the editor buffer. O(log n) byte-range
+# splice + cheap clones via the internal Arc<Node>; works as a
+# tree-sitter chunked-input source (parser.parse_with) so the parser
+# never needs a contiguous String materialisation of the buffer.
+ropey              = "1.6"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 

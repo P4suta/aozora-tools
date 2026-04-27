@@ -62,6 +62,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
+use ropey::Rope;
 use tree_sitter::{InputEdit, Tree};
 
 use crate::gaiji_spans::{GaijiSpan, extract_gaiji_spans, extract_gaiji_spans_incremental};
@@ -69,25 +70,34 @@ use crate::incremental::{IncrementalDoc, input_edit};
 use crate::line_index::LineIndex;
 use crate::metrics::Metrics;
 use crate::segment_cache::SegmentCache;
-use crate::text_edit::{LocalTextEdit, apply_edits};
+use crate::text_edit::{EditError, LocalTextEdit};
 
 /// Mutable side of the per-document state. Held behind
 /// `DocState::buffer`. Writers (`apply_changes`, `replace_text`,
 /// segment-cache reparse) acquire this mutex briefly; readers never
 /// touch it.
+///
+/// `text` is a [`Rope`] rather than a `String` so byte-range edits
+/// cost `O(log n)` instead of `O(n)` (no per-edit `String` rebuild)
+/// and the tree-sitter parser can stream chunks directly via
+/// [`IncrementalDoc::apply_edit_rope`] / [`IncrementalDoc::parse_full_rope`]
+/// without needing a contiguous materialisation. Snapshot rebuild
+/// pays one `Rope::to_string()` per snapshot to populate
+/// [`Snapshot::text`] for handlers that still take `&str`.
 #[derive(Debug)]
 pub struct BufferState {
-    pub text: String,
+    pub text: Rope,
     pub incremental: IncrementalDoc,
     pub segment_cache: SegmentCache,
 }
 
 impl BufferState {
     fn new(text: String) -> Self {
+        let rope = Rope::from(text);
         let incremental = IncrementalDoc::new();
-        incremental.parse_full(&text);
+        incremental.parse_full_rope(&rope);
         Self {
-            text,
+            text: rope,
             incremental,
             segment_cache: SegmentCache::default(),
         }
@@ -98,45 +108,118 @@ impl BufferState {
     /// `InputEdit`s applied (for the snapshot rebuild's incremental
     /// gaiji-span shift), or `None` if validation rejected the batch
     /// (text and tree remain at the prior state).
+    ///
+    /// Rope edits are `O(log n)` per splice. We pre-validate the
+    /// batch so a partial application is impossible — same atomicity
+    /// contract the prior `String` path provided.
     fn apply_edits(&mut self, edits: &[LocalTextEdit]) -> Option<Vec<InputEdit>> {
+        if let Err(err) = validate_rope_edits(&self.text, edits) {
+            tracing::warn!(
+                error = %err,
+                text_bytes = self.text.len_bytes(),
+                "rejecting incremental edit batch; document state unchanged",
+            );
+            return None;
+        }
         // Snapshot byte ranges BEFORE mutating `self.text` so the
         // tree-sitter `InputEdit` references pre-change offsets.
         let ts_edits: Vec<InputEdit> = edits
             .iter()
             .map(|e| input_edit(e.range.start, e.range.end, e.range.start + e.new_text.len()))
             .collect();
-        match apply_edits(&self.text, edits) {
-            Ok(new_text) => {
-                self.text = new_text;
-                for edit in &ts_edits {
-                    self.incremental.apply_edit(&self.text, *edit);
-                }
-                Some(ts_edits)
-            }
-            Err(err) => {
-                tracing::warn!(
-                    error = %err,
-                    text_bytes = self.text.len(),
-                    "rejecting incremental edit batch; document state unchanged",
-                );
-                None
-            }
+        // Apply edits in REVERSE source order so each splice's byte
+        // offsets remain valid against the (still-pre-edit) prefix
+        // of the rope. Forward order would require running offsets
+        // through cumulative deltas; reverse order is allocation-free.
+        for edit in edits.iter().rev() {
+            apply_one_to_rope(&mut self.text, edit);
         }
+        for ts_edit in &ts_edits {
+            self.incremental.apply_edit_rope(&self.text, *ts_edit);
+        }
+        Some(ts_edits)
     }
 
     fn replace(&mut self, new_text: String) {
-        self.text = new_text;
-        self.incremental.parse_full(&self.text);
+        self.text = Rope::from(new_text);
+        self.incremental.parse_full_rope(&self.text);
     }
 
-    /// Snapshot the buffer for off-mutex snapshot computation. Returns
-    /// an `Arc<str>` clone of the text and a cheap shallow `Tree`
-    /// clone (tree-sitter `Tree` is internally `Arc`-shared).
+    /// Snapshot the buffer for off-mutex snapshot computation.
+    /// Materialises the rope into a contiguous `Arc<str>` (one
+    /// allocation per snapshot rebuild — typically a few ms for a
+    /// 6 MB doc) and clones the tree-sitter `Tree` (cheap shallow
+    /// `Arc` bump).
     fn snapshot_inputs(&self) -> (Arc<str>, Option<Tree>) {
-        let text: Arc<str> = Arc::from(self.text.as_str());
+        let text: Arc<str> = Arc::from(self.text.to_string());
         let tree = self.incremental.with_tree(Clone::clone);
         (text, tree)
     }
+}
+
+/// Pre-validate that every edit's byte range is in-bounds, sorted,
+/// non-overlapping, and aligned to UTF-8 char boundaries against the
+/// current rope. Mirrors the policy
+/// [`crate::text_edit::apply_edits`] enforces for `&str` so callers
+/// see consistent rejections regardless of buffer backing store.
+fn validate_rope_edits(rope: &Rope, edits: &[LocalTextEdit]) -> Result<(), EditError> {
+    let len = rope.len_bytes();
+    let mut prev_end = 0usize;
+    for edit in edits {
+        let start = edit.range.start;
+        let end = edit.range.end;
+        if end < start {
+            return Err(EditError::InvertedRange { start, end });
+        }
+        if end > len {
+            return Err(EditError::OutOfBounds {
+                start,
+                end,
+                source_len: len,
+            });
+        }
+        if !rope_is_char_boundary(rope, start) || !rope_is_char_boundary(rope, end) {
+            return Err(EditError::NonCharBoundary { start, end });
+        }
+        if start < prev_end {
+            return Err(EditError::UnsortedOrOverlapping {
+                prev_end,
+                next_start: start,
+            });
+        }
+        prev_end = end;
+    }
+    Ok(())
+}
+
+/// Apply one edit to `rope` in place. Caller is responsible for
+/// validating ranges via [`validate_rope_edits`] first.
+fn apply_one_to_rope(rope: &mut Rope, edit: &LocalTextEdit) {
+    let start_char = rope.byte_to_char(edit.range.start);
+    let end_char = rope.byte_to_char(edit.range.end);
+    if end_char > start_char {
+        rope.remove(start_char..end_char);
+    }
+    if !edit.new_text.is_empty() {
+        rope.insert(start_char, &edit.new_text);
+    }
+}
+
+/// Equivalent of `str::is_char_boundary` for `Rope`. `Rope::byte_to_char`
+/// is loose (it rounds down to the nearest char boundary); we need
+/// strict boundary detection so cross-boundary edits get rejected.
+fn rope_is_char_boundary(rope: &Rope, byte_idx: usize) -> bool {
+    if byte_idx == 0 || byte_idx == rope.len_bytes() {
+        return true;
+    }
+    if byte_idx > rope.len_bytes() {
+        return false;
+    }
+    // The chunk at `byte_idx` knows its starting byte; an in-chunk
+    // boundary check is `str::is_char_boundary` against the chunk.
+    let (chunk, chunk_byte_idx, _, _) = rope.chunk_at_byte(byte_idx);
+    let local = byte_idx - chunk_byte_idx;
+    chunk.is_char_boundary(local)
 }
 
 /// Immutable read view of a document. Built from a [`BufferState`]
@@ -459,7 +542,15 @@ impl DocState {
                 segment_cache,
                 ..
             } = &mut *buffer;
-            let (_diags, stats) = segment_cache.reparse(text);
+            // segment_cache currently takes `&str`; materialise the
+            // rope once per reparse. Happens on didOpen and on the
+            // debounced post-edit task — rare relative to the
+            // keystroke-rate hot path. Re-architecting the segment
+            // cache to consume Rope chunks directly would shave this
+            // O(n) materialisation but is out-of-scope for the buffer
+            // refactor.
+            let text_str = text.to_string();
+            let (_diags, stats) = segment_cache.reparse(&text_str);
             stats
         };
         self.metrics.record_parse(

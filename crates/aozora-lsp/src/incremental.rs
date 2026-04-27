@@ -25,6 +25,7 @@
 
 use std::sync::Mutex;
 
+use ropey::Rope;
 use tree_sitter::{InputEdit, Parser, Point, Tree};
 
 /// Per-document tree-sitter state.
@@ -108,6 +109,40 @@ impl IncrementalDoc {
         inner.tree = inner.parser.parse(new_text, prior.as_ref());
     }
 
+    /// Whole-document parse driven by chunked input from a [`Rope`].
+    /// `parser.parse_with` calls our callback repeatedly with byte
+    /// offsets; we hand back the rope chunk containing each requested
+    /// offset. Tree-sitter walks each chunk only once, so the parser
+    /// never needs a contiguous `String` materialisation of the
+    /// document.
+    ///
+    /// # Panics
+    /// On a poisoned inner `Mutex`.
+    pub fn parse_full_rope(&self, rope: &Rope) {
+        let mut inner = self.inner.lock().expect("parser mutex");
+        inner.tree = inner
+            .parser
+            .parse_with_options(&mut chunk_callback(rope), None, None);
+    }
+
+    /// Incremental edit + reparse driven by chunked input. Mirrors
+    /// [`Self::apply_edit`] but accepts the post-edit buffer as a
+    /// `Rope` so the parse step doesn't need a contiguous `String`.
+    ///
+    /// # Panics
+    /// On a poisoned inner `Mutex`.
+    pub fn apply_edit_rope(&self, rope: &Rope, edit: InputEdit) {
+        let mut inner = self.inner.lock().expect("parser mutex");
+        let mut prior = inner.tree.take();
+        if let Some(tree) = prior.as_mut() {
+            tree.edit(&edit);
+        }
+        inner.tree =
+            inner
+                .parser
+                .parse_with_options(&mut chunk_callback(rope), prior.as_ref(), None);
+    }
+
     /// Run a closure against the current tree. Returns `None` when
     /// no parse has been recorded yet (newly opened empty docs).
     ///
@@ -127,6 +162,27 @@ impl IncrementalDoc {
 impl Default for IncrementalDoc {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Build a tree-sitter `parse_with` callback that streams bytes from
+/// a [`Rope`]. The callback returns the chunk containing the
+/// requested byte offset, sliced from that offset onward; tree-sitter
+/// stops calling once it sees an empty slice (`byte_idx >= len`).
+///
+/// The closure borrows the rope by reference; the resulting `&[u8]`
+/// slices live for the duration of one callback invocation, which
+/// fits the `parse_with` contract (the parser copies bytes it cares
+/// about into its internal state before returning).
+fn chunk_callback<'r>(rope: &'r Rope) -> impl FnMut(usize, Point) -> &'r [u8] {
+    let len = rope.len_bytes();
+    move |byte_idx, _pos| -> &'r [u8] {
+        if byte_idx >= len {
+            return &[];
+        }
+        let (chunk, chunk_byte_idx, _, _) = rope.chunk_at_byte(byte_idx);
+        let local = byte_idx - chunk_byte_idx;
+        &chunk.as_bytes()[local..]
     }
 }
 
