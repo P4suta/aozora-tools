@@ -69,7 +69,7 @@ fn main() {
     let state = DocState::new(text.clone());
     println!("DocState::new: {:?}", t.elapsed());
 
-    let initial_spans = state.snapshot().gaiji_spans.len();
+    let initial_spans = state.snapshot().doc_gaiji_spans().len();
     println!("initial gaiji spans: {initial_spans}");
 
     // Edit at offset 0 — worst case for incremental TS reparse and
@@ -79,13 +79,13 @@ fn main() {
         .apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())])
         .unwrap();
     println!("apply_changes (offset 0, cold path): {:?}", t.elapsed());
-    let v1_spans = state.snapshot().gaiji_spans.len();
+    let v1_spans = state.snapshot().doc_gaiji_spans().len();
     println!("post-edit-1 gaiji spans: {v1_spans}");
 
     // Mid-document edit — the path designed for the incremental
     // algorithm. UTF-8-safe boundary at half the doc length.
     let snap = state.snapshot();
-    let mid_target = snap.text.len() / 2;
+    let mid_target = snap.doc_text().len() / 2;
     drop(snap);
     let mid_offset = nearest_char_boundary(&state, mid_target);
 
@@ -97,7 +97,7 @@ fn main() {
         "apply_changes (mid-doc @ {mid_offset}, incremental path): {:?}",
         t.elapsed()
     );
-    let v2_spans = state.snapshot().gaiji_spans.len();
+    let v2_spans = state.snapshot().doc_gaiji_spans().len();
     println!("post-edit-2 gaiji spans: {v2_spans}");
 
     // Bench another mid-doc edit so caches stay warm and we have a
@@ -131,7 +131,7 @@ fn main() {
     let t = Instant::now();
     let g_state = DocState::new(gaiji_text.clone());
     println!("  DocState::new: {:?}", t.elapsed());
-    let g_initial = g_state.snapshot().gaiji_spans.len();
+    let g_initial = g_state.snapshot().doc_gaiji_spans().len();
     println!("  initial gaiji spans: {g_initial}");
 
     // Cold path on synth doc
@@ -147,7 +147,7 @@ fn main() {
     // Mid-doc edit — incremental path should bypass walking 49 999
     // unchanged gaiji blocks.
     let snap = g_state.snapshot();
-    let mid = nearest_char_boundary(&g_state, snap.text.len() / 2);
+    let mid = nearest_char_boundary(&g_state, snap.doc_text().len() / 2);
     drop(snap);
 
     let t = Instant::now();
@@ -168,14 +168,14 @@ fn main() {
         mid + 1,
         t.elapsed()
     );
-    let g_final = g_state.snapshot().gaiji_spans.len();
+    let g_final = g_state.snapshot().doc_gaiji_spans().len();
     println!("  post-edits gaiji spans: {g_final}");
 }
 
 fn nearest_char_boundary(state: &DocState, target: usize) -> usize {
     let snap = state.snapshot();
-    let mut idx = target.min(snap.text.len());
-    while idx > 0 && !snap.text.is_char_boundary(idx) {
+    let mut idx = target.min(snap.doc_text().len());
+    while idx > 0 && !snap.doc_text().is_char_boundary(idx) {
         idx -= 1;
     }
     idx

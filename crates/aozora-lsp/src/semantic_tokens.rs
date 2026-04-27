@@ -36,11 +36,14 @@
 //! tree walk is in-order) so the delta encoding is straightforward
 //! one-pass.
 
+use std::sync::Arc;
+
 use tower_lsp::lsp_types::{SemanticToken, SemanticTokenType, SemanticTokens};
 use tree_sitter::Tree;
 use tree_sitter_aozora::kind;
 
 use crate::line_index::LineIndex;
+use crate::paragraph::ParagraphSnapshot;
 
 /// LSP semantic-token-type legend. Index = `tokenType` field in the
 /// emitted tuples; the values must match the order published in
@@ -58,40 +61,72 @@ const TT_GAIJI: u32 = 0;
 const TT_RUBY_BASE: u32 = 1;
 const TT_RUBY_READING: u32 = 2;
 
-/// Compute every semantic token in the document. Returns the
-/// LSP-shaped `SemanticTokens` payload (delta-encoded).
+/// Compute every semantic token across the document, walking each
+/// paragraph's tree in turn. Returns the LSP-shaped `SemanticTokens`
+/// payload (delta-encoded).
 ///
-/// `tree` is the snapshot's tree-sitter tree; `source` is the matching
-/// text snapshot. The walk is iterative single-cursor — same shape as
-/// `extract_gaiji_spans` — so it stays linear in tree-node count and
-/// allocates only the result vector.
+/// Per-paragraph tree walking is the structural payoff of the
+/// paragraph-first model: each `ParagraphSnapshot` has its own
+/// `tree` + `line_index`, so we can produce doc-absolute LSP
+/// positions without ever materialising a doc-wide tree or
+/// `LineIndex`. We keep a running `line_offset` (cumulative newlines
+/// across paragraphs already visited) so the per-paragraph
+/// positions land on the right document line.
+///
+/// The per-paragraph walk is iterative single-cursor — same shape
+/// as the gaiji extraction walker — so it stays linear in tree-node
+/// count.
 #[must_use]
-pub fn semantic_tokens_full(tree: &Tree, source: &str, line_index: &LineIndex) -> SemanticTokens {
+pub fn semantic_tokens_full(paragraphs: &[Arc<ParagraphSnapshot>]) -> SemanticTokens {
     let mut tokens: Vec<RawToken> = Vec::new();
+    let mut line_offset: u32 = 0;
+    for paragraph in paragraphs {
+        if let Some(tree) = paragraph.tree.as_ref() {
+            walk_paragraph_tree(
+                tree,
+                &paragraph.text,
+                &paragraph.line_index,
+                line_offset,
+                &mut tokens,
+            );
+        }
+        line_offset = line_offset.saturating_add(count_newlines(&paragraph.text));
+    }
+    SemanticTokens {
+        result_id: None,
+        data: encode_delta(&tokens),
+    }
+}
+
+fn count_newlines(s: &str) -> u32 {
+    u32::try_from(s.bytes().filter(|&b| b == b'\n').count()).unwrap_or(u32::MAX)
+}
+
+fn walk_paragraph_tree(
+    tree: &Tree,
+    text: &str,
+    line_index: &LineIndex,
+    line_offset: u32,
+    out: &mut Vec<RawToken>,
+) {
     let mut cursor = tree.root_node().walk();
     'walk: loop {
         let node = cursor.node();
-        // Skip subtrees rooted at ERROR — tree-sitter's recovery
-        // sometimes synthesises bare `ruby_base_implicit` nodes for
-        // dangling kanji at end-of-input; emitting tokens for those
-        // would highlight plain prose as ruby.
         if node.is_error() {
             // Don't descend; lateral move below.
         } else {
             match node.kind() {
                 kind::GAIJI => {
-                    push_token(&mut tokens, node, source, line_index, TT_GAIJI);
-                    // gaiji is treated as a leaf for tokenisation —
-                    // descending would emit duplicate slug-body tokens.
+                    push_token(out, node, text, line_index, line_offset, TT_GAIJI);
                 }
                 kind::RUBY_BASE_EXPLICIT | kind::RUBY_BASE_IMPLICIT => {
                     if is_inside_ruby(node) {
-                        push_token(&mut tokens, node, source, line_index, TT_RUBY_BASE);
+                        push_token(out, node, text, line_index, line_offset, TT_RUBY_BASE);
                     }
                 }
                 kind::RUBY_READING => {
                     if is_inside_ruby(node) {
-                        push_token(&mut tokens, node, source, line_index, TT_RUBY_READING);
+                        push_token(out, node, text, line_index, line_offset, TT_RUBY_READING);
                     }
                 }
                 _ => {
@@ -101,17 +136,11 @@ pub fn semantic_tokens_full(tree: &Tree, source: &str, line_index: &LineIndex) -
                 }
             }
         }
-        // The matched-leaf branches above + the no-child branch fall
-        // through here for the lateral move + pop.
         while !cursor.goto_next_sibling() {
             if !cursor.goto_parent() {
                 break 'walk;
             }
         }
-    }
-    SemanticTokens {
-        result_id: None,
-        data: encode_delta(&tokens),
     }
 }
 
@@ -141,10 +170,13 @@ fn push_token(
     node: tree_sitter::Node<'_>,
     source: &str,
     line_index: &LineIndex,
+    line_offset: u32,
     token_type: u32,
 ) {
-    let start = line_index.position(source, node.start_byte());
-    let end = line_index.position(source, node.end_byte());
+    let mut start = line_index.position(source, node.start_byte());
+    let mut end = line_index.position(source, node.end_byte());
+    start.line = start.line.saturating_add(line_offset);
+    end.line = end.line.saturating_add(line_offset);
     // Single-line tokens only (LSP spec); split multi-line spans
     // into per-line segments so the editor highlights each line.
     if start.line == end.line {
@@ -215,20 +247,31 @@ fn encode_delta(raw: &[RawToken]) -> Vec<SemanticToken> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tree_sitter::Parser;
 
-    fn parse(src: &str) -> Tree {
-        let mut parser = Parser::new();
+    use ropey::Rope;
+
+    use crate::paragraph::{MutParagraph, build_paragraph_snapshot, paragraph_byte_ranges};
+
+    fn paragraphs_for(src: &str) -> Vec<Arc<ParagraphSnapshot>> {
+        let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&tree_sitter_aozora::LANGUAGE.into())
             .unwrap();
-        parser.parse(src, None).unwrap()
+        let rope = Rope::from(src);
+        let ranges = paragraph_byte_ranges(&rope);
+        let mut out: Vec<Arc<ParagraphSnapshot>> = Vec::new();
+        for range in ranges {
+            let slice = rope.byte_slice(range.clone()).to_string();
+            let mut p = MutParagraph::new(Rope::from(slice));
+            p.reparse(&mut parser);
+            out.push(Arc::new(build_paragraph_snapshot(&p, range.start)));
+        }
+        out
     }
 
     fn tokens_for(src: &str) -> Vec<SemanticToken> {
-        let tree = parse(src);
-        let idx = LineIndex::new(src);
-        semantic_tokens_full(&tree, src, &idx).data
+        let paragraphs = paragraphs_for(src);
+        semantic_tokens_full(&paragraphs).data
     }
 
     #[test]

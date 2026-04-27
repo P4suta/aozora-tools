@@ -91,7 +91,7 @@ impl Backend {
         let diags = self.lookup(&uri).map_or_else(Vec::new, |state| {
             let snap = state.snapshot();
             state.with_segment_cache(|cache| {
-                compute_diagnostics_from_parsed(&snap.text, cache.diagnostics())
+                compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
             })
         });
         self.client.publish_diagnostics(uri, diags, None).await;
@@ -132,7 +132,7 @@ impl Backend {
                 // its own task will publish. Bail.
                 return;
             }
-            (state.snapshot().text.clone(), state)
+            (Arc::clone(state.snapshot().doc_text()), state)
         };
 
         // Parse off the async runtime so concurrent hover /
@@ -160,7 +160,7 @@ impl Backend {
         state.metrics.record_parse(0, 0, 1, 1, bytes_estimate);
         let snap = state.snapshot();
         let publish_diags = state.with_segment_cache(|cache| {
-            compute_diagnostics_from_parsed(&snap.text, cache.diagnostics())
+            compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
         });
         self.client
             .publish_diagnostics(uri, publish_diags, None)
@@ -196,7 +196,7 @@ impl Backend {
         let state = self
             .lookup(&params.uri)
             .ok_or_else(|| JsonRpcError::invalid_params("no document at uri"))?;
-        let text = state.snapshot().text.to_string();
+        let text = state.snapshot().doc_text().to_string();
         let html = tokio::task::spawn_blocking(move || {
             let document = aozora::Document::new(text);
             document.parse().to_html()
@@ -234,8 +234,8 @@ impl Backend {
             .lookup(&params.uri)
             .ok_or_else(|| JsonRpcError::invalid_params("no document at uri"))?;
         let snap = state.snapshot();
-        let mut views = Vec::with_capacity(snap.gaiji_spans.len());
-        for span in snap.gaiji_spans.values() {
+        let mut views = Vec::with_capacity(snap.doc_gaiji_spans().len());
+        for span in snap.doc_gaiji_spans().values() {
             let Some(resolved) =
                 aozora_encoding::gaiji::lookup(None, span.mencode.as_deref(), &span.description)
             else {
@@ -244,9 +244,11 @@ impl Backend {
             let mut buf = String::with_capacity(8);
             let _ = resolved.write_to(&mut buf);
             let start = snap
-                .line_index
-                .position(&snap.text, span.start_byte as usize);
-            let end = snap.line_index.position(&snap.text, span.end_byte as usize);
+                .doc_line_index()
+                .position(snap.doc_text(), span.start_byte as usize);
+            let end = snap
+                .doc_line_index()
+                .position(snap.doc_text(), span.end_byte as usize);
             views.push(GaijiSpanView {
                 range: Range::new(start, end),
                 resolved: buf,
@@ -459,7 +461,7 @@ impl LanguageServer for Backend {
             // LSP allows mixing incremental and full-replacement
             // events in one batch; full replacement is signalled
             // by `range == None`.
-            match lsp_change_to_edit(&snap.text, change) {
+            match lsp_change_to_edit(snap.doc_text(), change) {
                 Some(edit) => {
                     let _ = state.apply_changes(std::slice::from_ref(&edit));
                 }
@@ -510,7 +512,7 @@ impl LanguageServer for Backend {
         // Wait-free snapshot read; the parse + serialize runs on the
         // blocking pool so concurrent hover/codeAction requests on the
         // async runtime don't stall.
-        let text = state.snapshot().text.to_string();
+        let text = state.snapshot().doc_text().to_string();
         let edits = tokio::task::spawn_blocking(move || format_edits(&text))
             .await
             .map_err(|join_err| {
@@ -538,7 +540,7 @@ impl LanguageServer for Backend {
         // Wait-free snapshot. `hover_at` only reads the slice, so the
         // Arc<str> from snapshot is sufficient with no extra clone.
         let snap = state.snapshot();
-        Ok(hover_at(&snap.text, position))
+        Ok(hover_at(snap.doc_text(), position))
     }
 
     // `inlay_hint` deliberately *not* implemented on the
@@ -575,7 +577,11 @@ impl LanguageServer for Backend {
         // Tree-free source scan — bounded look-window around the
         // cursor (≤ 1 KB each side). No parser invoked.
         let snap = state.snapshot();
-        Ok(linked_editing_at(&snap.text, &snap.line_index, position))
+        Ok(linked_editing_at(
+            snap.doc_text(),
+            snap.doc_line_index(),
+            position,
+        ))
     }
 
     #[tracing::instrument(
@@ -598,14 +604,15 @@ impl LanguageServer for Backend {
         // `with_tree` call eliminates a full document re-parse on
         // every keystroke during slug completion — a major win on
         // 40 KB+ documents.
-        let mut items: Vec<CompletionItem> = completion_at(&snap.text, position);
+        let mut items: Vec<CompletionItem> = completion_at(snap.doc_text(), position);
         // Append the half-width emmet suggestions. They are
         // independent of the parsed tree (the trigger detection is a
         // pure prefix scan), so we don't pay for a `with_tree` call
         // and the slug catalogue + emmet items merge into one
         // response — VS Code's own ranker decides ordering.
         items.extend(crate::half_width_emmet::emmet_completions(
-            &snap.text, position,
+            snap.doc_text(),
+            position,
         ));
         if items.is_empty() {
             Ok(None)
@@ -631,8 +638,8 @@ impl LanguageServer for Backend {
         // one list.
         let snap = state.snapshot();
         actions.extend(wrap_selection_actions(
-            &snap.text,
-            &snap.line_index,
+            snap.doc_text(),
+            snap.doc_line_index(),
             &uri,
             p.range,
         ));
@@ -680,7 +687,7 @@ impl LanguageServer for Backend {
         // Wait-free: a single ArcSwap load + a linear pass over the
         // immutable `Arc<str>`.
         let snap = state.snapshot();
-        let ranges = folding_ranges(&snap.text);
+        let ranges = folding_ranges(snap.doc_text());
         if ranges.is_empty() {
             Ok(None)
         } else {
@@ -698,7 +705,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let snap = state.snapshot();
-        let symbols: Vec<DocumentSymbol> = document_symbols(&snap.text, &snap.line_index);
+        let symbols: Vec<DocumentSymbol> = document_symbols(snap.doc_text(), snap.doc_line_index());
         if symbols.is_empty() {
             Ok(None)
         } else {
@@ -716,11 +723,9 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let snap = state.snapshot();
-        let Some(tree) = snap.tree.as_ref() else {
-            return Ok(None);
-        };
-        // Tree-sitter tree walk against the snapshot — wait-free.
-        let tokens: SemanticTokens = semantic_tokens_full(tree, &snap.text, &snap.line_index);
+        // Per-paragraph walks against each paragraph's tree — see
+        // semantic_tokens module docs.
+        let tokens: SemanticTokens = semantic_tokens_full(&snap.paragraphs);
         Ok(Some(SemanticTokensResult::Tokens(tokens)))
     }
 
@@ -769,7 +774,7 @@ mod tests {
         let state = DocState::new(initial.to_owned());
         for change in changes {
             let snap = state.snapshot();
-            match lsp_change_to_edit(&snap.text, change) {
+            match lsp_change_to_edit(snap.doc_text(), change) {
                 Some(edit) => {
                     let _ = state.apply_changes(std::slice::from_ref(&edit));
                 }
@@ -779,7 +784,7 @@ mod tests {
                 None => {} // unresolvable range: skip (matches backend behaviour)
             }
         }
-        state.snapshot().text.to_string()
+        state.snapshot().doc_text().to_string()
     }
 
     // ---------------------------------------------------------------
@@ -843,7 +848,7 @@ mod tests {
         state.with_segment_cache(|cache| {
             assert!(cache.diagnostics().is_empty());
         });
-        assert_eq!(&*state.snapshot().text, "hello");
+        assert_eq!(&**state.snapshot().doc_text(), "hello");
     }
 
     #[test]
@@ -851,7 +856,7 @@ mod tests {
         let state = DocState::new("hello world".to_owned());
         let edit = LocalTextEdit::new(6..11, "rust".to_owned());
         state.apply_changes(&[edit]);
-        assert_eq!(&*state.snapshot().text, "hello rust");
+        assert_eq!(&**state.snapshot().doc_text(), "hello rust");
     }
 
     #[test]
@@ -860,7 +865,7 @@ mod tests {
         let edit = LocalTextEdit::new(0..99, "x".to_owned());
         let result = state.apply_changes(&[edit]);
         assert!(result.is_none(), "out-of-bounds edit must be rejected");
-        assert_eq!(&*state.snapshot().text, "hi");
+        assert_eq!(&**state.snapshot().doc_text(), "hi");
     }
 
     #[test]
@@ -870,7 +875,7 @@ mod tests {
         let result = state.apply_changes(&[edit]);
         assert!(result.is_none(), "cross-boundary edit must be rejected");
         assert_eq!(
-            &*state.snapshot().text,
+            &**state.snapshot().doc_text(),
             "あ",
             "non-boundary edit must be rejected",
         );
@@ -880,7 +885,7 @@ mod tests {
     fn doc_state_replace_text_updates_buffer() {
         let state = DocState::new("hello".to_owned());
         state.replace_text("｜青梅《おうめ》".to_owned());
-        assert_eq!(&*state.snapshot().text, "｜青梅《おうめ》");
+        assert_eq!(&**state.snapshot().doc_text(), "｜青梅《おうめ》");
     }
 
     // ---------------------------------------------------------------
@@ -970,6 +975,6 @@ mod tests {
             let edit = LocalTextEdit::new(i..i, ch.to_string());
             state.apply_changes(&[edit]);
         }
-        assert_eq!(&*state.snapshot().text, "hello world");
+        assert_eq!(&**state.snapshot().doc_text(), "hello world");
     }
 }

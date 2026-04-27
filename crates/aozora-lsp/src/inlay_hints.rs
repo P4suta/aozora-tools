@@ -93,7 +93,7 @@ fn build_hint(span: &GaijiSpan, source: &str, line_index: &LineIndex) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gaiji_spans::extract_gaiji_spans;
+    use crate::gaiji_spans::extract_gaiji_spans_from_tree;
     use tower_lsp::lsp_types::Position;
     use tree_sitter::Parser;
 
@@ -103,7 +103,7 @@ mod tests {
             .set_language(&tree_sitter_aozora::LANGUAGE.into())
             .unwrap();
         let tree = parser.parse(src, None).unwrap();
-        extract_gaiji_spans(&tree, src)
+        extract_gaiji_spans_from_tree(&tree, src)
     }
 
     fn full_range(src: &str, idx: &LineIndex) -> Range {
