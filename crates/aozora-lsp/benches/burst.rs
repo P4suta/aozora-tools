@@ -183,10 +183,70 @@ fn bench_subcomponents(c: &mut Criterion) {
     g.finish();
 }
 
+/// Quantify the wait-free read property of the `ArcSwap`-backed
+/// snapshot. Two measurements:
+///
+/// - `snapshot_load_solo` — `state.snapshot()` against a quiescent
+///   `DocState`. Should be sub-microsecond (single atomic load + Arc
+///   bump).
+/// - `snapshot_load_under_write_pressure` — same call while a
+///   background thread hammers `apply_changes` on the same state.
+///   The architectural claim is "reads never wait on writers", so
+///   the per-call latency must remain sub-microsecond — same order
+///   of magnitude as the solo case.
+///
+/// If the solo and under-pressure numbers diverge, the wait-free
+/// invariant is broken (the snapshot pointer is being held live
+/// somewhere that contends with writers). The bench is a regression
+/// gate for the refactor.
+fn bench_concurrent_reads(c: &mut Criterion) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::thread;
+
+    let text = load_fixture("bouten.afm");
+    let mut g = c.benchmark_group("concurrent_reads");
+    g.sample_size(20);
+
+    g.bench_function("snapshot_load_solo_bouten_6mb", |b| {
+        let state = DocState::new(text.clone());
+        b.iter(|| {
+            let snap = state.snapshot();
+            std::hint::black_box(snap);
+        });
+    });
+
+    g.bench_function("snapshot_load_under_write_pressure_bouten_6mb", |b| {
+        let state = DocState::new(text.clone());
+        let stop = Arc::new(AtomicBool::new(false));
+        let writer_state = Arc::clone(&state);
+        let writer_stop = Arc::clone(&stop);
+        // Spawn a writer thread that loops `apply_changes`. The
+        // synchronous fall-back inside DocState::apply_changes means
+        // each write spends ~270 ms holding the buffer mutex; reads
+        // hitting the snapshot must be unaffected.
+        let writer = thread::spawn(move || {
+            let mut i = 0usize;
+            while !writer_stop.load(Ordering::Relaxed) {
+                let _ = writer_state.apply_changes(&[LocalTextEdit::new(i..i, " ".to_owned())]);
+                i += 2; // Skip ahead each round to avoid edits stacking on each other
+            }
+        });
+        b.iter(|| {
+            let snap = state.snapshot();
+            std::hint::black_box(snap);
+        });
+        stop.store(true, Ordering::Relaxed);
+        writer.join().expect("writer thread joined");
+    });
+
+    g.finish();
+}
+
 criterion_group!(
     benches,
     bench_subcomponents,
     bench_apply_changes,
-    bench_inlay
+    bench_inlay,
+    bench_concurrent_reads
 );
 criterion_main!(benches);
