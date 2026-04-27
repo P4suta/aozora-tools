@@ -60,39 +60,48 @@ struct EmmetRule {
 /// well-known aozora notation glyph that the typesetter needs in
 /// full-width form.
 ///
-/// Order matters only for `find` lookup: longer prefixes (e.g. `<<`)
-/// are listed before their substrings (`<` would also match) so the
-/// resolver picks the more specific rule first.
+/// Single-character triggers. Each rule fires the moment the user
+/// types the half-width char, and the suggestion is `preselect: true`
+/// so a single Enter accepts. If the user actually wanted a literal
+/// half-width char (rare in aozora prose), Esc dismisses.
+///
+/// We deliberately do NOT use 2-char prefixes (`<<` etc.) because
+/// VS Code's completion session does not always re-fire on the
+/// second keystroke when the first returned an empty list — the
+/// suggestion silently never shows up. Single-char rules are
+/// reliable.
 const EMMET_RULES: &[EmmetRule] = &[
-    // Ruby readings — `《...》` and its closer.
+    // Ruby reading delimiter — `《...》` opens a snippet pair so the
+    // user types the reading inside `《┃》` directly.
     EmmetRule {
-        prefix: "<<",
+        prefix: "<",
         snippet: "《${0}》",
         label: "《...》",
-        detail: "ルビ読みを開く (半角→全角)",
+        detail: "ルビ読み (半角『<』→全角ペア『《》』)",
         is_snippet: true,
     },
     EmmetRule {
-        prefix: ">>",
+        prefix: ">",
         snippet: "》",
         label: "》",
-        detail: "ルビ読みを閉じる (半角→全角)",
+        detail: "ルビ読み閉じ (半角『>』→全角『》』)",
         is_snippet: false,
     },
-    // Annotation brackets — bare `［ ］` pair (the `[#` slug case is
-    // handled by `crate::completion`, which takes precedence).
+    // Annotation brackets. The `[#` slug catalogue (in
+    // `crate::completion`) takes precedence after `#` is typed; bare
+    // `[` here just normalises ASCII to full-width.
     EmmetRule {
         prefix: "[",
         snippet: "［",
         label: "［",
-        detail: "全角左ブラケット (半角→全角)",
+        detail: "全角左ブラケット (半角『[』→全角『［』)",
         is_snippet: false,
     },
     EmmetRule {
         prefix: "]",
         snippet: "］",
         label: "］",
-        detail: "全角右ブラケット (半角→全角)",
+        detail: "全角右ブラケット (半角『]』→全角『］』)",
         is_snippet: false,
     },
     // Ruby base marker — explicit-delimiter ruby `｜base《reading》`.
@@ -100,13 +109,13 @@ const EMMET_RULES: &[EmmetRule] = &[
         prefix: "|",
         snippet: "｜",
         label: "｜",
-        detail: "ルビベースマーカー (半角→全角)",
+        detail: "ルビベース印 (半角『|』→全角『｜』)",
         is_snippet: false,
     },
 ];
 
 /// Maximum trigger prefix length, used to cap the look-back window.
-const MAX_PREFIX_LEN: usize = 2;
+const MAX_PREFIX_LEN: usize = 1;
 
 /// Look-back window for `in_slug_context`. A slug body never spans
 /// hundreds of bytes, so 256 covers every realistic case while
@@ -265,13 +274,17 @@ mod tests {
     }
 
     #[test]
-    fn double_left_angle_triggers_ruby_open_pair() {
-        assert_eq!(first_label("<<", pos(0, 2)).as_deref(), Some("《...》"));
+    fn single_left_angle_triggers_ruby_open_pair() {
+        // Single `<` is enough to fire — using `<<` would be more
+        // specific but VS Code doesn't reliably re-query after an
+        // empty initial response, so single-char triggers are the
+        // robust choice.
+        assert_eq!(first_label("<", pos(0, 1)).as_deref(), Some("《...》"));
     }
 
     #[test]
-    fn double_right_angle_triggers_ruby_close() {
-        assert_eq!(first_label(">>", pos(0, 2)).as_deref(), Some("》"));
+    fn single_right_angle_triggers_ruby_close() {
+        assert_eq!(first_label(">", pos(0, 1)).as_deref(), Some("》"));
     }
 
     #[test]
@@ -280,19 +293,10 @@ mod tests {
     }
 
     #[test]
-    fn single_left_angle_does_not_yet_trigger_ruby_pair() {
-        // Only `<<` (two angles) maps to ruby; a single `<` should not
-        // greedily expand to `《》`. (A single `<` could be a perfectly
-        // valid ASCII less-than in a code-like context.)
-        assert!(emmet_completions("<", pos(0, 1)).is_empty());
-    }
-
-    #[test]
-    fn ruby_pair_text_edit_range_covers_both_typed_angles() {
-        // `<<` typed at offsets 0..2; on accept the text edit must
-        // replace BOTH `<`s with `《...》`. Range start must land at
-        // offset 0, end at offset 2.
-        let items = emmet_completions("<<", pos(0, 2));
+    fn ruby_pair_text_edit_range_covers_typed_angle() {
+        // `<` typed at offset 0; on accept the text edit must
+        // replace it with `《${0}》`. Range start = 0, end = 1.
+        let items = emmet_completions("<", pos(0, 1));
         let item = items.first().expect("expected one item");
         let CompletionTextEdit::Edit(edit) = item
             .text_edit
@@ -302,7 +306,7 @@ mod tests {
             panic!("expected Edit, got InsertReplace");
         };
         assert_eq!(edit.range.start, pos(0, 0));
-        assert_eq!(edit.range.end, pos(0, 2));
+        assert_eq!(edit.range.end, pos(0, 1));
         assert_eq!(edit.new_text, "《${0}》");
         assert_eq!(item.insert_text_format, Some(InsertTextFormat::SNIPPET));
     }

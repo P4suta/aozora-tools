@@ -71,44 +71,51 @@
       },
       {
         "command": "aozora.wrap.ruby",
-        "title": "ルビ読み 《...》",
-        "category": "Aozora"
+        "title": "選択した字にルビをふる (例: 青空 → 青空《あおぞら》)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
+      },
+      {
+        "command": "aozora.wrap.pipeRuby",
+        "title": "選択した字に明示ルビをふる ｜ 付き (例: ｜青空《あおぞら》)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
       },
       {
         "command": "aozora.wrap.doubleRuby",
-        "title": "二重ルビ 《《...》》",
-        "category": "Aozora"
-      },
-      {
-        "command": "aozora.wrap.kagikakko",
-        "title": "鉤括弧 「...」",
-        "category": "Aozora"
-      },
-      {
-        "command": "aozora.wrap.kikkou",
-        "title": "亀甲括弧 〔...〕",
-        "category": "Aozora"
-      },
-      {
-        "command": "aozora.wrap.chuki",
-        "title": "注記 ［＃...］",
-        "category": "Aozora"
-      },
-      {
-        "command": "aozora.wrap.rubyBase",
-        "title": "ルビベース化 ｜...《》",
-        "category": "Aozora"
+        "title": "選択した字に二重ルビをふる (例: 青空《《あおぞら》》)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
       },
       {
         "command": "aozora.wrap.bouten",
-        "title": "傍点を付ける ［＃「...」に傍点］",
-        "category": "Aozora"
+        "title": "選択した字に傍点をつける (例: 重要 → 重要［＃「重要」に傍点］)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
+      },
+      {
+        "command": "aozora.wrap.kagikakko",
+        "title": "選択を「」で囲む (例: ほら → 「ほら」)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
+      },
+      {
+        "command": "aozora.wrap.kikkou",
+        "title": "選択を〔〕で囲む — アクセント分解 (例: cafe → 〔cafe〕)",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
+      },
+      {
+        "command": "aozora.wrap.chuki",
+        "title": "選択を［＃...］注記にする",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora && editorHasSelection"
       }
     ],
     "submenus": [
       {
         "id": "aozora.wrapMenu",
-        "label": "Aozora: 選択を括弧で囲む"
+        "label": "Aozora: 選択にルビ・傍点・括弧をつける"
       }
     ],
     "menus": {
@@ -139,31 +146,31 @@
       "aozora.wrapMenu": [
         {
           "command": "aozora.wrap.ruby",
-          "group": "1_pair@1"
+          "group": "1_ruby@1"
+        },
+        {
+          "command": "aozora.wrap.pipeRuby",
+          "group": "1_ruby@2"
         },
         {
           "command": "aozora.wrap.doubleRuby",
-          "group": "1_pair@2"
-        },
-        {
-          "command": "aozora.wrap.kagikakko",
-          "group": "1_pair@3"
-        },
-        {
-          "command": "aozora.wrap.kikkou",
-          "group": "1_pair@4"
-        },
-        {
-          "command": "aozora.wrap.chuki",
-          "group": "1_pair@5"
-        },
-        {
-          "command": "aozora.wrap.rubyBase",
-          "group": "2_complex@1"
+          "group": "1_ruby@3"
         },
         {
           "command": "aozora.wrap.bouten",
-          "group": "2_complex@2"
+          "group": "2_emphasis@1"
+        },
+        {
+          "command": "aozora.wrap.kagikakko",
+          "group": "3_brackets@1"
+        },
+        {
+          "command": "aozora.wrap.kikkou",
+          "group": "3_brackets@2"
+        },
+        {
+          "command": "aozora.wrap.chuki",
+          "group": "3_brackets@3"
         }
       ]
     },
