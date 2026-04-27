@@ -1,25 +1,18 @@
 //! aozora-tools developer tooling.
 //!
-//! Today: `xtask samply lsp-burst <SECONDS>` — wraps
-//! [`samply`](https://github.com/mstange/samply) around the criterion
-//! `burst` bench so we can attribute the per-edit wall-time on
-//! `bouten.afm` to specific functions.
+//! Two `samply`-related subcommands today:
 //!
-//! Mirrors the pattern used by the sibling `aozora-xtask` in the main
-//! `aozora` repo — Rust binary instead of a shell script because we
-//! want one entry point that
+//! - `xtask samply lsp-burst <SECONDS>` — runs the criterion `burst`
+//!   bench under [samply](https://github.com/mstange/samply) so we
+//!   can attribute the per-edit wall-time on `bouten.afm` to specific
+//!   functions. Includes pre-flight environment checks so the trace
+//!   isn't polluted by CPU governor throttling, memory pressure, or
+//!   other-tenant CPU load.
+//! - `xtask samply analyze <TRACE>` — post-processes a `.json.gz`
+//!   trace into a CLI top-N "self-time per leaf function" report.
+//!   Stdout is plain text so the report diffs cleanly between runs.
 //!
-//! 1. fails fast when `kernel.perf_event_paranoid` is too high (so
-//!    samply doesn't silently record zero samples),
-//! 2. rebuilds the bench binary with debug info so symbolication
-//!    works,
-//! 3. resolves the binary path the same way cargo does.
-//!
-//! Run with:
-//!
-//! ```text
-//! cargo run -p aozora-tools-xtask -- samply lsp-burst 30
-//! ```
+//! Workflow + pre/post pipeline documented in `docs/profiling.md`.
 
 #![forbid(unsafe_code)]
 #![allow(
@@ -36,8 +29,9 @@ use std::{
 
 use clap::{Args, Parser, Subcommand};
 
-const PERF_PARANOID_PATH: &str = "/proc/sys/kernel/perf_event_paranoid";
-const PERF_PARANOID_MAX: i32 = 1;
+mod analyze;
+mod preflight;
+
 const SAMPLY_RATE_HZ: u32 = 4000;
 const DEFAULT_LSP_BURST_SECONDS: u32 = 30;
 
@@ -77,6 +71,17 @@ enum SamplyTarget {
         #[arg(default_value_t = DEFAULT_LSP_BURST_SECONDS)]
         seconds: u32,
     },
+    /// Post-process a captured trace into a top-N self-time report.
+    ///
+    /// Output is plain text on stdout — pipe to `tee` to save, or
+    /// run twice (baseline + variant) and `diff` the outputs to see
+    /// what moved. The Firefox-Profiler GUI is still available via
+    /// `samply load <trace>` if you need the full call hierarchy.
+    Analyze {
+        /// Path to the `.json.gz` trace produced by an earlier
+        /// `samply record` run.
+        trace: PathBuf,
+    },
 }
 
 fn main() {
@@ -84,6 +89,7 @@ fn main() {
     let result = match cli.command {
         Cmd::Samply(args) => match args.target {
             SamplyTarget::LspBurst { seconds } => samply_lsp_burst(seconds),
+            SamplyTarget::Analyze { trace } => analyze::analyze(&trace),
         },
     };
     if let Err(err) = result {
@@ -93,7 +99,7 @@ fn main() {
 }
 
 fn samply_lsp_burst(seconds: u32) -> Result<(), String> {
-    require_perf_paranoid()?;
+    preflight::run_preflight(SAMPLY_RATE_HZ)?;
 
     let run_id = current_run_id();
     let out = PathBuf::from("/tmp").join(format!("aozora-lsp-burst-{run_id}.json.gz"));
@@ -111,6 +117,12 @@ fn samply_lsp_burst(seconds: u32) -> Result<(), String> {
         .arg("record")
         .arg("--save-only")
         .arg("--no-open")
+        // Bakes symbol info into a .syms.json sidecar so the CLI
+        // analyzer (and any downstream tooling) sees function names
+        // instead of raw `0x…` addresses. Without this, samply
+        // resolves symbols lazily when `samply load` is invoked,
+        // which our CLI report path skips.
+        .arg("--unstable-presymbolicate")
         .arg("-o")
         .arg(&out)
         .arg("-r")
@@ -124,48 +136,7 @@ fn samply_lsp_burst(seconds: u32) -> Result<(), String> {
         .map_err(|e| format!("failed to spawn samply: {e}"))?;
     expect_status(status, "samply record")?;
 
-    eprintln!();
-    eprintln!(">>> done. inspect with:");
-    eprintln!(
-        "    samply load {}        # opens local Firefox-Profiler UI",
-        out.display()
-    );
-    Ok(())
-}
-
-fn require_perf_paranoid() -> Result<(), String> {
-    let raw = match fs::read_to_string(PERF_PARANOID_PATH) {
-        Ok(s) => s,
-        Err(e) => {
-            return Err(format!(
-                "cannot read {PERF_PARANOID_PATH}: {e}\n\
-                 samply needs perf_event_open(2). Without this file we can't \
-                 tell whether the kernel will allow it."
-            ));
-        }
-    };
-    let level: i32 = raw
-        .trim()
-        .parse()
-        .map_err(|e| format!("failed to parse {PERF_PARANOID_PATH}={raw:?}: {e}"))?;
-    if level > PERF_PARANOID_MAX {
-        return Err(format!(
-            "\n\
-             🔒  perf_event_paranoid = {level} — samply CANNOT collect samples here.\n\
-             \n\
-             ▸ One-shot fix (resets at next reboot):\n     \
-                 echo {PERF_PARANOID_MAX} | sudo tee {PERF_PARANOID_PATH}\n\
-             \n\
-             ▸ Permanent fix (survives reboots):\n     \
-                 echo 'kernel.perf_event_paranoid = {PERF_PARANOID_MAX}' | sudo tee /etc/sysctl.d/99-perf.conf\n     \
-                 sudo sysctl --system\n\
-             \n\
-             samply uses perf_event_open(2) to sample the CPU at {SAMPLY_RATE_HZ}Hz; the\n\
-             kernel guards that syscall behind perf_event_paranoid; the default of 2\n\
-             blocks all unprivileged use, so samply would otherwise spawn but record\n\
-             zero samples — silent and confusing.\n"
-        ));
-    }
+    preflight::print_post_run_help(&out, SAMPLY_RATE_HZ);
     Ok(())
 }
 

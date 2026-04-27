@@ -14,7 +14,10 @@ description = "Developer tooling for the aozora-tools workspace (samply LSP prof
 workspace = true
 
 [dependencies]
-clap = { workspace = true }
+clap       = { workspace = true }
+serde      = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+flate2     = "1"
 
 [[bin]]
 name = "xtask"
