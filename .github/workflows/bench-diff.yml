@@ -1,0 +1,168 @@
+# Bench diff CI — criterion baseline comparison on every PR.
+#
+# Two-step flow:
+#   1. On every push to `main` we run the LSP bench suite with
+#      `--save-baseline main`, then upload the criterion baseline
+#      directory as an artifact pinned to the commit SHA.
+#   2. On every PR we download the latest `main` baseline artifact
+#      and re-run the same benches with `--baseline main`. Criterion
+#      prints a per-bench `change: [-X%, +Y%]` line; we capture the
+#      stdout and post it as a single PR comment.
+#
+# Limitations / why this is the pragmatic shape on GitHub-hosted
+# runners:
+#
+# - **No samply trace capture.** GitHub-hosted runners ship with
+#   `perf_event_paranoid >= 2` by default which blocks samply. Local
+#   samply traces stay the developer's responsibility (`xtask samply
+#   lsp-burst`); the CI gate is bench wall-time only.
+# - **Single-runner noise.** GitHub runners share host CPU; numbers
+#   bounce ±5-10% even when the code is byte-identical. We only
+#   surface regressions ≥ 15% as warnings; ≥ 25% as failure. Smaller
+#   moves go in the comment but don't block.
+# - **Same bench fixture.** Both runs use `samples/bouten.afm` so the
+#   diff captures algorithmic change, not workload drift.
+#
+# This is the dormant-CI pattern (matches `ci.yml`) — the workflow
+# only fires once the repo goes public.
+
+name: bench-diff
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Pin the toolchain to match `ci.yml`. Diverging here would mean
+  # baselines are incomparable across rust versions.
+  RUST_TOOLCHAIN: 1.95.0
+
+jobs:
+  # =========================================================
+  # Save baseline on main pushes.
+  # =========================================================
+  save-baseline:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout aozora-tools
+        uses: actions/checkout@v4
+        with:
+          path: aozora-tools
+
+      - name: Checkout sibling aozora repo
+        uses: actions/checkout@v4
+        with:
+          repository: P4suta/aozora
+          path: aozora
+          ref: main
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aozora-tools
+
+      - name: Run bench (save baseline `main`)
+        working-directory: aozora-tools
+        # `--warm-up-time 1 --measurement-time 3` matches the local
+        # bench-loop cadence so baselines are comparable. Each
+        # criterion `--save-baseline` writes per-bench dirs under
+        # `target/criterion/<bench>/main/`.
+        run: |
+          cargo bench -p aozora-lsp --bench burst -- \
+            --warm-up-time 1 --measurement-time 3 \
+            --save-baseline main 2>&1 | tee bench-main.log
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-baseline-main
+          # Artifact retains across runs; we always download the
+          # *latest* one named `criterion-baseline-main` on PR runs.
+          path: aozora-tools/target/criterion
+          retention-days: 90
+
+      - name: Upload bench log
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-log-main-${{ github.sha }}
+          path: aozora-tools/bench-main.log
+          retention-days: 30
+
+  # =========================================================
+  # Compare PR against the latest main baseline.
+  # =========================================================
+  compare-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Checkout aozora-tools
+        uses: actions/checkout@v4
+        with:
+          path: aozora-tools
+
+      - name: Checkout sibling aozora repo
+        uses: actions/checkout@v4
+        with:
+          repository: P4suta/aozora
+          path: aozora
+          ref: main
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aozora-tools
+
+      - name: Download baseline artifact from main
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: bench-diff.yml
+          branch: main
+          name: criterion-baseline-main
+          path: aozora-tools/target/criterion
+          if_no_artifact_found: warn
+
+      - name: Run bench against `main` baseline
+        working-directory: aozora-tools
+        # Same cadence as the baseline run. `--baseline main` makes
+        # criterion print the `change:` line per bench. We capture
+        # stdout for the diff comment.
+        run: |
+          cargo bench -p aozora-lsp --bench burst -- \
+            --warm-up-time 1 --measurement-time 3 \
+            --baseline main 2>&1 | tee bench-pr.log
+
+      - name: Build diff summary
+        working-directory: aozora-tools
+        # Extract the per-bench `time:` and `change:` lines into a
+        # compact markdown table for the PR comment. Statistically
+        # insignificant changes (p ≥ 0.05) are tagged as noise.
+        run: |
+          python3 .github/scripts/bench-diff-summary.py \
+            bench-pr.log > bench-summary.md
+
+      - name: Upload PR bench log
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-log-pr-${{ github.event.pull_request.number }}
+          path: aozora-tools/bench-pr.log
+          retention-days: 30
+
+      - name: Comment on PR with diff
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: bench-diff
+          path: aozora-tools/bench-summary.md

@@ -130,6 +130,33 @@ Numbers shifting >5 % between runs are real; smaller shifts may be
 noise — re-run a couple of times and look for the consistent
 direction.
 
+## CI bench-diff (criterion baseline)
+
+`samply` itself is impractical on GitHub-hosted runners (default
+`perf_event_paranoid >= 2` blocks user-mode profiling). Instead the
+PR gate uses **criterion's built-in `--save-baseline` /
+`--baseline`** flow, which captures wall-time deltas without any
+kernel privilege:
+
+- **`.github/workflows/bench-diff.yml`** runs the LSP `burst` bench
+  in two modes:
+  - On every push to `main`: `cargo bench -- --save-baseline main`
+    and uploads `target/criterion/` as an artifact.
+  - On every PR: downloads the latest `criterion-baseline-main`
+    artifact, runs `cargo bench -- --baseline main`, and posts a
+    sticky PR comment with the per-bench `Δ%` and verdict.
+
+- **`.github/scripts/bench-diff-summary.py`** parses criterion's
+  textual `time:` / `change:` / `p =` lines into a markdown table.
+  Verdict thresholds (median Δ, p < 0.05): improved ≥ 5 % /
+  regressed ≥ 5 % notable / ≥ 15 % warning / ≥ 25 % failure. Noise
+  (p ≥ 0.05) is reported as such instead of being scored.
+
+The local `samply` workflow above is still the right tool for
+deeper investigation (call hierarchies, allocator activity, owner
+rollups). Use bench-diff to spot the regression, samply to find
+its root cause.
+
 ## When the trace looks wrong
 
 | Symptom                                               | Likely cause                                      | Fix                                                            |
