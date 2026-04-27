@@ -101,7 +101,7 @@ pub struct DocState {
 }
 
 impl DocState {
-    fn new(text: String) -> Self {
+    pub fn new(text: String) -> Self {
         let line_index = LineIndex::new(&text);
         let mut state = Self {
             text,
@@ -135,7 +135,7 @@ impl DocState {
     /// Apply a batch of edits to `text`. Fast path: text mutation +
     /// tree-sitter incremental edits only. The slow Rust semantic
     /// parse is deferred to a debounced background task (Stage 5).
-    fn apply_changes(&mut self, edits: &[LocalTextEdit]) {
+    pub fn apply_changes(&mut self, edits: &[LocalTextEdit]) {
         // Snapshot byte ranges BEFORE mutating `self.text`, so the
         // tree-sitter `InputEdit` carries the right "old end" byte
         // offset relative to the pre-change buffer.
@@ -174,7 +174,7 @@ impl DocState {
     }
 
     /// Replace the buffer wholesale. Fast path same as [`Self::apply_changes`].
-    fn replace_text(&mut self, new_text: String) {
+    pub fn replace_text(&mut self, new_text: String) {
         self.text = new_text;
         self.metrics.record_edit();
         // Full replacement → full TS parse from scratch.

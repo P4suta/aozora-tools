@@ -268,12 +268,19 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "build": "bun run compile"
+    "build": "bun run compile",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "biome check . && tsc -p ./ --noEmit",
+    "check:fix": "biome check --write . && tsc -p ./ --noEmit"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.13",
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.80.0",
     "typescript": "^5.4.0"

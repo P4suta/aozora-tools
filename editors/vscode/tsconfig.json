@@ -6,14 +6,45 @@
     "outDir": "out",
     "rootDir": "src",
     "sourceMap": true,
-    "strict": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // ── Industry-strict TypeScript ──────────────────────────────
+    // Each switch is opt-in by default; enabling them collectively
+    // catches a class of real bugs (off-by-one indexing, override
+    // mismatches, optional-property strictness) that the default
+    // `strict` flag does not cover.
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    "useUnknownInCatchVariables": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+
+    // verbatimModuleSyntax intentionally OFF: VS Code extensions
+    // ship as CommonJS, and that flag rejects ESM-style imports
+    // when the target is commonjs. The `useImportType` /
+    // `useExportType` Biome rules already enforce explicit `type`
+    // imports without needing the strictest TS gate.
+    "isolatedModules": true,
+    "useDefineForClassFields": true
   },
-  "exclude": [
-    "node_modules",
-    ".vscode-test",
-    "out"
-  ]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", ".vscode-test", "out"]
 }

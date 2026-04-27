@@ -4,16 +4,16 @@
 
 import {
   commands,
-  ExtensionContext,
+  type ExtensionContext,
   languages,
-  TextDocument,
+  type TextDocument,
   window,
   workspace,
 } from "vscode";
 import {
   LanguageClient,
-  LanguageClientOptions,
-  ServerOptions,
+  type LanguageClientOptions,
+  type ServerOptions,
   TransportKind,
 } from "vscode-languageclient/node";
 
@@ -39,6 +39,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       options: {
         env: {
           ...process.env,
+          // biome-ignore lint/style/useNamingConvention: env var name is an external contract
           RUST_LOG: "aozora_lsp=debug",
         },
       },
@@ -46,20 +47,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { scheme: "file", language: "aozora" },
-    ],
+    documentSelector: [{ scheme: "file", language: "aozora" }],
     synchronize: {
       configurationSection: "aozora",
     },
   };
 
-  client = new LanguageClient(
-    "aozora",
-    "aozora Language Server",
-    serverOptions,
-    clientOptions,
-  );
+  client = new LanguageClient("aozora", "aozora Language Server", serverOptions, clientOptions);
 
   context.subscriptions.push(client);
 
@@ -70,9 +64,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     commands.registerCommand("aozora.setLanguageMode", async () => {
       const editor = window.activeTextEditor;
       if (!editor) {
-        void window.showInformationMessage(
-          "Open a text editor first, then run this command.",
-        );
+        void window.showInformationMessage("Open a text editor first, then run this command.");
         return;
       }
       await languages.setTextDocumentLanguage(editor.document, "aozora");
@@ -87,9 +79,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const autoDetect = (document: TextDocument) => {
     void maybeSwitchToAozora(document);
   };
-  context.subscriptions.push(
-    workspace.onDidOpenTextDocument(autoDetect),
-  );
+  context.subscriptions.push(workspace.onDidOpenTextDocument(autoDetect));
   for (const doc of workspace.textDocuments) {
     autoDetect(doc);
   }
@@ -137,12 +127,13 @@ export async function deactivate(): Promise<void> {
 // coded absolute path.
 function resolveVars(input: string): string {
   const ws = workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
-  return input
-    .replace(/\$\{workspaceFolder\}/g, ws)
-    .replace(/\$\{userHome\}/g, process.env.HOME ?? "")
-    .replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name) =>
-      process.env[name] ?? "",
-    );
+  return (
+    input
+      .replace(/\$\{workspaceFolder\}/g, ws)
+      // biome-ignore lint/complexity/useLiteralKeys: `process.env` is a Dict<string> index signature; `noPropertyAccessFromIndexSignature` requires bracket access
+      .replace(/\$\{userHome\}/g, process.env["HOME"] ?? "")
+      .replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_, name) => process.env[name] ?? "")
+  );
 }
 
 // Aozora-bunko "input manual" feature detection.
@@ -185,9 +176,7 @@ async function maybeSwitchToAozora(document: TextDocument): Promise<void> {
   if (!/\.(txt|text)$/i.test(path)) {
     return;
   }
-  const enabled = workspace
-    .getConfiguration("aozora")
-    .get<boolean>("autoDetect.plaintext", true);
+  const enabled = workspace.getConfiguration("aozora").get<boolean>("autoDetect.plaintext", true);
   if (!enabled) {
     return;
   }

@@ -58,16 +58,16 @@ const WRAP_SHAPES = [
   // variant because the no-pipe form is *only* equivalent when the
   // preceding char is non-kanji, and surfacing two near-identical
   // commands invited the user to pick the wrong one.
-  { id: "aozora.wrap.ruby",       template: "｜BASE《$0》" },
+  { id: "aozora.wrap.ruby", template: "｜BASE《$0》" },
   // 二重ルビ for emphasis; rare but supported. Same pipe rule.
   { id: "aozora.wrap.doubleRuby", template: "｜BASE《《$0》》" },
   // 傍点 forward-reference: selection stays plain, the bouten note
   // appears after it with the same text repeated as the target.
-  { id: "aozora.wrap.bouten",     template: "BASE［＃「BASE」に傍点］$0" },
+  { id: "aozora.wrap.bouten", template: "BASE［＃「BASE」に傍点］$0" },
   // Traditional surrounds — selection ends up inside the brackets.
-  { id: "aozora.wrap.kagikakko",  template: "「BASE」$0" },
-  { id: "aozora.wrap.kikkou",     template: "〔BASE〕$0" },
-  { id: "aozora.wrap.chuki",      template: "［＃BASE］$0" },
+  { id: "aozora.wrap.kagikakko", template: "「BASE」$0" },
+  { id: "aozora.wrap.kikkou", template: "〔BASE〕$0" },
+  { id: "aozora.wrap.chuki", template: "［＃BASE］$0" },
 ] as const satisfies ReadonlyArray<WrapShape>;
 
 /** Union of every registered wrap command ID — exported for tests
@@ -76,9 +76,7 @@ export type WrapCommandId = (typeof WRAP_SHAPES)[number]["id"];
 
 export function registerWrapCommands(context: ExtensionContext): void {
   for (const shape of WRAP_SHAPES) {
-    context.subscriptions.push(
-      commands.registerCommand(shape.id, () => runWrap(shape)),
-    );
+    context.subscriptions.push(commands.registerCommand(shape.id, () => runWrap(shape)));
   }
 }
 
@@ -90,9 +88,7 @@ async function runWrap(shape: WrapShape): Promise<void> {
   }
   const targets = editor.selections.filter((s): s is Selection => !s.isEmpty);
   if (targets.length === 0) {
-    void window.showInformationMessage(
-      "ルビをふる文字列を先にドラッグで選択してください。",
-    );
+    void window.showInformationMessage("ルビをふる文字列を先にドラッグで選択してください。");
     return;
   }
   // `insertSnippet` accepts one location at a time; loop selections
@@ -102,11 +98,7 @@ async function runWrap(shape: WrapShape): Promise<void> {
   }
 }
 
-async function applyOne(
-  editor: TextEditor,
-  shape: WrapShape,
-  sel: Selection,
-): Promise<void> {
+async function applyOne(editor: TextEditor, shape: WrapShape, sel: Selection): Promise<void> {
   const range = new Range(sel.start, sel.end);
   const body = expandTemplate(shape.template, editor.document.getText(range));
   await editor.insertSnippet(new SnippetString(body), range);
@@ -124,8 +116,5 @@ function expandTemplate(template: WrapTemplate, selected: string): string {
 }
 
 function escapeForSnippet(text: string): string {
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/\$/g, "\\$")
-    .replace(/\}/g, "\\}");
+  return text.replace(/\\/g, "\\\\").replace(/\$/g, "\\$").replace(/\}/g, "\\}");
 }

@@ -37,7 +37,13 @@ thiserror          = "2"
 shuttle            = { workspace = true, optional = true }
 
 [dev-dependencies]
-proptest = { workspace = true }
+proptest  = { workspace = true }
+criterion = { version = "0.6", features = ["html_reports"] }
+
+[[bench]]
+name    = "burst"
+path    = "benches/burst.rs"
+harness = false
 
 [features]
 default       = []

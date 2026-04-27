@@ -7,7 +7,7 @@
 // request.
 
 import * as vscode from "vscode";
-import { LanguageClient } from "vscode-languageclient/node";
+import type { LanguageClient } from "vscode-languageclient/node";
 
 interface RenderHtmlResult {
   html: string;
@@ -89,7 +89,7 @@ async function openPreview(
   panel.onDidDispose(
     () => {
       const live = panelsByUri.get(key);
-      if (live && live.debounce) {
+      if (live?.debounce) {
         clearTimeout(live.debounce);
       }
       panelsByUri.delete(key);
@@ -101,15 +101,11 @@ async function openPreview(
   await renderInto(state, client);
 }
 
-async function renderInto(
-  state: PreviewState,
-  client: LanguageClient,
-): Promise<void> {
+async function renderInto(state: PreviewState, client: LanguageClient): Promise<void> {
   try {
-    const result = await client.sendRequest<RenderHtmlResult>(
-      "aozora/renderHtml",
-      { uri: state.uri.toString() },
-    );
+    const result = await client.sendRequest<RenderHtmlResult>("aozora/renderHtml", {
+      uri: state.uri.toString(),
+    });
     state.panel.webview.html = wrapHtml(result.html ?? "");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

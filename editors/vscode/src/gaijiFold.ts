@@ -39,11 +39,11 @@
 import {
   type Disposable,
   type ExtensionContext,
-  type Position as VsPosition,
   Range,
   type TextEditor,
   type TextEditorDecorationType,
   ThemeColor,
+  type Position as VsPosition,
   window,
   workspace,
 } from "vscode";
@@ -96,27 +96,25 @@ class FoldState implements Disposable {
   /** Fetch and apply spans for `editor`. Idempotent — safe to call
    *  on every selection / didChange / config event. */
   async refresh(editor: TextEditor, client: LanguageClient): Promise<void> {
-    if (editor.document.languageId !== "aozora") return;
+    if (editor.document.languageId !== "aozora") {
+      return;
+    }
     if (!isEnabled()) {
       this.clear(editor);
       return;
     }
     let response: GaijiSpansResponse;
     try {
-      response = await client.sendRequest<GaijiSpansResponse>(
-        GAIJI_SPANS_REQUEST,
-        { uri: editor.document.uri.toString() },
-      );
+      response = await client.sendRequest<GaijiSpansResponse>(GAIJI_SPANS_REQUEST, {
+        uri: editor.document.uri.toString(),
+      });
     } catch {
       // Server is briefly unavailable (start-up, mid-restart) — skip
       // this refresh; the next event will retry.
       return;
     }
     const cursor = editor.selection.active;
-    const { hideRanges, glyphBuckets, activeInlayBuckets } = bucket(
-      response.spans,
-      cursor,
-    );
+    const { hideRanges, glyphBuckets, activeInlayBuckets } = bucket(response.spans, cursor);
     editor.setDecorations(this.hideDecoration, hideRanges);
     this.applyBuckets(editor, this.glyphDecorations, glyphBuckets, createGlyphDecoration);
     this.applyBuckets(
@@ -130,14 +128,22 @@ class FoldState implements Disposable {
   /** Clear every decoration this state owns from `editor`. */
   clear(editor: TextEditor): void {
     editor.setDecorations(this.hideDecoration, []);
-    for (const deco of this.glyphDecorations.values()) editor.setDecorations(deco, []);
-    for (const deco of this.activeInlayDecorations.values()) editor.setDecorations(deco, []);
+    for (const deco of this.glyphDecorations.values()) {
+      editor.setDecorations(deco, []);
+    }
+    for (const deco of this.activeInlayDecorations.values()) {
+      editor.setDecorations(deco, []);
+    }
   }
 
   dispose(): void {
     this.hideDecoration.dispose();
-    for (const deco of this.glyphDecorations.values()) deco.dispose();
-    for (const deco of this.activeInlayDecorations.values()) deco.dispose();
+    for (const deco of this.glyphDecorations.values()) {
+      deco.dispose();
+    }
+    for (const deco of this.activeInlayDecorations.values()) {
+      deco.dispose();
+    }
     this.glyphDecorations.clear();
     this.activeInlayDecorations.clear();
   }
@@ -166,7 +172,9 @@ class FoldState implements Disposable {
       editor.setDecorations(deco, ranges);
     }
     for (const [glyph, deco] of store) {
-      if (!seen.has(glyph)) editor.setDecorations(deco, []);
+      if (!seen.has(glyph)) {
+        editor.setDecorations(deco, []);
+      }
     }
   }
 }
@@ -240,15 +248,14 @@ function isEnabled(): boolean {
   return workspace.getConfiguration(CONFIG_NAMESPACE).get<boolean>("enabled", true);
 }
 
-export function registerGaijiFold(
-  context: ExtensionContext,
-  client: LanguageClient,
-): void {
+export function registerGaijiFold(context: ExtensionContext, client: LanguageClient): void {
   const state = new FoldState();
   context.subscriptions.push(state);
 
   const refresh = (editor: TextEditor | undefined) => {
-    if (!editor) return;
+    if (!editor) {
+      return;
+    }
     void state.refresh(editor, client);
   };
 
@@ -256,7 +263,9 @@ export function registerGaijiFold(
     window.onDidChangeActiveTextEditor((editor) => refresh(editor)),
     workspace.onDidChangeTextDocument((event) => {
       const editor = window.activeTextEditor;
-      if (editor && editor.document === event.document) refresh(editor);
+      if (editor && editor.document === event.document) {
+        refresh(editor);
+      }
     }),
     window.onDidChangeTextEditorSelection((event) => refresh(event.textEditor)),
     workspace.onDidChangeConfiguration((event) => {
@@ -268,5 +277,7 @@ export function registerGaijiFold(
 
   // Initial pass over editors that were already open when the
   // extension activated.
-  for (const editor of window.visibleTextEditors) refresh(editor);
+  for (const editor of window.visibleTextEditors) {
+    refresh(editor);
+  }
 }
