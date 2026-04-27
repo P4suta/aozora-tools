@@ -124,7 +124,7 @@
       }
     },
     "implicit_ruby": {
-      "type": "PREC_DYNAMIC",
+      "type": "PREC",
       "value": 1,
       "content": {
         "type": "SEQ",

@@ -88,10 +88,15 @@ module.exports = grammar({
 
     // kanji-run《reading》 — implicit ruby. The base is the longest
     // preceding kanji run; aozora typesetters rely on this when the
-    // base is unambiguous. `prec.dynamic` so the parser prefers
-    // `implicit_ruby` over plain `text` *only* when the lookahead
-    // confirms a following `《`.
-    implicit_ruby: $ => prec.dynamic(1, seq(
+    // base is unambiguous. Static `prec(1, ...)` is enough because
+    // the LL(1) decision point is `《` immediately after the kanji
+    // run — no genuine ambiguity remains for the parser to defer
+    // until runtime. (Was `prec.dynamic` historically; switched to
+    // static after the per-paragraph rearchitecture pushed
+    // ts_subtree_compress / summarize_children to ~14% of the trace
+    // and the dynamic-prec runtime decision became a measurable
+    // share of that.)
+    implicit_ruby: $ => prec(1, seq(
       field('base', $.ruby_base_implicit),
       '《',
       field('reading', $.ruby_reading),
