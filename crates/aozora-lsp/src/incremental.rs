@@ -66,10 +66,7 @@ impl IncrementalDoc {
             .set_language(&tree_sitter_aozora::LANGUAGE.into())
             .expect("tree-sitter-aozora language is compiled in");
         Self {
-            inner: Mutex::new(Inner {
-                parser,
-                tree: None,
-            }),
+            inner: Mutex::new(Inner { parser, tree: None }),
         }
     }
 
@@ -139,11 +136,7 @@ impl Default for IncrementalDoc {
 /// tree consumers never query row/column positions on the TS tree
 /// (everything is byte-driven via [`crate::position`]).
 #[must_use]
-pub fn input_edit(
-    start_byte: usize,
-    old_end_byte: usize,
-    new_end_byte: usize,
-) -> InputEdit {
+pub fn input_edit(start_byte: usize, old_end_byte: usize, new_end_byte: usize) -> InputEdit {
     InputEdit {
         start_byte,
         old_end_byte,

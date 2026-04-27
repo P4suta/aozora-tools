@@ -37,22 +37,24 @@ mod linked_editing;
 pub mod metrics;
 mod position;
 pub mod segment_cache;
+mod state;
 mod text_edit;
 
-pub use backend::{Backend, DocState};
+pub use backend::Backend;
 pub use code_actions::wrap_selection_actions;
 pub use commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 pub use completion::completion_at;
-pub use half_width_emmet::emmet_completions;
 pub use diagnostics::{
     compute_diagnostics, compute_diagnostics_from_iter, compute_diagnostics_from_parsed,
 };
 pub use formatting::format_edits;
 pub use gaiji_spans::{GaijiSpan, extract_gaiji_spans as extract_gaiji_spans_for_bench};
+pub use half_width_emmet::emmet_completions;
 pub use hover::hover_at;
 pub use incremental::{IncrementalDoc, input_edit};
 pub use inlay_hints::inlay_hints;
 pub use line_index::LineIndex;
 pub use linked_editing::linked_editing_at;
 pub use position::{byte_offset_to_position, position_to_byte_offset};
+pub use state::{BufferState, DocState, Snapshot};
 pub use text_edit::{EditError, LocalTextEdit, apply_edits};

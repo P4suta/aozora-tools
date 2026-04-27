@@ -184,7 +184,9 @@ mod tests {
             new_end_position: tree_sitter::Point::default(),
         };
         tree.edit(&edit);
-        let new_tree = parser.parse(new_src, Some(&tree)).expect("incremental parse");
+        let new_tree = parser
+            .parse(new_src, Some(&tree))
+            .expect("incremental parse");
         assert!(
             new_tree.root_node().to_sexp().contains("explicit_ruby"),
             "incremental tree should still carry the ruby node",

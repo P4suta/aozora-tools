@@ -189,7 +189,10 @@ fn rebuild_bench_with_debug(bench: &str, package: &str) -> Result<(), String> {
 /// versions. The hash is unstable, so we glob the latest matching file
 /// in `deps/` instead of guessing.
 fn bench_binary_path(_package: &str, bench: &str) -> Result<PathBuf, String> {
-    let deps = workspace_root()?.join("target").join("release").join("deps");
+    let deps = workspace_root()?
+        .join("target")
+        .join("release")
+        .join("deps");
     let prefix = format!("{bench}-");
     let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
     for entry in fs::read_dir(&deps).map_err(|e| format!("read_dir {}: {e}", deps.display()))? {
@@ -226,8 +229,8 @@ fn bench_binary_path(_package: &str, bench: &str) -> Result<PathBuf, String> {
 fn workspace_root() -> Result<PathBuf, String> {
     // CARGO_MANIFEST_DIR points at this xtask crate; go up two to
     // reach the workspace root (`crates/aozora-tools-xtask` → `..`).
-    let manifest = env::var_os("CARGO_MANIFEST_DIR")
-        .ok_or_else(|| "CARGO_MANIFEST_DIR not set".to_owned())?;
+    let manifest =
+        env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| "CARGO_MANIFEST_DIR not set".to_owned())?;
     let manifest_path = Path::new(&manifest);
     let path = manifest_path
         .parent()

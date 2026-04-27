@@ -181,10 +181,11 @@ mod tests {
                 continue;
             }
             let pos = idx.position(src, byte);
-            let round = idx
-                .byte_offset(src, pos)
-                .expect("position is in range");
-            assert_eq!(round, byte, "byte {byte} round-tripped to {round} via {pos:?}");
+            let round = idx.byte_offset(src, pos).expect("position is in range");
+            assert_eq!(
+                round, byte,
+                "byte {byte} round-tripped to {round} via {pos:?}"
+            );
         }
     }
 

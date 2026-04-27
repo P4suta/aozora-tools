@@ -40,12 +40,7 @@ use tower_lsp::lsp_types::{LinkedEditingRanges, Position, Range};
 use crate::line_index::LineIndex;
 
 /// Recognised bracket pairs. Order does not matter for lookup.
-const PAIRS: &[(char, char)] = &[
-    ('［', '］'),
-    ('《', '》'),
-    ('「', '」'),
-    ('〔', '〕'),
-];
+const PAIRS: &[(char, char)] = &[('［', '］'), ('《', '》'), ('「', '」'), ('〔', '〕')];
 
 /// Maximum look-window (in bytes) for the matching delimiter scan.
 /// Aozora slugs / rubies / quotes never span hundreds of bytes; 1 KB
@@ -197,7 +192,8 @@ mod tests {
     fn ruby_open_links_to_close() {
         let src = "｜青空《あおぞら》";
         let open_byte = src.find('《').unwrap();
-        let result = linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
+        let result =
+            linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
         assert_eq!(result.ranges.len(), 2);
         let close_byte = src.find('》').unwrap();
         assert_eq!(result.ranges[1].start, pos(src, close_byte));
@@ -207,7 +203,8 @@ mod tests {
     fn ruby_close_links_back_to_open() {
         let src = "｜青空《あおぞら》";
         let close_byte = src.find('》').unwrap();
-        let result = linked_editing_at(src, &LineIndex::new(src), pos(src, close_byte)).expect("link");
+        let result =
+            linked_editing_at(src, &LineIndex::new(src), pos(src, close_byte)).expect("link");
         let open_byte = src.find('《').unwrap();
         assert_eq!(result.ranges[0].start, pos(src, open_byte));
         assert_eq!(result.ranges[1].start, pos(src, close_byte));
@@ -217,7 +214,8 @@ mod tests {
     fn slug_brackets_link() {
         let src = "前置き［＃改ページ］後";
         let open_byte = src.find('［').unwrap();
-        let result = linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
+        let result =
+            linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
         let close_byte = src.find('］').unwrap();
         assert_eq!(result.ranges[1].start, pos(src, close_byte));
     }
@@ -226,7 +224,8 @@ mod tests {
     fn quote_brackets_link() {
         let src = "「ほら」と言った";
         let open_byte = src.find('「').unwrap();
-        let result = linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
+        let result =
+            linked_editing_at(src, &LineIndex::new(src), pos(src, open_byte)).expect("link");
         assert_eq!(result.ranges[1].start, pos(src, src.find('」').unwrap()));
     }
 
@@ -234,7 +233,8 @@ mod tests {
     fn cursor_just_after_opener_also_fires() {
         let src = "｜青空《あおぞら》";
         let after_open = src.find('《').unwrap() + '《'.len_utf8();
-        let result = linked_editing_at(src, &LineIndex::new(src), pos(src, after_open)).expect("link");
+        let result =
+            linked_editing_at(src, &LineIndex::new(src), pos(src, after_open)).expect("link");
         assert_eq!(result.ranges[1].start, pos(src, src.find('》').unwrap()));
     }
 

@@ -281,8 +281,7 @@ mod tests {
     #[test]
     fn completion_inside_full_width_open_returns_full_catalogue() {
         let src = "前文［＃";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         let items = completion_at(src, pos);
         assert!(!items.is_empty(), "expected catalogue suggestions");
@@ -295,8 +294,7 @@ mod tests {
     #[test]
     fn completion_inside_half_width_open_returns_full_catalogue() {
         let src = "[#";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         let items = completion_at(src, pos);
         assert!(!items.is_empty(), "[# must trigger completions too");
@@ -312,8 +310,7 @@ mod tests {
     #[test]
     fn half_width_completion_replaces_prefix_with_full_width_form() {
         let src = "[#";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         let items = completion_at(src, pos);
         let entry = items
@@ -336,8 +333,7 @@ mod tests {
         // a completion should swap to `［＃改ページ］` (the matched
         // close is part of the replacement range).
         let src = "[#bouten]";
-        
-        
+
         // Cursor immediately after `bouten`.
         let pos = byte_offset_to_position(src, "[#bouten".len());
         let items = completion_at(src, pos);
@@ -360,8 +356,7 @@ mod tests {
         // a completion should replace just the body, leaving the
         // brackets untouched.
         let src = "［＃改］";
-        
-        
+
         let pos = byte_offset_to_position(src, "［＃".len() + "改".len());
         let items = completion_at(src, pos);
         let entry = items
@@ -378,8 +373,7 @@ mod tests {
     #[test]
     fn completion_in_plain_text_returns_empty() {
         let src = "no annotation context";
-        
-        
+
         let pos = byte_offset_to_position(src, 4);
         assert!(completion_at(src, pos).is_empty());
     }
@@ -389,8 +383,7 @@ mod tests {
         // The slug already closed before the cursor — no current open
         // context.
         let src = "前［＃改ページ］後";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         assert!(completion_at(src, pos).is_empty());
     }
@@ -398,8 +391,7 @@ mod tests {
     #[test]
     fn block_container_open_attaches_partner_close() {
         let src = "本文\n［＃";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         let items = completion_at(src, pos);
         let entry = items
@@ -421,8 +413,7 @@ mod tests {
     #[test]
     fn parametric_slug_emits_snippet_with_tabstop() {
         let src = "［＃";
-        
-        
+
         let pos = byte_offset_to_position(src, src.len());
         let items = completion_at(src, pos);
         let entry = items

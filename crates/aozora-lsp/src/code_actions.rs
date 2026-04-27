@@ -296,7 +296,9 @@ mod tests {
     #[test]
     fn empty_selection_yields_no_actions() {
         let zero = Range::new(Position::new(0, 0), Position::new(0, 0));
-        assert!(wrap_selection_actions("hello", &LineIndex::new("hello"), &fake_uri(), zero).is_empty());
+        assert!(
+            wrap_selection_actions("hello", &LineIndex::new("hello"), &fake_uri(), zero).is_empty()
+        );
     }
 
     #[test]

@@ -25,7 +25,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use aozora_lsp::{
-    DocState, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits, inlay_hints, input_edit,
+    DocState, GaijiSpan, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits, inlay_hints,
+    input_edit,
 };
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use tower_lsp::lsp_types::{Position, Range};
@@ -33,7 +34,10 @@ use tower_lsp::lsp_types::{Position, Range};
 fn load_fixture(name: &str) -> String {
     let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     // crates/aozora-lsp → ../.. = workspace root
-    let path = Path::new(&manifest).join("../..").join("samples").join(name);
+    let path = Path::new(&manifest)
+        .join("../..")
+        .join("samples")
+        .join(name);
     std::fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "fixture {name} not at {}: {err}; copy your bouten/sample into samples/",
@@ -50,11 +54,17 @@ fn bench_apply_changes(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let mut g = c.benchmark_group("apply_changes");
     g.sample_size(20);
+    // NOTE: outside a tokio runtime, `DocState::apply_changes` falls
+    // back to a synchronous snapshot rebuild — so this measurement
+    // captures the full end-to-end cost (buffer mutate + TS apply_edit
+    // + snapshot rebuild). In production the rebuild runs on the
+    // tokio blocking pool and `apply_changes` returns in microseconds;
+    // we measure the worst-case wall here on purpose.
     g.bench_function("insert_one_char_bouten_6mb", |b| {
         b.iter_batched(
             || DocState::new(text.clone()),
-            |mut state| {
-                state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+            |state| {
+                let _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
             },
             BatchSize::PerIteration,
         );
@@ -62,9 +72,9 @@ fn bench_apply_changes(c: &mut Criterion) {
     g.bench_function("burst_100_inserts_bouten_6mb", |b| {
         b.iter_batched(
             || DocState::new(text.clone()),
-            |mut state| {
+            |state| {
                 for _ in 0..100 {
-                    state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+                    let _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
                 }
             },
             BatchSize::PerIteration,
@@ -76,11 +86,18 @@ fn bench_apply_changes(c: &mut Criterion) {
 fn bench_inlay(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let state = DocState::new(text.clone());
-    let range = full_range_for(&state.text, &state.line_index);
+    let snap = state.snapshot();
+    // `inlay_hints` (the public library helper for editors that prefer
+    // server-side inlay) takes a sorted slice — collect from the
+    // snapshot's BTreeMap once. Production reads use the BTreeMap
+    // directly via `Snapshot::gaiji_spans.values()`; this bench is the
+    // only consumer of the slice form.
+    let spans: Vec<GaijiSpan> = snap.gaiji_spans.values().cloned().collect();
+    let range = full_range_for(&snap.text, &snap.line_index);
     let mut g = c.benchmark_group("inlay");
     g.bench_function("solo_full_range_bouten_6mb", |b| {
         b.iter(|| {
-            let _ = inlay_hints(&state.text, &state.gaiji_spans, &state.line_index, range);
+            let _ = inlay_hints(&snap.text, &spans, &snap.line_index, range);
         });
     });
     g.finish();
@@ -166,5 +183,10 @@ fn bench_subcomponents(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_subcomponents, bench_apply_changes, bench_inlay);
+criterion_group!(
+    benches,
+    bench_subcomponents,
+    bench_apply_changes,
+    bench_inlay
+);
 criterion_main!(benches);

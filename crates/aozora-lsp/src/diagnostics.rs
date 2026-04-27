@@ -21,9 +21,7 @@
 
 use aozora::{Diagnostic as AozoraDiagnostic, Document, PairKind, Span};
 use serde::{Deserialize, Serialize};
-use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString, Range,
-};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString, Range};
 
 use crate::line_index::LineIndex;
 
@@ -41,9 +39,7 @@ pub enum DiagnosticPayload {
     },
     /// `UnmatchedClose` — the close delimiter is here without a
     /// matching open.
-    UnmatchedClose {
-        pair_kind: SerializablePairKind,
-    },
+    UnmatchedClose { pair_kind: SerializablePairKind },
     /// `SourceContainsPua` — a private-use codepoint clashes with
     /// the lexer's sentinel reservations.
     SourceContainsPua { codepoint: u32 },
@@ -346,7 +342,11 @@ mod tests {
             .expect("PUA warning expected");
         assert!(pua.message.contains("削除"), "msg: {}", pua.message);
         assert_eq!(pua.severity, Some(DiagnosticSeverity::WARNING));
-        assert!(pua.tags.as_ref().is_some_and(|t| t.contains(&DiagnosticTag::UNNECESSARY)));
+        assert!(
+            pua.tags
+                .as_ref()
+                .is_some_and(|t| t.contains(&DiagnosticTag::UNNECESSARY))
+        );
         assert!(pua.data.is_some(), "data payload should be attached");
     }
 
@@ -370,7 +370,10 @@ mod tests {
             "message must include a concrete example: {}",
             unclosed.message,
         );
-        assert!(unclosed.data.is_some(), "data payload required for quick-fix");
+        assert!(
+            unclosed.data.is_some(),
+            "data payload required for quick-fix"
+        );
     }
 
     #[test]
@@ -388,7 +391,11 @@ mod tests {
             })
             .expect("UnmatchedClose expected on stray ］");
         assert!(unmatched.message.contains("削除"), "{}", unmatched.message);
-        assert!(unmatched.message.contains("欠けている"), "{}", unmatched.message);
+        assert!(
+            unmatched.message.contains("欠けている"),
+            "{}",
+            unmatched.message
+        );
     }
 
     #[test]
