@@ -37,15 +37,31 @@ use crate::position::byte_offset_to_position;
 // prefix length gate is applied (any "trigger after N keystrokes"
 // behaviour belongs to the client side, not the server).
 
-/// Recognised slug-open digraphs. Order matters only for `rfind`
-/// disambiguation when both forms are present in `source[..cursor]` —
-/// we pick whichever sits closer to the cursor (the latest opener).
-const FULL_WIDTH_OPEN: &str = "［＃";
-const HALF_WIDTH_OPEN: &str = "[#";
+/// Recognised slug-open digraphs.
+///
+/// Four variants, not two: when `onTypeFormatting`
+/// ([`crate::on_type_formatting`]) auto-converts `[` to `［` but
+/// leaves `#` alone (we don't auto-convert `#` because it appears
+/// in URLs and citations), the user can briefly land in a mixed
+/// `［#` state. The reverse mix `[＃` happens when the user types
+/// `[` then a Japanese-IME-converted `＃`. Both should fire the
+/// slug catalogue popup. Order matters only for `rfind`
+/// disambiguation when multiple forms are present in
+/// `source[..cursor]` — we pick whichever sits closer to the
+/// cursor.
+const OPENERS: &[&str] = &["［＃", "[#", "［#", "[＃"];
+
+/// True when `opener` came from the half-width column for either
+/// of its two characters — i.e. the on-accept text edit needs to
+/// rewrite at least one of them to its full-width form so the source
+/// ends up canonical.
+fn opener_is_half_width(opener: &str) -> bool {
+    opener != "［＃"
+}
 
 /// Resolved slug context for a cursor position.
 struct SlugCtx {
-    /// Byte offset where the opener (full- or half-width) starts.
+    /// Byte offset where the opener (one of [`OPENERS`]) starts.
     prefix_start: usize,
     /// Byte offset where the body starts (just after the opener).
     body_start: usize,
@@ -54,9 +70,20 @@ struct SlugCtx {
     /// completion `text_edit` replaces the range
     /// `prefix_start..close_end` with the full canonical form.
     close_end: usize,
-    /// True when the opener is `[#` (ASCII). On accept, the full-width
-    /// `［＃...］` form is spliced in.
-    half_width: bool,
+    /// The actual opener string (`［＃` / `[#` / `［#` / `[＃`).
+    /// Used to build a `filter_text` that exactly matches whatever
+    /// the user has typed so far so VS Code's filter doesn't drop
+    /// our items on a one-codepoint mismatch.
+    opener: &'static str,
+}
+
+impl SlugCtx {
+    /// True when at least one of the opener's two codepoints is
+    /// half-width — i.e. the on-accept text edit needs to rewrite
+    /// the whole opener+body to the canonical full-width form.
+    fn half_width(&self) -> bool {
+        opener_is_half_width(self.opener)
+    }
 }
 
 /// Compute completion items at `position` in `source`. Returns an
@@ -87,18 +114,19 @@ pub fn completion_at(source: &str, position: Position) -> Vec<CompletionItem> {
         .collect()
 }
 
-/// Find the latest slug opener (`［＃` or `[#`) before `cursor`,
+/// Find the latest slug opener (any of [`OPENERS`]) before `cursor`,
 /// classify whether the close has been typed, and bail out when the
 /// cursor sits past an already-closed slug.
 fn resolve_slug_context(source: &str, cursor: usize) -> Option<SlugCtx> {
-    let prefix_full = source[..cursor].rfind(FULL_WIDTH_OPEN);
-    let prefix_half = source[..cursor].rfind(HALF_WIDTH_OPEN);
-    let (prefix_start, half_width, opener_len) = match (prefix_full, prefix_half) {
-        (Some(f), Some(h)) if h > f => (h, true, HALF_WIDTH_OPEN.len()),
-        (Some(f), _) => (f, false, FULL_WIDTH_OPEN.len()),
-        (None, Some(h)) => (h, true, HALF_WIDTH_OPEN.len()),
-        (None, None) => return None,
-    };
+    let prefix = &source[..cursor];
+    // Pick the latest-positioned opener regardless of variant.
+    // `rfind` is O(n) per call but the openers are 2-codepoint;
+    // for the cap-256 look-back this stays well under a microsecond.
+    let (prefix_start, opener) = OPENERS
+        .iter()
+        .filter_map(|&op| prefix.rfind(op).map(|pos| (pos, op)))
+        .max_by_key(|&(pos, _)| pos)?;
+    let opener_len = opener.len();
     let body_start = prefix_start + opener_len;
     if cursor < body_start {
         return None;
@@ -126,18 +154,32 @@ fn resolve_slug_context(source: &str, cursor: usize) -> Option<SlugCtx> {
         prefix_start,
         body_start,
         close_end,
-        half_width,
+        opener,
     })
 }
 
 fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> CompletionItem {
-    let detail = if ctx.half_width {
+    let detail = if ctx.half_width() {
         format!("{}  (半角→全角)", entry.doc)
     } else {
         entry.doc.to_owned()
     };
+    // VS Code matches typed input against `filter_text || label`.
+    // Our `text_edit.range` covers from the opener (any of OPENERS)
+    // through whatever the user has typed, so VS Code's filter sees
+    // e.g. "[#改ペ" / "［＃改ペ" / "［#改ペ" as the input. The
+    // bare `label` (`改ページ`) doesn't start with the opener, so
+    // the fuzzy matcher scores zero and the popup hides every
+    // suggestion. Concatenating the actual opener + canonical lets
+    // the matcher see the typed opener as a literal prefix match
+    // and ranks the body characters via fuzzy on top — and crucially
+    // works for the mixed-opener variants (`[＃` / `［#`) that
+    // appear briefly while `onTypeFormatting` is converting one
+    // bracket but the other hasn't been typed yet.
+    let filter_text = format!("{}{}", ctx.opener, entry.canonical);
     let mut item = CompletionItem {
         label: entry.canonical.to_owned(),
+        filter_text: Some(filter_text),
         kind: Some(family_to_kind(entry.family)),
         detail: Some(detail),
         documentation: Some(Documentation::MarkupContent(MarkupContent {
@@ -171,8 +213,11 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
     // Splice into the document. For half-width openers, also rewrite
     // the prefix to its full-width form so the source ends up
     // canonical regardless of which bracket the user typed first.
-    let new_text = if ctx.half_width {
-        // Replace `[#...maybe ]` with `［＃<canonical>］`.
+    let new_text = if ctx.half_width() {
+        // Replace `[#...maybe ]` (or any mixed variant) with the
+        // full canonical `［＃<canonical>］` so the source lands
+        // fully full-width regardless of which brackets the user
+        // typed first.
         format!("［＃{body_text}］")
     } else if ctx.close_end > ctx.body_start
         && source[ctx.body_start..ctx.close_end].ends_with('］')
@@ -187,7 +232,7 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
         format!("{body_text}］")
     };
 
-    let edit_start = if ctx.half_width {
+    let edit_start = if ctx.half_width() {
         ctx.prefix_start
     } else {
         ctx.body_start
@@ -376,6 +421,99 @@ mod tests {
 
         let pos = byte_offset_to_position(src, 4);
         assert!(completion_at(src, pos).is_empty());
+    }
+
+    #[test]
+    fn half_width_completion_carries_filter_text_with_opener_prefix() {
+        // VS Code's filter sees the typed input verbatim (`[#改ペ`).
+        // Without filter_text the bare `label` (`改ページ`) doesn't
+        // start with `[#`, the fuzzy matcher scores zero, and the
+        // popup hides every entry. Pin the prefix so the matcher
+        // sees `[#改ページ` and can rank by the body chars.
+        let src = "[#";
+        let pos = byte_offset_to_position(src, src.len());
+        let items = completion_at(src, pos);
+        let entry = items
+            .iter()
+            .find(|i| i.label == "改ページ")
+            .expect("改ページ in completions");
+        assert_eq!(
+            entry.filter_text.as_deref(),
+            Some("[#改ページ"),
+            "filter_text must include the half-width opener so VS Code's filter accepts the typed prefix",
+        );
+    }
+
+    #[test]
+    fn full_width_completion_carries_filter_text_with_full_width_opener() {
+        let src = "［＃";
+        let pos = byte_offset_to_position(src, src.len());
+        let items = completion_at(src, pos);
+        let entry = items
+            .iter()
+            .find(|i| i.label == "改ページ")
+            .expect("改ページ in completions");
+        assert_eq!(entry.filter_text.as_deref(), Some("［＃改ページ"));
+    }
+
+    #[test]
+    fn mixed_opener_full_bracket_half_hash_fires_catalogue() {
+        // The transient state when `onTypeFormatting` has converted
+        // `[` to `［` but the user has just typed `#` (which we
+        // deliberately don't auto-convert to avoid mangling URLs).
+        // The catalogue MUST still fire so the user's flow isn't
+        // interrupted by a one-codepoint mismatch.
+        let src = "［#";
+        let pos = byte_offset_to_position(src, src.len());
+        let items = completion_at(src, pos);
+        assert!(!items.is_empty(), "［# (mixed) must trigger completions");
+        let entry = items
+            .iter()
+            .find(|i| i.label == "改ページ")
+            .expect("改ページ in completions");
+        assert_eq!(
+            entry.filter_text.as_deref(),
+            Some("［#改ページ"),
+            "filter_text must reflect the actual opener so VS Code accepts the typed prefix",
+        );
+    }
+
+    #[test]
+    fn mixed_opener_half_bracket_full_hash_fires_catalogue() {
+        // Reverse mix: `[` typed normally, then a Japanese-IME-
+        // converted `＃` lands. Same requirement.
+        let src = "[＃";
+        let pos = byte_offset_to_position(src, src.len());
+        let items = completion_at(src, pos);
+        assert!(!items.is_empty(), "[＃ (mixed) must trigger completions");
+        let entry = items
+            .iter()
+            .find(|i| i.label == "改ページ")
+            .expect("改ページ in completions");
+        assert_eq!(entry.filter_text.as_deref(), Some("[＃改ページ"));
+    }
+
+    #[test]
+    fn mixed_opener_completion_emits_canonical_full_width_form() {
+        // Regardless of which bracket the user typed first, accepting
+        // a suggestion must leave the source fully canonical
+        // (`［＃canonical］`) so subsequent serialisation /
+        // diagnostics see one shape, not three.
+        for src in ["［#", "[＃", "[#"] {
+            let pos = byte_offset_to_position(src, src.len());
+            let items = completion_at(src, pos);
+            let entry = items
+                .iter()
+                .find(|i| i.label == "改ページ")
+                .unwrap_or_else(|| panic!("改ページ in completions for opener {src}"));
+            let CompletionTextEdit::Edit(edit) = entry.text_edit.as_ref().unwrap() else {
+                unreachable!()
+            };
+            assert_eq!(
+                edit.new_text, "［＃改ページ］",
+                "non-canonical splice for opener {src}",
+            );
+        }
     }
 
     #[test]

@@ -112,6 +112,16 @@ const EMMET_RULES: &[EmmetRule] = &[
         detail: "ルビベース印 (半角『|』→全角『｜』)",
         is_snippet: false,
     },
+    // Gaiji marker — `※[#…]` annotations. `*` is never used as a
+    // half-width literal in aozora prose; the only sane meaning is
+    // "I want to start a gaiji note."
+    EmmetRule {
+        prefix: "*",
+        snippet: "※",
+        label: "※",
+        detail: "外字マーカー (半角『*』→全角『※』)",
+        is_snippet: false,
+    },
 ];
 
 /// Maximum trigger prefix length, used to cap the look-back window.
@@ -224,6 +234,14 @@ fn build_item(source: &str, cursor: usize, rule: &EmmetRule) -> CompletionItem {
     };
     CompletionItem {
         label: rule.label.to_owned(),
+        // VS Code filters items by matching the typed prefix against
+        // (filter_text || label). Our `label` is the full-width
+        // target glyph (`［`), but the user types the half-width
+        // prefix (`[`) — without `filter_text` the fuzzy matcher
+        // sees "［" vs "[", scores zero, and the popup hides our
+        // suggestion. Setting `filter_text` to the half-width prefix
+        // makes the match exact.
+        filter_text: Some(rule.prefix.to_owned()),
         kind: Some(kind),
         detail: Some(rule.detail.to_owned()),
         documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
@@ -348,5 +366,30 @@ mod tests {
         let cursor = src.len();
         let position = byte_offset_to_position(src, cursor);
         assert_eq!(first_label(src, position).as_deref(), Some("｜"));
+    }
+
+    #[test]
+    fn every_emmet_item_carries_filter_text_matching_the_typed_prefix() {
+        // Regression pin: VS Code matches `(filter_text || label)`
+        // against the user's typed input. Our labels are full-width
+        // (`［`, `《...》`, `｜`) but typed input is the half-width
+        // prefix (`[`, `<`, `|`). Without filter_text the popup
+        // hides the suggestion. Pin every rule's emitted item.
+        for trigger in ["[", "]", "<", ">", "|", "*"] {
+            let items = emmet_completions(trigger, pos(0, 1));
+            let item = items
+                .first()
+                .unwrap_or_else(|| panic!("expected an emmet item for `{trigger}`"));
+            assert_eq!(
+                item.filter_text.as_deref(),
+                Some(trigger),
+                "filter_text must match the typed prefix `{trigger}` so VS Code's filter accepts it",
+            );
+        }
+    }
+
+    #[test]
+    fn asterisk_triggers_full_width_gaiji_marker() {
+        assert_eq!(first_label("*", pos(0, 1)).as_deref(), Some("※"));
     }
 }

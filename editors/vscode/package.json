@@ -238,7 +238,14 @@
         "editor.showFoldingControls": "mouseover",
         "editor.unicodeHighlight.ambiguousCharacters": false,
         "editor.unicodeHighlight.invisibleCharacters": false,
-        "editor.unicodeHighlight.nonBasicASCII": false
+        "editor.unicodeHighlight.nonBasicASCII": false,
+        "editor.formatOnType": true,
+        "editor.suggestOnTriggerCharacters": true,
+        "editor.quickSuggestions": {
+          "other": "on",
+          "comments": "off",
+          "strings": "off"
+        }
       },
       "editor.semanticTokenColorCustomizations": {
         "rules": {

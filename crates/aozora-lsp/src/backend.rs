@@ -39,15 +39,16 @@ use tower_lsp::lsp_types::{
     CodeActionOptions, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
-    ExecuteCommandOptions, ExecuteCommandParams, FoldingRange, FoldingRangeParams,
-    FoldingRangeProviderCapability, Hover, HoverParams, HoverProviderCapability, InitializeParams,
-    InitializeResult, InitializedParams, LinkedEditingRangeParams,
-    LinkedEditingRangeServerCapabilities, LinkedEditingRanges, MessageType, OneOf, Range,
-    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
-    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, ServerInfo, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
+    DocumentFormattingParams, DocumentOnTypeFormattingOptions, DocumentOnTypeFormattingParams,
+    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, ExecuteCommandOptions,
+    ExecuteCommandParams, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, Hover,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+    LinkedEditingRangeParams, LinkedEditingRangeServerCapabilities, LinkedEditingRanges,
+    MessageType, OneOf, Range, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
+    TextDocumentContentChangeEvent, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    Url, WorkDoneProgressOptions,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -361,10 +362,14 @@ impl LanguageServer for Backend {
                     //   on `「` for forward-reference quotes
                     //   (`［＃「target」に傍点］`).
                     // * Half-width emmet (`crate::half_width_emmet`)
-                    //   — fires on `[`, `]`, `<`, `>`, `|`. Each
+                    //   — fires on `[`, `]`, `<`, `>`, `|`, `*`. Each
                     //   suggests the corresponding full-width glyph
-                    //   (`［`, `］`, `《...》`, `》`, `｜`) and on
-                    //   accept replaces the typed prefix verbatim.
+                    //   (`［`, `］`, `《...》`, `》`, `｜`, `※`) and
+                    //   on accept replaces the typed prefix verbatim.
+                    //   The completion path is the secondary surface;
+                    //   the primary surface is `onTypeFormatting`
+                    //   below, which converts on every keystroke
+                    //   without needing the user to dismiss a popup.
                     trigger_characters: Some(vec![
                         "＃".to_owned(),
                         "#".to_owned(),
@@ -374,9 +379,28 @@ impl LanguageServer for Backend {
                         "<".to_owned(),
                         ">".to_owned(),
                         "|".to_owned(),
+                        "*".to_owned(),
                     ]),
                     resolve_provider: Some(false),
                     ..Default::default()
+                }),
+                // The primary half-width → full-width conversion
+                // surface. VS Code fires `onTypeFormatting` the
+                // moment any of these chars is typed and applies the
+                // returned `TextEdit` immediately — no popup, no
+                // accept keystroke. See `crate::on_type_formatting`
+                // for the rationale and safety analysis. Requires
+                // `editor.formatOnType: true` on the client; the
+                // VS Code extension sets that as a default for the
+                // `aozora` language.
+                document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
+                    first_trigger_character: crate::on_type_formatting::TRIGGERS[0].to_owned(),
+                    more_trigger_character: Some(
+                        crate::on_type_formatting::TRIGGERS[1..]
+                            .iter()
+                            .map(|&s| s.to_owned())
+                            .collect(),
+                    ),
                 }),
                 execute_command_provider: Some(ExecuteCommandOptions {
                     commands: vec![COMMAND_CANONICALIZE_SLUG.to_owned()],
@@ -521,6 +545,31 @@ impl LanguageServer for Backend {
                 err
             })?;
         Ok(Some(edits))
+    }
+
+    #[tracing::instrument(
+        skip_all,
+        fields(
+            uri = %p.text_document_position.text_document.uri,
+            ch = %p.ch,
+        ),
+    )]
+    async fn on_type_formatting(
+        &self,
+        p: DocumentOnTypeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        let uri = p.text_document_position.text_document.uri;
+        let position = p.text_document_position.position;
+        let Some(state) = self.lookup(&uri) else {
+            return Ok(None);
+        };
+        let snap = state.snapshot();
+        let edits = crate::on_type_formatting::format_on_type(snap.doc_text(), position, &p.ch);
+        if edits.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(edits))
+        }
     }
 
     #[tracing::instrument(

@@ -132,40 +132,43 @@ function escapeHtml(text: string): string {
 }
 
 function inline(text: string): string {
-  // Inline code (`...`) — process FIRST so escaping inside the
-  // backticks is preserved as-is.
-  const codeSegments: string[] = [];
-  // Sentinels reserved from the Unicode Private Use Area so a
-  // legitimate Markdown phrase cannot collide. The pair brackets
-  // each placeholder unambiguously even if no whitespace surrounds
-  // it.
+  // Every emitted HTML fragment goes through ONE shared placeholder
+  // table so the final auto-escape pass cannot mangle the tags we
+  // just emitted. Earlier versions only stashed `<code>` and let
+  // `<strong>` / `<a>` flow through into the escape pass, which
+  // turned them into `&lt;strong&gt;…&lt;/strong&gt;` literals on
+  // screen. PUA sentinels round-trip the escape pass cleanly
+  // because they're neither `<`, `>`, `&`, `"`, nor `'`.
+  const segments: string[] = [];
   const PhOpen = "\u{E000}";
   const PhClose = "\u{E001}";
-  const withCodePlaceholders = text.replace(/`([^`]+)`/g, (_, body) => {
-    codeSegments.push(`<code>${escapeHtml(body)}</code>`);
-    return `${PhOpen}${codeSegments.length - 1}${PhClose}`;
-  });
-  // Markdown links [text](url)
-  const withLinks = withCodePlaceholders.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) => {
-    const safeLabel = escapeHtml(label);
-    const safeUrl = escapeHtml(url);
-    return `<a href="${safeUrl}">${safeLabel}</a>`;
-  });
-  // Bold **text**
-  const withBold = withLinks.replace(
-    /\*\*([^*]+)\*\*/g,
-    (_, body) => `<strong>${escapeHtml(body)}</strong>`,
+  const stash = (html: string): string => {
+    segments.push(html);
+    return `${PhOpen}${segments.length - 1}${PhClose}`;
+  };
+
+  // 1. Inline code (`...`) — process FIRST so escaping inside the
+  //    backticks is preserved as-is and any `**` / `[` / `<` inside
+  //    code never gets re-interpreted.
+  const withCode = text.replace(/`([^`]+)`/g, (_, body) =>
+    stash(`<code>${escapeHtml(body)}</code>`),
   );
-  // Auto-escape any remaining < > & in plain runs (anything not
-  // already inside a placeholder or HTML tag we just emitted).
+  // 2. Markdown links [text](url) → stash as <a> tag.
+  const withLinks = withCode.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, url) =>
+    stash(`<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`),
+  );
+  // 3. Bold **text** → stash as <strong> tag.
+  const withBold = withLinks.replace(/\*\*([^*]+)\*\*/g, (_, body) =>
+    stash(`<strong>${escapeHtml(body)}</strong>`),
+  );
+  // 4. Auto-escape any remaining < > & " ' in plain runs. Our
+  //    PUA sentinels are not in this character class so they pass
+  //    through untouched.
   const escaped = withBold.replace(/[<>&"']/g, (ch) => {
-    // Already-escaped sequences and our placeholders pass through.
     return { "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" }[ch] ?? ch;
   });
-  // Restore code placeholders. The sentinels are PUA codepoints
-  // that round-trip through the prior replacement steps without
-  // hitting the &lt;/&gt; HTML escaper above.
-  return escaped.replace(/\u{E000}(\d+)\u{E001}/gu, (_, idx) => codeSegments[Number(idx)] ?? "");
+  // 5. Restore every stashed HTML fragment in a single pass.
+  return escaped.replace(/\u{E000}(\d+)\u{E001}/gu, (_, idx) => segments[Number(idx)] ?? "");
 }
 
 function mdToHtml(md: string): string {
