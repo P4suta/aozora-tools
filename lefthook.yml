@@ -1,0 +1,71 @@
+# aozora-tools — lefthook hooks (pre-commit / commit-msg / pre-push).
+#
+# This repo runs straight on the host (no docker container — unlike
+# the sibling `aozora` repo where everything routes through `just _dev`).
+# Hooks call `cargo` and `bun` directly.
+#
+# Enable after clone:  `lefthook install`
+# Disable:             `lefthook uninstall`
+#
+# ## jj+git colocated note
+#
+# This is a `jj git init --colocate` repo. jj **bypasses git hooks**
+# for `jj commit` / `jj describe` / `jj squash` etc — those operations
+# never touch the filesystem `.git/hooks/*` files. So `pre-commit` and
+# `commit-msg` only fire on direct `git commit` (rare for the jj
+# workflow). `pre-push` IS load-bearing because `jj git push` delegates
+# to `git push` underneath; the pre-push gate catches everything that
+# slipped past the jj-side editor / clippy / test loop.
+#
+# Reference: https://lefthook.dev/configuration/
+
+pre-commit:
+  parallel: true
+  skip:
+    - rebase
+    - merge
+  commands:
+    # `cargo fmt --all` (writes). Any reformat is re-staged automatically
+    # so the commit carries the fix. fmt-check stays in pre-push as the
+    # actual gate; pre-commit prefers fix-and-restage.
+    rust-fmt:
+      glob: "*.rs"
+      run: cargo fmt --all
+      stage_fixed: true
+    rust-clippy:
+      glob: "*.{rs,toml}"
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    # `biome check --write` (formatter + linter + organize-imports) plus
+    # `tsc --noEmit` (type-check). Writes are re-staged. Runs across the
+    # whole `editors/vscode` workspace because biome+tsc resolve via
+    # tsconfig.json + biome.jsonc and don't accept loose file lists.
+    vscode:
+      glob: "editors/vscode/**/*.{ts,tsx,js,jsx,json,jsonc}"
+      run: cd editors/vscode && bun run check:fix
+      stage_fixed: true
+
+commit-msg:
+  commands:
+    # Conventional Commits — type required, scope optional, breaking-`!`
+    # optional. The `{1}` is lefthook's positional reference to the
+    # commit-message file path that git passes to the hook.
+    conventional:
+      run: |
+        grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .{1,}' {1} \
+          || { echo 'Commit message must follow Conventional Commits (https://www.conventionalcommits.org/)'; exit 1; }
+
+pre-push:
+  parallel: true
+  skip:
+    - rebase
+  commands:
+    # Strict checks that must NOT auto-fix. If any fails, the push is
+    # blocked; fix locally and re-push.
+    rust-fmt-check:
+      run: cargo fmt --all -- --check
+    rust-clippy:
+      run: cargo clippy --workspace --all-targets -- -D warnings
+    rust-test:
+      run: cargo test --workspace --lib
+    vscode-check:
+      run: cd editors/vscode && bun run check
