@@ -5,26 +5,36 @@
 // with the resolved character so reading flows; the source
 // re-appears the moment the cursor enters the span.
 //
+// ## Two display modes per span
+//
+// - **Folded** (cursor outside the span): source is hidden and
+//   the resolved glyph is shown in its place. Reading view.
+// - **Active** (cursor inside the span): source is fully visible
+//   for editing, and a subtle `→ X` annotation appears just after
+//   the closing ］ to confirm what the source resolves to.
+//
+// Both modes are driven by the same `aozora/gaijiSpans` LSP
+// request payload — the cursor position decides per-span which
+// mode applies. There's no LSP-side inlay because VS Code's
+// inlay layer cannot be suppressed by a decoration; mixing the
+// two would surface the `→ X` glyph twice on every folded span.
+//
 // ## Architecture
 //
-// 1. Ask the LSP (`aozora/gaijiSpans` custom request) for every
-//    resolvable span. The LSP serves these from a pre-extracted,
-//    lock-free cache so the round-trip is microseconds even on
-//    100 KB+ documents.
-// 2. Bucket the spans by the resolved glyph string. We share one
-//    [`TextEditorDecorationType`] per glyph so VS Code's per-type
-//    decoration store stays small (`O(distinct glyphs)` rather than
-//    `O(spans)`).
-// 3. Apply two layers per visible span:
-//      - the *hide* layer: the source range is collapsed via CSS
+// 1. Ask the LSP for every resolvable span (lock-free read against
+//    the pre-extracted gaiji cache; microseconds per call).
+// 2. Bucket the spans by the resolved glyph string and share one
+//    [`TextEditorDecorationType`] per glyph (`O(distinct glyphs)`
+//    rather than `O(spans)` decoration handles).
+// 3. Apply two layers per *folded* span:
+//      - the *hide* layer collapses the source via CSS
 //        `font-size: 0` + `letter-spacing: -1ch` (no API truly
 //        removes the chars from the editor model);
-//      - the *glyph* layer: an inline `before` decoration shows the
-//        resolved character with a subtle dotted underline so the
-//        reader sees "this is a fold, click to inspect".
-// 4. When the cursor enters a span, that span is omitted from the
-//    decoration set so source becomes editable. When the cursor
-//    leaves, the next refresh re-folds it.
+//      - the *glyph* layer's `before` decoration shows the
+//        resolved char with a subtle dotted underline.
+// 4. For the *active* span, neither hide nor glyph decoration
+//    apply (so source is visible); instead a third decoration
+//    type emits an `after` annotation with `→ X`.
 
 import {
   type Disposable,
@@ -66,6 +76,14 @@ const CONFIG_NAMESPACE = "aozora.gaijiFold" as const;
 class FoldState implements Disposable {
   private readonly hideDecoration: TextEditorDecorationType;
   private readonly glyphDecorations = new Map<string, TextEditorDecorationType>();
+  /**
+   * Per-resolved-glyph "active inlay" decorations — emit an
+   * `after` annotation reading "→ X" when the cursor sits inside
+   * a span. Bucketed per glyph for the same reason as
+   * `glyphDecorations`; rebuilt lazily on first sight of each
+   * resolved string.
+   */
+  private readonly activeInlayDecorations = new Map<string, TextEditorDecorationType>();
 
   constructor() {
     this.hideDecoration = window.createTextEditorDecorationType({
@@ -95,43 +113,59 @@ class FoldState implements Disposable {
       return;
     }
     const cursor = editor.selection.active;
-    const { hideRanges, glyphBuckets } = bucket(response.spans, cursor);
+    const { hideRanges, glyphBuckets, activeInlayBuckets } = bucket(
+      response.spans,
+      cursor,
+    );
     editor.setDecorations(this.hideDecoration, hideRanges);
-    this.applyGlyphBuckets(editor, glyphBuckets);
+    this.applyBuckets(editor, this.glyphDecorations, glyphBuckets, createGlyphDecoration);
+    this.applyBuckets(
+      editor,
+      this.activeInlayDecorations,
+      activeInlayBuckets,
+      createActiveInlayDecoration,
+    );
   }
 
   /** Clear every decoration this state owns from `editor`. */
   clear(editor: TextEditor): void {
     editor.setDecorations(this.hideDecoration, []);
-    for (const deco of this.glyphDecorations.values()) {
-      editor.setDecorations(deco, []);
-    }
+    for (const deco of this.glyphDecorations.values()) editor.setDecorations(deco, []);
+    for (const deco of this.activeInlayDecorations.values()) editor.setDecorations(deco, []);
   }
 
   dispose(): void {
     this.hideDecoration.dispose();
     for (const deco of this.glyphDecorations.values()) deco.dispose();
+    for (const deco of this.activeInlayDecorations.values()) deco.dispose();
     this.glyphDecorations.clear();
+    this.activeInlayDecorations.clear();
   }
 
-  private applyGlyphBuckets(
+  /**
+   * Apply per-glyph buckets to `editor`. `store` is the long-lived
+   * decoration cache; `factory` is invoked lazily for glyphs not
+   * yet seen. Glyphs whose buckets are empty this cycle have their
+   * ranges cleared but the decoration *type* is kept (the same
+   * glyph likely reappears soon, and creating types is not free).
+   */
+  private applyBuckets(
     editor: TextEditor,
+    store: Map<string, TextEditorDecorationType>,
     buckets: ReadonlyMap<string, ReadonlyArray<Range>>,
+    factory: (glyph: string) => TextEditorDecorationType,
   ): void {
     const seen = new Set<string>();
     for (const [glyph, ranges] of buckets) {
       seen.add(glyph);
-      const deco =
-        this.glyphDecorations.get(glyph) ??
-        this.glyphDecorations
-          .set(glyph, createGlyphDecoration(glyph))
-          .get(glyph)!;
+      let deco = store.get(glyph);
+      if (!deco) {
+        deco = factory(glyph);
+        store.set(glyph, deco);
+      }
       editor.setDecorations(deco, ranges);
     }
-    // Glyphs that disappeared this cycle: clear their ranges so the
-    // editor stops drawing them. We keep the decoration type itself
-    // around because the same glyph is likely to reappear soon.
-    for (const [glyph, deco] of this.glyphDecorations) {
+    for (const [glyph, deco] of store) {
       if (!seen.has(glyph)) editor.setDecorations(deco, []);
     }
   }
@@ -143,9 +177,11 @@ function bucket(
 ): {
   hideRanges: Range[];
   glyphBuckets: Map<string, Range[]>;
+  activeInlayBuckets: Map<string, Range[]>;
 } {
   const hideRanges: Range[] = [];
   const glyphBuckets = new Map<string, Range[]>();
+  const activeInlayBuckets = new Map<string, Range[]>();
   for (const span of spans) {
     const range = new Range(
       span.range.start.line,
@@ -153,10 +189,20 @@ function bucket(
       span.range.end.line,
       span.range.end.character,
     );
-    // Spans containing the cursor stay un-folded so the user can
-    // edit. The next selection-change event will re-fold once the
-    // cursor moves out.
-    if (range.contains(cursor)) continue;
+    if (range.contains(cursor)) {
+      // Cursor sits inside — span stays unfolded, but we still
+      // want a confirmation of what it resolves to. Render an
+      // `after` decoration on a zero-width range at the closing
+      // bracket so the editor draws "→ X" right past the source.
+      const tail = new Range(range.end, range.end);
+      const existing = activeInlayBuckets.get(span.resolved);
+      if (existing) {
+        existing.push(tail);
+      } else {
+        activeInlayBuckets.set(span.resolved, [tail]);
+      }
+      continue;
+    }
     hideRanges.push(range);
     const existing = glyphBuckets.get(span.resolved);
     if (existing) {
@@ -165,7 +211,7 @@ function bucket(
       glyphBuckets.set(span.resolved, [range]);
     }
   }
-  return { hideRanges, glyphBuckets };
+  return { hideRanges, glyphBuckets, activeInlayBuckets };
 }
 
 function createGlyphDecoration(resolved: string): TextEditorDecorationType {
@@ -175,6 +221,17 @@ function createGlyphDecoration(resolved: string): TextEditorDecorationType {
       color: new ThemeColor("editor.foreground"),
       textDecoration: "underline dotted rgba(128,128,128,0.6)",
       margin: "0",
+    },
+  });
+}
+
+function createActiveInlayDecoration(resolved: string): TextEditorDecorationType {
+  return window.createTextEditorDecorationType({
+    after: {
+      contentText: ` → ${resolved}`,
+      color: new ThemeColor("editorCodeLens.foreground"),
+      fontStyle: "italic",
+      margin: "0 0 0 0.2em",
     },
   });
 }

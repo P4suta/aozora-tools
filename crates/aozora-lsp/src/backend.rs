@@ -38,7 +38,6 @@ use dashmap::DashMap;
 use crate::code_actions::{quick_fix_actions, wrap_selection_actions};
 use crate::commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 use crate::completion::completion_at;
-use crate::inlay_hints::inlay_hints;
 use crate::linked_editing::linked_editing_at;
 use crate::metrics::Metrics;
 use crate::gaiji_spans::{GaijiSpan, extract_gaiji_spans};
@@ -53,9 +52,9 @@ use tower_lsp::lsp_types::{
     CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, ExecuteCommandOptions, ExecuteCommandParams, Hover, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, InlayHint,
-    InlayHintParams, InlayHintServerCapabilities, LinkedEditingRangeParams,
-    LinkedEditingRangeServerCapabilities, LinkedEditingRanges, MessageType, OneOf, Range,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+    LinkedEditingRangeParams, LinkedEditingRangeServerCapabilities, LinkedEditingRanges,
+    MessageType, OneOf, Range,
     ServerCapabilities, ServerInfo, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
     TextDocumentSyncKind, TextEdit, Url,
 };
@@ -510,9 +509,12 @@ impl LanguageServer for Backend {
                 )),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
-                inlay_hint_provider: Some(OneOf::Right(InlayHintServerCapabilities::Options(
-                    tower_lsp::lsp_types::InlayHintOptions::default(),
-                ))),
+                // `inlay_hint_provider` deliberately omitted — the
+                // VS Code extension renders gaiji inlines via
+                // decoration in `gaijiFold.ts`, and adding an LSP
+                // inlay layer on top duplicated the `→ X` glyph.
+                // Editors that consume inlay hints over LSP can opt
+                // in via the `crate::inlay_hints` library entry.
                 linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(
                     true,
                 )),
@@ -688,28 +690,19 @@ impl LanguageServer for Backend {
         Ok(hover_at(&entry.text, position))
     }
 
-    #[tracing::instrument(skip_all, fields(uri = %p.text_document.uri))]
-    async fn inlay_hint(&self, p: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
-        let uri = p.text_document.uri;
-        let Some(entry) = self.docs.get(&uri) else {
-            return Ok(None);
-        };
-        // Tree-sitter path: incremental tree was kept in sync via
-        // `did_change`, so this query is O(spans-in-range) instead
-        // of a full re-parse. Falls back to an empty Vec if the
-        // tree was never seeded (only true for an empty
-        // freshly-opened doc).
-        // Cache-driven: lock-free read against the pre-extracted
-        // gaiji span list. No tree-sitter Mutex acquired, no parser
-        // touched. Concurrent inlay requests run in true parallel.
-        let hints = inlay_hints(
-            &entry.text,
-            &entry.gaiji_spans,
-            &entry.line_index,
-            p.range,
-        );
-        Ok(Some(hints))
-    }
+    // `inlay_hint` deliberately *not* implemented on the
+    // LanguageServer trait — the gaiji-fold decoration in the
+    // VS Code extension already renders the resolved character
+    // inline, so an LSP-side inlay just adds a redundant `→ X`
+    // alongside the fold's substituted glyph. The extension owns
+    // the cursor-aware "show → X only on the unfurled span"
+    // behaviour because the LSP can't know the cursor; trying to
+    // emit blanket inlays on the server side and hide them on the
+    // client would be impossible (decorations cannot suppress
+    // inlays). The library function `crate::inlay_hints::inlay_hints`
+    // is kept exported for editor integrations that prefer the
+    // server-side path (helix, neovim) and don't run our VS Code
+    // extension.
 
     #[tracing::instrument(
         skip_all,
