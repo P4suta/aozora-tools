@@ -268,7 +268,7 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
 /// Translate a canonical slug like `ここから{N}字下げ` into the LSP
 /// snippet form `ここから${1:N}字下げ`. Plain text without `{...}`
 /// pass-through unchanged. `{path}` becomes `${1:path}`.
-fn canonical_to_snippet(canonical: &str) -> String {
+pub(crate) fn canonical_to_snippet(canonical: &str) -> String {
     let mut out = String::with_capacity(canonical.len() + 4);
     let mut chars = canonical.char_indices().peekable();
     while let Some((i, ch)) = chars.next() {
@@ -300,7 +300,7 @@ fn forward_already_has(source: &str, cursor: usize, partner: &str) -> bool {
     source[cursor..].contains(partner)
 }
 
-fn family_to_kind(family: SlugFamily) -> CompletionItemKind {
+pub(crate) fn family_to_kind(family: SlugFamily) -> CompletionItemKind {
     match family {
         SlugFamily::PageBreak | SlugFamily::Section => CompletionItemKind::EVENT,
         SlugFamily::BlockContainerOpen | SlugFamily::BlockContainerClose => {

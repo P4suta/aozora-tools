@@ -43,6 +43,7 @@ mod position;
 pub mod segment_cache;
 mod semantic_tokens;
 mod state;
+mod structured_snippets;
 mod text_edit;
 
 pub use backend::Backend;
@@ -67,4 +68,5 @@ pub use paragraph::{MAX_PARAGRAPH_BYTES, MutParagraph, ParagraphSnapshot};
 pub use position::{byte_offset_to_position, position_to_byte_offset};
 pub use semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
 pub use state::{BufferState, DocState, Snapshot};
+pub use structured_snippets::snippet_completions;
 pub use text_edit::{EditError, LocalTextEdit, apply_edits};

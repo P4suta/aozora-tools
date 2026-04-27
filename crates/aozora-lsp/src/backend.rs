@@ -380,6 +380,13 @@ impl LanguageServer for Backend {
                         ">".to_owned(),
                         "|".to_owned(),
                         "*".to_owned(),
+                        // Structured-snippet triggers — fire after
+                        // `onTypeFormatting` has converted the
+                        // half-width form. The completion handler
+                        // routes these to `crate::structured_snippets`.
+                        "｜".to_owned(),
+                        "《".to_owned(),
+                        "※".to_owned(),
                     ]),
                     resolve_provider: Some(false),
                     ..Default::default()
@@ -660,6 +667,16 @@ impl LanguageServer for Backend {
         // and the slug catalogue + emmet items merge into one
         // response — VS Code's own ranker decides ordering.
         items.extend(crate::half_width_emmet::emmet_completions(
+            snap.doc_text(),
+            position,
+        ));
+        // Plus the structured-snippet items that fire after the
+        // user just typed `#` / `｜` / `《` / `※`. Each item carries
+        // a snippet body with `${…}` Tab-stops so accepting expands
+        // into a fully-structured form (`［＃改ページ］` etc) and
+        // leaves the cursor in the next placeholder for IDE-style
+        // Tab navigation (the user-asked feature, 2026-04-29).
+        items.extend(crate::structured_snippets::snippet_completions(
             snap.doc_text(),
             position,
         ));

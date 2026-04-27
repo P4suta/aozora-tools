@@ -20,6 +20,7 @@ import {
 import { registerGaijiFold } from "./gaijiFold";
 import { registerNotationGuideCommand } from "./notationGuide";
 import { registerPreviewCommand } from "./preview";
+import { registerSnippetTriggers } from "./snippetTrigger";
 import { registerWrapCommands } from "./wrap";
 
 let client: LanguageClient | undefined;
@@ -113,6 +114,16 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // Command Palette under the "Aozora:" prefix so they're findable
   // alongside our other contributions.
   registerLspFeatureShortcuts(context);
+
+  // IDE-style aggressive auto-expansion: type ｜ → snippet
+  // `｜<base>《<reading>》` with `<base>` selected and Tab navigation;
+  // type ［ → `［<cursor>］` with close auto-paired; type ］ next to
+  // an existing close → skip-over instead of double-insert. The
+  // snippet placeholder semantics are VS-Code-only (LSP onType
+  // returns plain TextEdits), so this lives here on the extension
+  // side and complements (rather than replaces) the LSP onType for
+  // non-VS-Code clients.
+  registerSnippetTriggers(context);
 
   try {
     await client.start();
