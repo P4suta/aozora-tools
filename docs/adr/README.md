@@ -7,9 +7,14 @@ the verification we used to confirm the decision held up.
 
 | #    | Title                                                                              | Status   |
 |------|------------------------------------------------------------------------------------|----------|
-| 0001 | [`ArcSwap` snapshot for wait-free LSP reads](0001-arcswap-snapshot.md)             | accepted |
-| 0002 | [`ropey::Rope` buffer + tree-sitter chunked input](0002-rope-buffer.md)             | accepted |
-| 0003 | [Incremental gaiji-span rebuild via `Tree::changed_ranges`](0003-incremental-gaiji-rebuild.md) | accepted |
+| 0001 | [`shuttle` concurrency model for the segment cache](0001-shuttle-segment-cache.md) | accepted |
+| 0002 | [LSP feature roadmap](0002-lsp-feature-roadmap.md)                                 | accepted |
+| 0003 | [Position encoding (UTF-8 + UTF-16 fallback)](0003-position-encoding.md)           | accepted |
+| 0004 | [Preview sync protocol](0004-preview-sync-protocol.md)                             | accepted |
+| 0005 | [`ArcSwap` snapshot for wait-free LSP reads](0005-arcswap-snapshot.md)             | accepted |
+| 0006 | [`ropey::Rope` buffer + tree-sitter chunked input](0006-rope-buffer.md)            | accepted |
+| 0007 | [Incremental gaiji-span rebuild via `Tree::changed_ranges`](0007-incremental-gaiji-rebuild.md) | accepted |
+| 0008 | [Paragraph-first document model](0008-paragraph-first-document-model.md)           | accepted |
 
 ## When to write an ADR
 

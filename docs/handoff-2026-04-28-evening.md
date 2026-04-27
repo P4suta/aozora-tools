@@ -70,24 +70,75 @@ ropey              0.2%
 (spec 上の正解値とは異なる typo)。Smart fallback として「description が単一字なら自身を返す」
 を追加 → 「丂」「畺」「龔」が即解決。
 
+## このセッションの追加 commit (2026-04-29 早朝までに landed)
+
+```
+poxoluzl refactor(state, paragraph): post-review cleanup —
+         remove duplicated paragraph_starts + Arc-style shifted_to +
+         Rope::append + helper extraction
+nrzurmou docs(handoff): 2026-04-28 evening
+```
+
+### 大リアーキテクチャ完了
+
+`SegmentedDoc を BufferState に結線` という当初の作業項目はユーザの指示で
+**「結線ではなく大リアーキテクチャ」** に拡大解釈され、`segmented_doc.rs`
+foundation crate を破棄して `state.rs` を per-paragraph model に書き直した:
+
+- `crates/aozora-lsp/src/paragraph.rs` (NEW, 384 LoC): `MutParagraph` /
+  `ParagraphSnapshot` / `paragraph_byte_ranges` / `build_paragraph_snapshot` /
+  `ParagraphSnapshot::shifted_to` (Arc-style, no-shift = `Arc::clone`)
+- `crates/aozora-lsp/src/state.rs` (REWRITTEN, ~1055 lines):
+  `BufferState { paragraphs: Vec<MutParagraph>, parser, segment_cache }` +
+  `Snapshot { paragraphs: Arc<[Arc<ParagraphSnapshot>]>, paragraph_starts,
+  total_bytes, version, doc_text/doc_line_index/doc_gaiji_spans: OnceLock }`
+- `crates/aozora-lsp/src/gaiji_spans.rs`: pure walker (paragraph-local), 435 LoC
+  削除
+- `crates/aozora-lsp/src/semantic_tokens.rs`: `&[Arc<ParagraphSnapshot>]` を
+  walk、`line_offset` で doc-absolute LSP positions
+- ADR-0008 `paragraph-first-document-model.md` に詳細記録
+
+実測:
+- `apply_changes/insert_one_char_bouten_6mb`: 267 ms → 152 ms (-43%)
+- `apply_changes/burst_100_inserts_bouten_6mb`: ~32 s → 5.4 s (-83%)
+- `concurrent_reads/load_under_writer`: 8 ns (noise レベルの変化)
+
+注: 旧 handoff の「220ms → 3ms」「401ms → 26ms」は中間状態または異なる計測 path で、
+実 production 構造の per-edit wall は 152ms。最大コストは tree-sitter から
+36 009-paragraph snapshot rebuild walk + paragraph_byte_ranges の byte-scan に移った
+(両方 O(doc-bytes) のままだが per-paragraph 定数倍は微小)。
+次の最適化機会は incremental `paragraph_starts` だが、production では
+rebuild が tokio blocking pool に dispatch されるので user-observed lag には
+出ない。
+
+### 副次成果
+
+- `paragraph_from_rope_slice(source, range, parser)` helper が `BufferState::new`
+  / `replace` / `apply_across_paragraphs` / `maybe_resegment_around` の 4 箇所で
+  共通化されている
+- `apply_across_paragraphs` は `Rope::append` + `Rope::byte_slice` で zero-copy
+  に merge (prefix/suffix は ropey の structural-share 領域に残る)
+- `OnceLock` lazy doc-views: `semantic_tokens_full` 等の per-paragraph handlers は
+  doc-wide `&str` materialise を完全に skip 可能、必要 handlers (`hover` /
+  `inlay`) も snapshot 寿命中 1 回のみ payment
+
 ## 残タスク (次セッションへの引き継ぎ)
 
-### 優先度 1: SegmentedDoc を BufferState に結線
+### 優先度 1: snapshot rebuild walk の incrementalisation
 
-`crates/aozora-lsp/src/segmented_doc.rs` は library として 10 tests pass で landed。
-`BufferState::incremental: IncrementalDoc` を `SegmentedDoc` に置換して、`Snapshot::tree`
-を `Vec<(Range<usize>, Tree)>` に変えると、per-edit のreparse cost が 220ms → ~3ms に。
-影響範囲:
-- `state.rs::BufferState`: `incremental` フィールド型変更
-- `Snapshot`: `tree: Option<Tree>` → `segments: Arc<[Segment]>`
-- `gaiji_spans.rs::extract_gaiji_spans*`: 現在 `&Tree` を取る → `&[Segment]` に変更、
-  各 segment.tree を walk して segment.byte_range.start で offset 補正
-- `incremental_gaiji_rebuild` ロジック: per-segment changed_ranges に対応 (より複雑)
+bouten.afm (36 009 paragraphs) で per-edit wall の大半は snapshot rebuild walk
+(36k Arc bumps + paragraph_byte_ranges の 6 MB byte-scan)。
+`paragraph_starts` を BufferState 側で incremental 維持すれば walk が skip 可能。
+ただし production では rebuild が tokio blocking pool に dispatch されるので
+user-observed lag には影響しない — 計測 wall を縮める価値があるかは要再評価。
 
 ### 優先度 2: tree-sitter grammar simplify
 
-samply trace で `ts_subtree_summarize_children` (8.7%) と `ts_subtree_compress` (7.2%) が
-hot。Grammar 内の冗長な choice / prec.dynamic を削れば parse table が縮む可能性。
+paragraph 化前の samply trace で `ts_subtree_summarize_children` (8.7%) と
+`ts_subtree_compress` (7.2%) が hot。Grammar 内の冗長な choice / prec.dynamic を
+削れば parse table が縮む可能性。今は per-paragraph reparse が ~183 bytes 平均で
+microsecond オーダー、relative にはこの 2 関数の重みが残っているはず。
+re-profile が必要 (per-paragraph model 適用後の trace は未取得)。
 `grammar.js` の simplify 候補:
 - `extras: $ => []` → `[$.newline]` で newline を文法構造から外す (現状 _element に
   newline を直接入れている)
@@ -103,6 +154,7 @@ hot。Grammar 内の冗長な choice / prec.dynamic を削れば parse table が
 - [ADR-0005: ArcSwap snapshot for wait-free LSP reads](adr/0005-arcswap-snapshot.md)
 - [ADR-0006: ropey::Rope buffer + tree-sitter chunked input](adr/0006-rope-buffer.md)
 - [ADR-0007: Incremental gaiji-span rebuild via Tree::changed_ranges](adr/0007-incremental-gaiji-rebuild.md)
+- [ADR-0008: Paragraph-first document model](adr/0008-paragraph-first-document-model.md)
 
 ADR README は `docs/adr/README.md` に index 化済み (既存 0001-0004 含む)。
 
@@ -125,12 +177,12 @@ cargo run -p aozora-tools-xtask -- samply analyze /tmp/aozora-lsp-burst-*.json.g
 (cd /home/yasunobu/projects/aozora && cargo run -p aozora-encoding --example probe_gaiji)
 ```
 
-## 物理状態
+## 物理状態 (2026-04-29 更新時点)
 
-- jj working copy: 新 wip (この doc 用)
-- 未 commit: `docs/handoff-2026-04-28-evening.md` のみ
+- jj working copy: 新 wip (handoff 更新 + ADR-0008 用)
+- 未 commit: `docs/handoff-2026-04-28-evening.md` 更新 + 新 `docs/adr/0008-paragraph-first-document-model.md` + `docs/adr/README.md` 更新
 - 実行中の background task: なし
-- Tests: aozora-lsp 169 lib tests + 6 xtask + 26 aozora-encoding 全 pass
+- Tests: aozora-lsp 161 lib tests + 6 xtask + 26 aozora-encoding 全 pass
 - Clippy: workspace clean
 - Fmt: clean
 - VS Code TS: `bun run check` clean
