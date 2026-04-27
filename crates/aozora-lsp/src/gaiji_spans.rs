@@ -53,26 +53,44 @@ pub struct GaijiSpan {
 }
 
 /// Walk `tree` once and extract every gaiji span. Output is sorted
-/// by `start_byte` (the tree walk is in source order).
+/// by `start_byte` (the tree visit is in source order).
+///
+/// Iterative single-cursor walk via `TreeCursor::goto_first_child` /
+/// `goto_next_sibling` / `goto_parent`. The tree carries ~100 k
+/// nodes on a 6 MB document; the earlier recursive `node.walk()`
+/// version allocated a fresh `TreeCursor` *per non-gaiji node* and
+/// recursed Rust stack frames in lock-step — both lit up the
+/// allocator hotpath in samply.
+///
+/// We also tried the tree-sitter `Query` API (`(gaiji) @g`); it ran
+/// ~5× slower (71 ms → 330 ms) because the `QueryCursor`'s general
+/// pattern-matching automaton has more overhead per visited node
+/// than a single-kind dispatch. Iterative cursor wins for
+/// "find every node of one kind, no predicates" extraction.
 #[must_use]
 pub fn extract_gaiji_spans(tree: &Tree, source: &str) -> Arc<[GaijiSpan]> {
+    let root = tree.root_node();
+    let mut cursor = root.walk();
     let mut spans = Vec::new();
-    walk(tree.root_node(), source, &mut spans);
-    spans.into()
-}
-
-fn walk(node: Node<'_>, source: &str, out: &mut Vec<GaijiSpan>) {
-    if node.kind() == kind::GAIJI {
-        if let Some(span) = build_span(node, source) {
-            out.push(span);
+    'walk: loop {
+        let node = cursor.node();
+        if node.kind() == kind::GAIJI {
+            if let Some(span) = build_span(node, source) {
+                spans.push(span);
+            }
+            // gaiji nodes are leaves for this walk — skip descent.
+        } else if cursor.goto_first_child() {
+            continue;
         }
-        // Don't descend — gaiji nodes are leaves for this walk.
-        return;
+        // Either a leaf (gaiji or terminal) or a node with no
+        // children. Walk laterally; pop up while there's no sibling.
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                break 'walk;
+            }
+        }
     }
-    let mut cursor = node.walk();
-    for child in node.named_children(&mut cursor) {
-        walk(child, source, out);
-    }
+    spans.into()
 }
 
 fn build_span(gaiji: Node<'_>, source: &str) -> Option<GaijiSpan> {
