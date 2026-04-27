@@ -242,8 +242,8 @@ impl Backend {
             views.push(GaijiSpanView {
                 range: Range::new(start, end),
                 resolved: buf,
-                description: span.description.clone(),
-                mencode: span.mencode.clone(),
+                description: span.description.to_string(),
+                mencode: span.mencode.as_deref().map(str::to_owned),
             });
         }
         Ok(GaijiSpansResult { spans: views })

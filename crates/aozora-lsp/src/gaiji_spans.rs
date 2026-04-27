@@ -34,9 +34,13 @@ use tree_sitter_aozora::kind;
 
 /// One `※［＃description、mencode］` occurrence.
 ///
-/// Owns its `description` / `mencode` strings (small per-span
-/// allocations, ~30 bytes each) so the cache survives source
-/// edits without dangling lifetimes.
+/// `description` and `mencode` are `Arc<str>` rather than `String`
+/// so the incremental snapshot rebuild can reuse them across
+/// snapshot generations via pointer bump — the body of a gaiji
+/// span doesn't change unless its bytes are inside a tree-sitter
+/// `changed_range`. Carry-forward of a 50 k-span document then
+/// costs `O(spans)` atomic increments instead of `O(spans)`
+/// `String` allocations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GaijiSpan {
     /// Byte offset of the leading `※` (or `［＃` for the bare-slug
@@ -47,10 +51,10 @@ pub struct GaijiSpan {
     /// Description text — the bit between `「` and `」`, brackets
     /// stripped. Used as the resolution key for the gaiji-chuki
     /// dictionary fallback.
-    pub description: String,
+    pub description: Arc<str>,
     /// `第3水準1-85-54` / `U+1234` / similar — `None` if the source
     /// omitted the mencode tail.
-    pub mencode: Option<String>,
+    pub mencode: Option<Arc<str>>,
 }
 
 /// Walk `tree` once and extract every gaiji span. Output is sorted
@@ -69,7 +73,7 @@ pub struct GaijiSpan {
 /// than a single-kind dispatch. Iterative cursor wins for
 /// "find every node of one kind, no predicates" extraction.
 #[must_use]
-pub fn extract_gaiji_spans(tree: &Tree, source: &str) -> Arc<[GaijiSpan]> {
+pub fn extract_gaiji_spans(tree: &Tree, source: &str) -> Arc<[Arc<GaijiSpan>]> {
     let root = tree.root_node();
     let mut cursor = root.walk();
     let mut spans = Vec::new();
@@ -77,7 +81,7 @@ pub fn extract_gaiji_spans(tree: &Tree, source: &str) -> Arc<[GaijiSpan]> {
         let node = cursor.node();
         if node.kind() == kind::GAIJI {
             if let Some(span) = build_span(node, source) {
-                spans.push(span);
+                spans.push(Arc::new(span));
             }
             // gaiji nodes are leaves for this walk — skip descent.
         } else if cursor.goto_first_child() {
@@ -116,14 +120,15 @@ fn build_span(gaiji: Node<'_>, source: &str) -> Option<GaijiSpan> {
 /// delimits description from mencode; if absent, the whole body is
 /// the description and mencode is `None`. Strips the surrounding
 /// `「…」` from the description if present.
-fn parse_body(body: &str) -> (String, Option<String>) {
+fn parse_body(body: &str) -> (Arc<str>, Option<Arc<str>>) {
     let (description, rest) = body.find('、').map_or((body, None), |i| {
         let head = body[..i].trim();
         let tail = body[i + '、'.len_utf8()..].trim();
-        (head, Some(tail.to_owned()))
+        (head, Some(tail))
     });
     let description = description.trim().trim_matches(|c| c == '「' || c == '」');
-    (description.to_owned(), rest.filter(|s| !s.is_empty()))
+    let mencode = rest.map(str::trim).filter(|s| !s.is_empty()).map(Arc::from);
+    (Arc::from(description), mencode)
 }
 
 /// Filter `spans` to those whose `start_byte` lies in
@@ -132,10 +137,10 @@ fn parse_body(body: &str) -> (String, Option<String>) {
 /// `O(log spans + matches)`.
 #[must_use]
 pub fn spans_in_byte_range(
-    spans: &[GaijiSpan],
+    spans: &[Arc<GaijiSpan>],
     start_byte: usize,
     end_byte: usize,
-) -> &[GaijiSpan] {
+) -> &[Arc<GaijiSpan>] {
     let start = u32::try_from(start_byte).unwrap_or(u32::MAX);
     let end = u32::try_from(end_byte).unwrap_or(u32::MAX);
     // First span whose end exceeds the start of the requested range.
@@ -176,10 +181,10 @@ pub fn spans_in_byte_range(
 pub fn extract_gaiji_spans_incremental(
     old_tree: &Tree,
     new_tree: &Tree,
-    old_spans: &BTreeMap<u32, GaijiSpan>,
+    old_spans: &BTreeMap<u32, Arc<GaijiSpan>>,
     edits: &[InputEdit],
     new_text: &str,
-) -> BTreeMap<u32, GaijiSpan> {
+) -> BTreeMap<u32, Arc<GaijiSpan>> {
     // Tree-sitter `changed_ranges` returns byte ranges (NEW tree
     // coordinates) where structure differs. On worst-case edits
     // (insert at offset 0 → every token shifts) the iterator can
@@ -212,15 +217,23 @@ pub fn extract_gaiji_spans_incremental(
         if intersects_sorted(new_start, new_end, &changed) {
             continue;
         }
-        out.insert(
-            new_start,
-            GaijiSpan {
+        // Two cheap carry-forward shapes:
+        //   - Unchanged byte offsets → reuse the entire `Arc<GaijiSpan>`
+        //     (single atomic increment, zero allocations).
+        //   - Shifted byte offsets → allocate a fresh `Arc<GaijiSpan>`
+        //     but pointer-bump the description / mencode `Arc<str>`s.
+        //     Avoids the per-span `String` clone the prior shape paid.
+        let carried = if span.start_byte == new_start && span.end_byte == new_end {
+            Arc::clone(span)
+        } else {
+            Arc::new(GaijiSpan {
                 start_byte: new_start,
                 end_byte: new_end,
-                description: span.description.clone(),
+                description: Arc::clone(&span.description),
                 mencode: span.mencode.clone(),
-            },
-        );
+            })
+        };
+        out.insert(new_start, carried);
     }
 
     // 2. Single iterative tree walk that prunes against the merged
@@ -298,7 +311,7 @@ fn walk_against_ranges(
     root: Node<'_>,
     source: &str,
     ranges: &[(u32, u32)],
-    out: &mut BTreeMap<u32, GaijiSpan>,
+    out: &mut BTreeMap<u32, Arc<GaijiSpan>>,
 ) {
     if ranges.is_empty() {
         return;
@@ -312,7 +325,7 @@ fn walk_against_ranges(
             // Outside every changed range — skip without descending.
         } else if node.kind() == kind::GAIJI {
             if let Some(span) = build_span(node, source) {
-                out.insert(span.start_byte, span);
+                out.insert(span.start_byte, Arc::new(span));
             }
             // gaiji is a leaf — fall through to lateral move.
         } else if cursor.goto_first_child() {
@@ -339,11 +352,11 @@ mod tests {
         parser.parse(src, None).unwrap()
     }
 
-    fn cold_btree(src: &str) -> BTreeMap<u32, GaijiSpan> {
+    fn cold_btree(src: &str) -> BTreeMap<u32, Arc<GaijiSpan>> {
         let tree = parse(src);
         extract_gaiji_spans(&tree, src)
             .iter()
-            .map(|s| (s.start_byte, s.clone()))
+            .map(|s| (s.start_byte, Arc::clone(s)))
             .collect()
     }
 
@@ -393,7 +406,7 @@ mod tests {
         let spans = extract_gaiji_spans(&tree, src);
         assert_eq!(spans.len(), 1);
         let span = &spans[0];
-        assert_eq!(span.description, "desc");
+        assert_eq!(&*span.description, "desc");
         assert_eq!(span.mencode.as_deref(), Some("第3水準1-85-54"));
         assert_eq!(span.start_byte as usize, src.find('※').unwrap());
     }
@@ -405,8 +418,8 @@ mod tests {
         let spans = extract_gaiji_spans(&tree, src);
         assert_eq!(spans.len(), 2);
         assert!(spans[0].start_byte < spans[1].start_byte);
-        assert_eq!(spans[0].description, "a");
-        assert_eq!(spans[1].description, "b");
+        assert_eq!(&*spans[0].description, "a");
+        assert_eq!(&*spans[1].description, "b");
     }
 
     #[test]
@@ -415,7 +428,7 @@ mod tests {
         let tree = parse(src);
         let spans = extract_gaiji_spans(&tree, src);
         assert_eq!(spans.len(), 1);
-        assert_eq!(spans[0].description, "desc-only");
+        assert_eq!(&*spans[0].description, "desc-only");
         assert!(spans[0].mencode.is_none());
     }
 
@@ -457,7 +470,7 @@ mod tests {
         assert_eq!(inc, cold);
         // Sanity: the new doc's only span carries the new description.
         let only = inc.values().next().expect("one span");
-        assert_eq!(only.description, "renamed");
+        assert_eq!(&*only.description, "renamed");
     }
 
     /// Inserting a brand-new gaiji must add it to the `BTreeMap`
@@ -523,6 +536,6 @@ mod tests {
             .unwrap();
         let inside = spans_in_byte_range(&spans, b_start, b_end);
         assert_eq!(inside.len(), 1);
-        assert_eq!(inside[0].description, "b");
+        assert_eq!(&*inside[0].description, "b");
     }
 }

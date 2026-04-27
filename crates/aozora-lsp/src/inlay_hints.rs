@@ -27,6 +27,8 @@ use tower_lsp::lsp_types::{
     MarkupContent, MarkupKind, Range,
 };
 
+use std::sync::Arc;
+
 use crate::gaiji_spans::{GaijiSpan, spans_in_byte_range};
 use crate::line_index::LineIndex;
 
@@ -37,7 +39,7 @@ use crate::line_index::LineIndex;
 #[must_use]
 pub fn inlay_hints(
     source: &str,
-    spans: &[GaijiSpan],
+    spans: &[Arc<GaijiSpan>],
     line_index: &LineIndex,
     range: Range,
 ) -> Vec<InlayHint> {
@@ -95,7 +97,7 @@ mod tests {
     use tower_lsp::lsp_types::Position;
     use tree_sitter::Parser;
 
-    fn parse_spans(src: &str) -> std::sync::Arc<[GaijiSpan]> {
+    fn parse_spans(src: &str) -> Arc<[Arc<GaijiSpan>]> {
         let mut parser = Parser::new();
         parser
             .set_language(&tree_sitter_aozora::LANGUAGE.into())

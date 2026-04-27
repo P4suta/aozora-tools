@@ -151,7 +151,10 @@ pub struct Snapshot {
     /// rather than `Vec` so the incremental rebuild can update only
     /// the spans intersecting a tree-sitter `changed_range` —
     /// `O(log n + k)` instead of `O(n)` full re-walk.
-    pub gaiji_spans: Arc<BTreeMap<u32, GaijiSpan>>,
+    /// Span values are `Arc<GaijiSpan>` so the carry-forward path
+    /// is a single atomic increment instead of a struct + `String`
+    /// clone (50 k spans on a synth doc → ~5 ms vs ~150 ms).
+    pub gaiji_spans: Arc<BTreeMap<u32, Arc<GaijiSpan>>>,
     /// The tree-sitter tree this snapshot was built from. Held here
     /// (cheap shallow `Arc` clone) so the next incremental rebuild
     /// can call `Tree::changed_ranges(&old_tree, &new_tree)` to
@@ -214,12 +217,16 @@ impl Snapshot {
     }
 }
 
-fn spans_to_btree(spans: &[GaijiSpan]) -> BTreeMap<u32, GaijiSpan> {
+fn spans_to_btree(spans: &[Arc<GaijiSpan>]) -> BTreeMap<u32, Arc<GaijiSpan>> {
     // `extract_gaiji_spans` returns spans in source order; collect
     // into a BTreeMap keyed by start_byte. Duplicate start_byte values
     // would clobber each other but the tree-sitter walker emits each
     // gaiji node once, so there are no duplicates by construction.
-    spans.iter().map(|s| (s.start_byte, s.clone())).collect()
+    // The value is `Arc<GaijiSpan>` for cheap incremental carry-forward.
+    spans
+        .iter()
+        .map(|s| (s.start_byte, Arc::clone(s)))
+        .collect()
 }
 
 /// Per-document orchestrator. Holds the [`BufferState`] mutex on the

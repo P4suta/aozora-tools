@@ -121,7 +121,7 @@ fn bench_inlay(c: &mut Criterion) {
     // snapshot's BTreeMap once. Production reads use the BTreeMap
     // directly via `Snapshot::gaiji_spans.values()`; this bench is the
     // only consumer of the slice form.
-    let spans: Vec<GaijiSpan> = snap.gaiji_spans.values().cloned().collect();
+    let spans: Vec<Arc<GaijiSpan>> = snap.gaiji_spans.values().cloned().collect();
     let range = full_range_for(&snap.text, &snap.line_index);
     let mut g = c.benchmark_group("inlay");
     g.bench_function("solo_full_range_bouten_6mb", |b| {
