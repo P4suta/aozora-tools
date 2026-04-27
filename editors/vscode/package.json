@@ -70,6 +70,23 @@
         "category": "Aozora"
       },
       {
+        "command": "aozora.showOutline",
+        "title": "Aozora: アウトラインを表示 (見出しの一覧)",
+        "category": "Aozora"
+      },
+      {
+        "command": "aozora.foldAll",
+        "title": "Aozora: 全段落を折りたたむ",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora"
+      },
+      {
+        "command": "aozora.unfoldAll",
+        "title": "Aozora: 全段落を展開する",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora"
+      },
+      {
         "command": "aozora.wrap.ruby",
         "title": "選択した字にルビをふる (例: 青空 → ｜青空《あおぞら》)",
         "category": "Aozora",
@@ -130,6 +147,11 @@
           "command": "aozora.openPreview",
           "when": "editorLangId == aozora",
           "group": "navigation"
+        },
+        {
+          "command": "aozora.showOutline",
+          "when": "editorLangId == aozora",
+          "group": "navigation@2"
         },
         {
           "command": "aozora.openNotationGuide",
@@ -206,6 +228,23 @@
           "type": "boolean",
           "default": true,
           "description": "Visually collapse `※［＃description、mencode］` gaiji notations to their resolved character when the cursor is elsewhere. The source re-appears when the cursor enters the span. Disable to always show the raw notation."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[aozora]": {
+        "editor.semanticHighlighting.enabled": true,
+        "editor.foldingStrategy": "auto",
+        "editor.showFoldingControls": "mouseover",
+        "editor.unicodeHighlight.ambiguousCharacters": false,
+        "editor.unicodeHighlight.invisibleCharacters": false,
+        "editor.unicodeHighlight.nonBasicASCII": false
+      },
+      "editor.semanticTokenColorCustomizations": {
+        "rules": {
+          "*.aozora": {
+            "fontStyle": ""
+          }
         }
       }
     },

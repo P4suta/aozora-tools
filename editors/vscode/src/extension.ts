@@ -103,6 +103,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // palette, the editor context menu, and the welcome walkthrough.
   registerNotationGuideCommand(context);
 
+  // Discoverability shortcuts for the auto-wired LSP features
+  // (foldingRange / documentSymbol / semanticTokens). VS Code picks
+  // those up from the LSP capabilities automatically — the symbols
+  // panel populates, the gutter shows fold chevrons, the editor
+  // colours ruby/gaiji per the active theme — but new users don't
+  // necessarily know the built-in keybindings (Ctrl+Shift+O for the
+  // outline picker, etc). The proxy commands below appear in the
+  // Command Palette under the "Aozora:" prefix so they're findable
+  // alongside our other contributions.
+  registerLspFeatureShortcuts(context);
+
   try {
     await client.start();
   } catch (err) {
@@ -119,6 +130,26 @@ export async function deactivate(): Promise<void> {
     await client.stop();
     client = undefined;
   }
+}
+
+/// Wire three thin proxies that delegate to VS Code built-in
+/// commands. Their value is **discoverability**: the shortcuts
+/// appear in the Command Palette under our `Aozora:` prefix so a
+/// user typing "aozora" sees outline / fold-all / unfold-all next
+/// to the existing wrap-with-ruby etc commands. Without these,
+/// the LSP-driven features (documentSymbol, foldingRange) work
+/// but new users don't know to press the built-in shortcut keys.
+function registerLspFeatureShortcuts(context: ExtensionContext): void {
+  const proxy = (cmdId: string, builtin: string): void => {
+    context.subscriptions.push(
+      commands.registerCommand(cmdId, async () => {
+        await commands.executeCommand(builtin);
+      }),
+    );
+  };
+  proxy("aozora.showOutline", "outline.focus");
+  proxy("aozora.foldAll", "editor.foldAll");
+  proxy("aozora.unfoldAll", "editor.unfoldAll");
 }
 
 // Minimal VS Code variable resolver for the few substitutions that
