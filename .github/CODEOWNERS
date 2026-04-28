@@ -1,0 +1,10 @@
+# GitHub auto-requests review from CODEOWNERS on PRs.
+# aozora-tools is a single-maintainer project; route everything to @P4suta.
+
+* @P4suta
+
+/.github/workflows/        @P4suta
+/crates/aozora-lsp/        @P4suta
+/crates/aozora-fmt/        @P4suta
+/crates/tree-sitter-aozora/ @P4suta
+/editors/vscode/           @P4suta

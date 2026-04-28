@@ -13,7 +13,10 @@ edition      = "2024"
 rust-version = "1.95.0"
 license      = "Apache-2.0 OR MIT"
 authors      = ["aozora-tools contributors"]
-repository   = "local-only"
+repository   = "https://github.com/P4suta/aozora-tools"
+homepage     = "https://github.com/P4suta/aozora-tools"
+keywords     = ["aozora", "japanese", "lsp", "formatter", "tree-sitter"]
+categories   = ["development-tools", "command-line-utilities", "text-editors"]
 
 [workspace.dependencies]
 # aozora library surface — top-level façade over the borrowed-AST
@@ -23,21 +26,11 @@ repository   = "local-only"
 #
 # `aozora-encoding` is needed separately for the `gaiji::resolve`
 # entry the hover handler calls into.
-#
-# Currently a `file://` URL pointing at the local `aozora` checkout so
-# the tag resolution flow is exercised end-to-end without needing
-# GitHub availability. When aozora is pushed public, swap the URL with
-# a single sd invocation:
-#
-#   sd 'file:///home/yasunobu/projects/aozora' \
-#      'https://github.com/P4suta/aozora' Cargo.toml
-#
-# The `tag = "v0.1.0"` pin is stable across that switch.
-aozora          = { git = "file:///home/yasunobu/projects/aozora", tag = "v0.1.0" }
-aozora-encoding = { git = "file:///home/yasunobu/projects/aozora", tag = "v0.1.0" }
+aozora          = { version = "0.2.0", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.0" }
+aozora-encoding = { version = "0.2.0", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.0" }
 
 # Internal workspace members
-aozora-fmt = { path = "crates/aozora-fmt" }
+aozora-fmt = { version = "0.1.0", path = "crates/aozora-fmt" }
 
 # CLI
 clap   = { version = "4.6.1", features = ["derive", "wrap_help"] }
@@ -81,17 +74,6 @@ shuttle = "0.7"
 # latency (p99 / max); HDRHistogram gives constant-memory percentile
 # tracking with bounded relative error.
 hdrhistogram = { version = "7.5", default-features = false }
-
-# Local-development override: while the v0.1.0 tag is being iterated
-# on, point the aozora-* crates at the local checkout so the
-# workspace picks up uncommitted-to-tag changes without needing a tag
-# force-move on every iteration. The plan's intended public-release
-# form is `tag = "v0.1.0"` against an `https://github.com/P4suta/aozora`
-# remote; this override is committed but only matters for `file://`
-# sources, so a `sd file:// https://` flip removes its effect cleanly.
-[patch."file:///home/yasunobu/projects/aozora"]
-aozora          = { path = "/home/yasunobu/projects/aozora/crates/aozora" }
-aozora-encoding = { path = "/home/yasunobu/projects/aozora/crates/aozora-encoding" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

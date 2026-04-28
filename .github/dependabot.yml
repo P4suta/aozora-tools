@@ -1,0 +1,35 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 20
+    groups:
+      rust-deps:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      actions-sha-bumps:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    # Bumps the VS Code extension's bun-managed package.json.
+    directory: "/editors/vscode"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      vscode-deps:
+        patterns: ["*"]

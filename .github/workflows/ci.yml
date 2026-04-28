@@ -1,13 +1,8 @@
 # CI for aozora-tools.
 #
-# This is a dormant workflow — the repo is local-only for now
-# (see ADR-0009 in the sibling afm repo). When the repo becomes
-# public, this workflow runs on every push and PR and is
-# the automated gate before merge.
-#
-# The workflow intentionally depends on the sibling `afm` repo
-# being checked out next to this one; when that's not possible
-# in CI, we check `afm` out by ref.
+# Runs on every push and PR to main. The aozora dependency is fetched
+# from the public sibling repo (P4suta/aozora) at the pinned v0.2.0
+# tag; the only checkout this workflow needs is aozora-tools itself.
 
 name: ci
 
@@ -18,28 +13,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
 
 jobs:
   rust:
+    name: rust (fmt + clippy + test + doc)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout aozora-tools
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          path: aozora-tools
-
-      # The Cargo.toml uses path = "../afm/..." so afm must live
-      # next to the aozora-tools checkout. Pin afm to v0.1.0 once
-      # that tag exists; until then, pin to the main branch.
-      - name: Checkout sibling afm repository
-        uses: actions/checkout@v4
-        with:
-          repository: P4suta/afm
-          path: afm
-          ref: main
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -49,26 +37,36 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: aozora-tools
 
-      - name: fmt (check)
-        working-directory: aozora-tools
+      - name: fmt --check
         run: cargo fmt --all -- --check
 
       - name: clippy
-        working-directory: aozora-tools
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: build
-        working-directory: aozora-tools
-        run: cargo build --workspace --all-targets
+        run: cargo build --workspace --all-targets --locked
 
       - name: test
-        working-directory: aozora-tools
-        run: cargo test --workspace
+        run: cargo test --workspace --all-targets --locked
+
+      - name: doc (deny broken intra-doc links)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --document-private-items --locked
+
+      - name: bench --no-run
+        run: cargo bench --workspace --no-run --locked
+
+  typos:
+    name: typos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1
 
   vscode:
+    name: vscode extension (biome + tsc)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +74,6 @@ jobs:
       - name: Install
         working-directory: editors/vscode
         run: bun install --frozen-lockfile
-      - name: Typecheck / build
+      - name: Check (biome + tsc, no writes)
         working-directory: editors/vscode
-        run: bun run compile
+        run: bun run check
