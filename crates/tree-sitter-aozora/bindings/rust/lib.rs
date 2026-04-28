@@ -2,7 +2,9 @@
 //!
 //! Exposes [`LANGUAGE`] — a [`tree_sitter_language::LanguageFn`] —
 //! that the consuming crate (today: `aozora-lsp`) feeds into a
-//! [`tree_sitter::Parser`] to incrementally parse aozora source.
+//! `tree_sitter::Parser` to incrementally parse aozora source.
+//! (We don't intra-doc-link `tree_sitter` because this crate doesn't
+//! depend on it directly — only consumers do.)
 //!
 //! ## Why this crate exists
 //!
@@ -28,7 +30,8 @@ unsafe extern "C" {
 }
 
 /// The tree-sitter language for aozora-flavored markdown. Hand the
-/// returned [`LanguageFn`] to [`tree_sitter::Parser::set_language`].
+/// returned [`LanguageFn`] to `tree_sitter::Parser::set_language`
+/// (in a downstream crate that depends on `tree_sitter`).
 ///
 /// # Example
 ///

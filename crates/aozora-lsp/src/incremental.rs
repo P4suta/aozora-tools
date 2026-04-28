@@ -190,7 +190,7 @@ fn chunk_callback<'r>(rope: &'r Rope) -> impl FnMut(usize, Point) -> &'r [u8] {
 /// tree-sitter [`InputEdit`]. The caller supplies byte offsets;
 /// the `Point` fields are left at zero because the LSP backend's
 /// tree consumers never query row/column positions on the TS tree
-/// (everything is byte-driven via [`crate::position`]).
+/// (everything is byte-driven via `crate::position`, private).
 #[must_use]
 pub fn input_edit(start_byte: usize, old_end_byte: usize, new_end_byte: usize) -> InputEdit {
     InputEdit {

@@ -1,0 +1,55 @@
+# typos (https://github.com/crate-ci/typos) configuration
+# Named `_typos.toml` so it doesn't shadow Cargo features matching on `typos.*`.
+
+[default]
+# Honorary words unique to this project / domain.
+extend-ignore-identifiers-re = [
+    "[A-Fa-f0-9]{7,}",   # git SHAs in comments / ADRs
+    "U\\+[0-9A-Fa-f]+",  # Unicode codepoint references in gaiji docs
+    "fun_[0-9a-f]+",     # samply unresolved-symbol placeholders
+]
+
+[default.extend-words]
+# Project-specific terms — Japanese transliteration shouldn't trigger
+# English typo heuristics, neither should aozora-domain shorthand.
+afm     = "afm"          # aozora-flavored markdown — historical name
+aozora  = "aozora"
+gaiji   = "gaiji"        # 外字 — out-of-set glyphs
+mencode = "mencode"      # 面区点 — JIS plane/row/cell reference
+chuki   = "chuki"        # 注記 — typesetting annotation
+ruby    = "ruby"         # ルビ — also the language but irrelevant here
+bouten  = "bouten"       # 傍点 — emphasis dots
+kome    = "kome"         # ※ — gaiji marker name
+oozato  = "oozato"       # おおざと radical
+ouroboros = "ouroboros"  # mentioned in ADRs / discussions
+
+# Names appearing in NOTICE / handoffs / commit messages.
+Yasunobu = "Yasunobu"
+
+# Tree-sitter / LSP / dep names that could trip the dictionary.
+tower      = "tower"
+ropey      = "ropey"
+arcswap    = "arcswap"
+
+# `mut` is a Rust keyword and shows up everywhere in code; the
+# dictionary occasionally flags it. Pin it.
+mut = "mut"
+
+[files]
+extend-exclude = [
+    "target/",
+    "*.lock",
+    "*.html",
+    "*.json.gz",                  # samply traces
+    "*.syms.json",                # samply symbol sidecars
+    "samples/",                   # aozora corpus fixtures
+    "crates/tree-sitter-aozora/src/parser.c",      # generated
+    "crates/tree-sitter-aozora/src/grammar.json",  # generated
+    "crates/tree-sitter-aozora/bindings/",         # generated
+    "crates/aozora-lsp/samples/",                  # corpus fixtures
+    "editors/vscode/node_modules/",
+    "editors/vscode/out/",
+    "editors/vscode/bun.lock",
+    "editors/vscode/bun.lockb",
+    "docs/handoff-*.md",          # narrative handoff docs — proper-noun heavy
+]

@@ -128,7 +128,7 @@ fn build_action(uri: &Url, edits: Vec<TextEdit>, title: &str) -> CodeActionOrCom
 
 /// Convert the LSP-supplied `params.context.diagnostics` into a
 /// quick-fix [`CodeAction`] list. Each diagnostic carries a JSON
-/// `data` payload (set by [`crate::diagnostics::describe`]) describing
+/// `data` payload (set by `crate::diagnostics::describe`, private) describing
 /// what kind of fix is appropriate; this function decodes the
 /// payload and emits a concrete [`WorkspaceEdit`].
 ///

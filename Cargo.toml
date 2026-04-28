@@ -100,6 +100,14 @@ dead_code   = "deny"
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 
+# Restriction lints that catch unambiguous WIP markers. `panic!` is
+# excluded because tests use `panic!("expected …")` idiomatically;
+# `print_stdout` / `print_stderr` are excluded because xtask binaries
+# legitimately write to stdout/stderr.
+dbg_macro     = "deny"
+todo          = "deny"
+unimplemented = "deny"
+
 [profile.release]
 lto           = "thin"
 codegen-units = 1

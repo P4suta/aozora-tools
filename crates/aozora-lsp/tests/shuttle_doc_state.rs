@@ -43,16 +43,31 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
     clippy::doc_markdown,
+    clippy::similar_names,
+    clippy::inconsistent_struct_constructor,
     reason = "test harness: bounded inputs + descriptive prose docs"
 )]
 
 use std::collections::HashMap;
 use std::env;
 
-use aozora_parser::{TextEdit, apply_edits, parse};
+use aozora_lsp::{LocalTextEdit, apply_edits};
 use shuttle::sync::{Arc, Mutex as ShuttleMutex};
 use shuttle::thread;
 use tower_lsp::lsp_types::Url;
+
+/// Deterministic per-text "parsed state" proxy. The shuttle harness
+/// only cares that the cached value matches a fresh re-derivation —
+/// any pure function of the text serves. Picking
+/// `Document::new(text).parse().serialize().len()` keeps us exercising
+/// the real parser + serializer round-trip (the same fixed point the
+/// formatter relies on) so a divergence here would catch a parser bug
+/// too, not just a state-cache bug.
+fn parsed_state_proxy(text: &str) -> usize {
+    let document = aozora::Document::new(text.to_owned());
+    let tree = document.parse();
+    tree.serialize().len()
+}
 
 // Why we don't use `dashmap::DashMap` here:
 //   DashMap uses `parking_lot::Mutex` internally, which is not
@@ -74,21 +89,21 @@ struct ShuttleDoc {
 
 impl ShuttleDoc {
     fn new(text: String) -> Self {
-        let parsed = parse(&text);
+        let parsed_normalized_len = parsed_state_proxy(&text);
         Self {
-            parsed_normalized_len: parsed.artifacts.normalized.len(),
+            parsed_normalized_len,
             text,
         }
     }
-    fn apply(&mut self, edits: &[TextEdit]) {
+    fn apply(&mut self, edits: &[LocalTextEdit]) {
         if let Ok(t) = apply_edits(&self.text, edits) {
             self.text = t;
-            self.parsed_normalized_len = parse(&self.text).artifacts.normalized.len();
+            self.parsed_normalized_len = parsed_state_proxy(&self.text);
         }
     }
     fn replace(&mut self, t: String) {
         self.text = t;
-        self.parsed_normalized_len = parse(&self.text).artifacts.normalized.len();
+        self.parsed_normalized_len = parsed_state_proxy(&self.text);
     }
 }
 
@@ -140,10 +155,14 @@ fn lifecycle_iteration() {
     let uri_b_t1 = uri_b.clone();
     let t1 = thread::spawn(move || {
         if let Some(doc) = doc_map_get(&docs_t1, &uri_a_t1) {
-            doc.lock().unwrap().apply(&[TextEdit::new(0..0, "T1.")]);
+            doc.lock()
+                .unwrap()
+                .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
         }
         if let Some(doc) = doc_map_get(&docs_t1, &uri_b_t1) {
-            doc.lock().unwrap().apply(&[TextEdit::new(0..0, "T1.")]);
+            doc.lock()
+                .unwrap()
+                .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
         }
         if let Some(doc) = doc_map_get(&docs_t1, &uri_a_t1) {
             doc.lock()
@@ -157,12 +176,16 @@ fn lifecycle_iteration() {
     let uri_b_t2 = uri_b.clone();
     let t2 = thread::spawn(move || {
         if let Some(doc) = doc_map_get(&docs_t2, &uri_b_t2) {
-            doc.lock().unwrap().apply(&[TextEdit::new(0..0, "T2.")]);
+            doc.lock()
+                .unwrap()
+                .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
         }
         // T2 may close A at any time relative to T1's writes.
         doc_map_remove(&docs_t2, &uri_a_t2);
         if let Some(doc) = doc_map_get(&docs_t2, &uri_b_t2) {
-            doc.lock().unwrap().apply(&[TextEdit::new(0..0, "T2.")]);
+            doc.lock()
+                .unwrap()
+                .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
         }
     });
 
@@ -179,11 +202,10 @@ fn lifecycle_iteration() {
     };
     for (uri, doc) in snapshot {
         let doc = doc.lock().unwrap();
-        let fresh = parse(&doc.text);
         assert_eq!(
             doc.parsed_normalized_len,
-            fresh.artifacts.normalized.len(),
-            "doc {uri}: cached normalized length disagrees with fresh parse",
+            parsed_state_proxy(&doc.text),
+            "doc {uri}: cached parsed-state proxy disagrees with fresh derivation",
         );
     }
 }

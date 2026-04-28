@@ -1,21 +1,33 @@
-# aozora-tools — lefthook hooks (pre-commit / commit-msg / pre-push).
+# aozora-tools — strict lefthook hooks (pre-commit / commit-msg /
+# pre-push / post-merge / post-checkout).
 #
-# This repo runs straight on the host (no docker container — unlike
-# the sibling `aozora` repo where everything routes through `just _dev`).
-# Hooks call `cargo` and `bun` directly.
+# Runs straight on the host (no docker container — unlike the sibling
+# `aozora` repo where everything routes through `just _dev`). Hooks
+# call `cargo`, `bun`, `typos`, `rg` directly. All of them are managed
+# by mise — see `~/.config/mise/config.toml` (chezmoi-tracked).
 #
 # Enable after clone:  `lefthook install`
 # Disable:             `lefthook uninstall`
 #
 # ## jj+git colocated note
 #
-# This is a `jj git init --colocate` repo. jj **bypasses git hooks**
-# for `jj commit` / `jj describe` / `jj squash` etc — those operations
+# This is a `jj git init --colocate` repo. jj BYPASSES git hooks for
+# `jj commit` / `jj describe` / `jj squash` etc — those operations
 # never touch the filesystem `.git/hooks/*` files. So `pre-commit` and
 # `commit-msg` only fire on direct `git commit` (rare for the jj
 # workflow). `pre-push` IS load-bearing because `jj git push` delegates
 # to `git push` underneath; the pre-push gate catches everything that
 # slipped past the jj-side editor / clippy / test loop.
+#
+# ## Strictness policy
+#
+# - **pre-commit** is the gentle pass: format-and-restage where it
+#   helps, deny the obvious mistakes (broken clippy, debug artifacts,
+#   typos). Per-file globs keep this fast on small commits.
+# - **pre-push** is the strict gate: no writes, every check that can
+#   run locally runs here. Build the bench targets, build the docs,
+#   run the full test suite, type-check the VS Code extension. If
+#   anything fails, the push is blocked.
 #
 # Reference: https://lefthook.dev/configuration/
 
@@ -32,13 +44,25 @@ pre-commit:
       glob: "*.rs"
       run: cargo fmt --all
       stage_fixed: true
+    # Workspace clippy. The workspace lints in Cargo.toml already pin
+    # `clippy::pedantic = warn` plus restriction lints
+    # `dbg_macro / todo / unimplemented = deny`, so `-D warnings`
+    # upgrades all warnings to errors and the WIP-marker macros are
+    # caught here without a separate `rg`-based hook. No extra clippy
+    # flags needed.
     rust-clippy:
       glob: "*.{rs,toml}"
       run: cargo clippy --workspace --all-targets -- -D warnings
-    # `biome check --write` (formatter + linter + organize-imports) plus
-    # `tsc --noEmit` (type-check). Writes are re-staged. Runs across the
-    # whole `editors/vscode` workspace because biome+tsc resolve via
-    # tsconfig.json + biome.jsonc and don't accept loose file lists.
+    # Spell check. Dictionary + project terms live in `_typos.toml`.
+    # `typos` ships via mise (`github:crate-ci/typos`); the user's
+    # interactive shell has the mise shim on PATH, which `git commit`
+    # inherits when invoking the hook.
+    typos:
+      run: typos
+    # VS Code extension: biome (lint + format + organize-imports) +
+    # tsc type-check. `bun run check:fix` writes; we re-stage. Runs
+    # workspace-wide because biome+tsc resolve via tsconfig.json /
+    # biome.jsonc and don't accept loose file lists.
     vscode:
       glob: "editors/vscode/**/*.{ts,tsx,js,jsx,json,jsonc}"
       run: cd editors/vscode && bun run check:fix
@@ -59,13 +83,48 @@ pre-push:
   skip:
     - rebase
   commands:
-    # Strict checks that must NOT auto-fix. If any fails, the push is
-    # blocked; fix locally and re-push.
+    # No-write checks. Every one is a hard gate.
     rust-fmt-check:
       run: cargo fmt --all -- --check
     rust-clippy:
-      run: cargo clippy --workspace --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings
     rust-test:
-      run: cargo test --workspace --lib
+      # `--all-targets` runs lib + integration + bench + example
+      # smoke-tests. Slower than `--lib` alone but catches integration
+      # regressions before they reach `main`.
+      run: cargo test --workspace --all-targets
+    # Build the bench binaries without running them. Catches bench
+    # compile errors that wouldn't show up in `cargo test`. Cheap
+    # (~3s after warm cache) and prevents broken benches from landing.
+    rust-bench-build:
+      run: cargo bench --workspace --no-run
+    # Doc build — denies broken intra-doc links. Catches stale rustdoc
+    # references after refactors that renamed modules / items.
+    rust-doc:
+      run: cargo doc --workspace --no-deps --document-private-items
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+    # Spell check (same config as pre-commit, but mandatory here).
+    typos:
+      run: typos
+    # VS Code TypeScript: biome (no writes) + tsc type-check.
     vscode-check:
       run: cd editors/vscode && bun run check
+
+# After `git pull` / `git merge` / `git checkout` (i.e. when Cargo.lock
+# may have moved underneath us), surface dependency drift so the
+# developer notices. Non-blocking — these are informational.
+post-merge:
+  commands:
+    cargo-fetch-warm:
+      glob: "{Cargo.toml,Cargo.lock,crates/*/Cargo.toml}"
+      run: cargo fetch --quiet || true
+    bun-install-warm:
+      glob: "editors/vscode/{package.json,bun.lock,bun.lockb}"
+      run: cd editors/vscode && bun install --frozen-lockfile || true
+
+post-checkout:
+  commands:
+    cargo-fetch-warm:
+      glob: "{Cargo.toml,Cargo.lock,crates/*/Cargo.toml}"
+      run: cargo fetch --quiet || true

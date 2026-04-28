@@ -42,8 +42,8 @@ use tree_sitter_aozora::kind;
 pub struct GaijiSpan {
     /// Byte offset of the leading `※`. Whether this is paragraph-
     /// local or doc-absolute depends on the caller — the walker
-    /// returns local; [`crate::paragraph::build_paragraph_snapshot`]
-    /// shifts them to absolute.
+    /// returns local; `crate::paragraph::build_paragraph_snapshot`
+    /// (private) shifts them to absolute.
     pub start_byte: u32,
     /// Byte offset just past the closing `］`. Same coordinate
     /// frame as `start_byte`.
