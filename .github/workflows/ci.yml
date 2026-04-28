@@ -38,8 +38,17 @@ env:
   CARGO_NET_RETRY: 10
   RUSTFLAGS: -D warnings
   RUSTDOCFLAGS: -D warnings
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
+  # NB: sccache via mozilla-actions/sccache-action was tried with the
+  # GHA Cache backend but the runner-side sccache init writes a probe
+  # blob (`.sccache_check`) at startup and the action exits non-zero
+  # if that write fails. Whenever the GHA Cache API has a transient
+  # outage (which it does, see GitHub Actions status history), every
+  # job in this matrix dies on a 400 from the cache API before any
+  # cargo invocation runs. Swatinem/rust-cache@v2 below already gives
+  # us the bulk of the wins (target-dir + registry caching) without
+  # the fail-fast surface; sccache stays off until the action grows a
+  # `--tolerate-cache-failures` flag or we move to a more resilient
+  # backend (s3 / cloud storage).
 
 jobs:
   rust:
@@ -60,14 +69,6 @@ jobs:
       # mold from upstream releases — newer than apt's package.
       - name: Install mold linker
         uses: rui314/setup-mold@v1
-
-      # sccache with native GitHub Actions Cache backend. Complements
-      # Swatinem/rust-cache below: sccache caches compilation units
-      # (rustc artefact-level), Swatinem caches the whole `target/`
-      # plus registry index (target-dir-level). Together: cold cache
-      # builds in ~1m, warm cache in ~30s.
-      - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.7
 
       - name: Cache cargo target / registry
         uses: Swatinem/rust-cache@v2
@@ -102,9 +103,6 @@ jobs:
 
       - name: bench --no-run
         run: cargo bench --workspace --no-run --locked
-
-      - name: sccache stats
-        run: sccache --show-stats
 
   typos:
     name: typos
