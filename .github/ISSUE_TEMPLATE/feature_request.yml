@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a new LSP capability, formatter rule, VS Code command, or tree-sitter highlight.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests for the **parser** itself (new Aozora
+        notation, AST shape, gaiji handling) belong on the
+        [`aozora` repo](https://github.com/P4suta/aozora/issues/new/choose).
+        Anything editor-surface (LSP, formatter, VS Code, tree-sitter)
+        belongs here.
+
+  - type: input
+    id: component
+    attributes:
+      label: Component
+      placeholder: aozora-lsp / aozora-fmt / editors/vscode / tree-sitter-aozora
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What can't you do today, and how does this feature help? Reference the use case if you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: |
+        For LSP: which capability (`textDocument/codeAction`, custom
+        request, …) and the request/response shape.
+        For formatter / fmt: input/output example pair.
+        For VS Code: command palette entry + keybinding (if any) +
+        what it should do.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds, related LSP capabilities, similar features in other editors.

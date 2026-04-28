@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: aozora parser issue
+    url: https://github.com/P4suta/aozora/issues/new/choose
+    about: Parser bug, AST regression, gaiji resolution, encoding — file against the sibling aozora repo, not aozora-tools.
+  - name: afm Markdown layer issue
+    url: https://github.com/P4suta/afm/issues/new/choose
+    about: CommonMark / GFM behaviour, afm dialect bug — file against the sibling afm repo, not aozora-tools.
+  - name: Aozora Bunko notation reference
+    url: https://www.aozora.gr.jp/annotation/
+    about: Official 青空文庫 annotation spec — consult before reporting a notation-handling issue.

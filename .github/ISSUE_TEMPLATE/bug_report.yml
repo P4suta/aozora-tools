@@ -1,0 +1,85 @@
+name: Bug report
+description: Report an LSP crash, formatter regression, VS Code extension misbehaviour, or wrong tree-sitter highlight in aozora-tools.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue. The single most
+        valuable thing you can supply is a **minimal reproducible
+        input** — the shortest source text + the smallest LSP / editor
+        sequence that triggers the issue.
+
+        If the underlying bug is in the parser itself (panic on
+        well-formed Aozora notation, wrong AST, gaiji misresolution),
+        please file it on the
+        [`aozora` repo](https://github.com/P4suta/aozora/issues/new/choose)
+        instead — aozora-tools just consumes that parser as a
+        tag-pinned dep.
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected component
+      description: aozora-fmt CLI / aozora-lsp / VS Code extension / tree-sitter grammar
+      placeholder: e.g. aozora-lsp
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal reproducing input
+      description: |
+        The shortest aozora source + the editor / LSP request that
+        triggers the bug. Inline as a fenced code block; attach the
+        file if it's larger than ~30 lines.
+      placeholder: |
+        Source:
+        ```
+        ｜青梅《おうめ》
+        ［＃ここから2字下げ］
+        ```
+
+        LSP request: textDocument/formatting on the buffer above.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include any stack trace, panic message, LSP error response, or screenshot.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: aozora-tools version
+      description: "`aozora-fmt --version`, `aozora-lsp --version`, or the commit SHA from a from-source build."
+      placeholder: v0.1.3 (or commit abcd1234)
+    validations:
+      required: true
+
+  - type: input
+    id: rust
+    attributes:
+      label: Rust toolchain
+      description: "`rustc --version`"
+      placeholder: rustc 1.95.0 (59807616e 2026-04-14)
+
+  - type: input
+    id: editor
+    attributes:
+      label: Editor + LSP client (if relevant)
+      description: VS Code 1.94 / Helix 24.07 / Neovim + nvim-lspconfig 0.10 / …
