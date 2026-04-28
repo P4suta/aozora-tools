@@ -143,7 +143,7 @@ fn check_loadavg() -> Check {
     let cpus = u32::try_from(num_cpus_online()).unwrap_or(1).max(1);
     let cpus_f = f32::from(u16::try_from(cpus).unwrap_or(u16::MAX));
     let Some(load) = load_1m else {
-        return Check::Warn("loadavg unparseable".to_owned());
+        return Check::Warn("loadavg unparsable".to_owned());
     };
     let ratio = load / cpus_f;
     if ratio > 0.5 {
@@ -165,15 +165,26 @@ fn num_cpus_online() -> usize {
     let Ok(raw) = fs::read_to_string("/sys/devices/system/cpu/online") else {
         return 1;
     };
-    raw.trim()
+    parse_cpu_online_list(&raw)
+}
+
+/// Parse a kernel-format CPU range list (`"0-3,8-11"` etc) into a
+/// total count. Tolerant of malformed input (`hi < lo`, missing
+/// fields, empty file) — never panics, never returns 0.
+fn parse_cpu_online_list(raw: &str) -> usize {
+    let total: usize = raw
+        .trim()
         .split(',')
         .map(|range| {
             let mut it = range.splitn(2, '-');
             let lo: usize = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let hi: usize = it.next().and_then(|s| s.parse().ok()).unwrap_or(lo);
-            hi - lo + 1
+            // Saturate on malformed `hi < lo` input rather than
+            // panicking on `usize` underflow.
+            hi.saturating_sub(lo).saturating_add(1)
         })
-        .sum()
+        .sum();
+    total.max(1)
 }
 
 /// Print a brief reminder of the post-capture workflow at the end
@@ -194,4 +205,46 @@ pub fn print_post_run_help(out: &std::path::Path, rate_hz: u32) {
     );
     eprintln!("    2. Firefox Profiler:   samply load {}", out.display());
     let _ = SAMPLY_RATE_HZ_DEFAULT; // pin for clippy
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cpu_list_parses_simple_range() {
+        assert_eq!(parse_cpu_online_list("0-15"), 16);
+    }
+
+    #[test]
+    fn cpu_list_parses_singleton() {
+        assert_eq!(parse_cpu_online_list("0"), 1);
+    }
+
+    #[test]
+    fn cpu_list_parses_disjoint_ranges() {
+        // Common form on hosts with offlined cores in the middle.
+        assert_eq!(parse_cpu_online_list("0-3,8-11"), 8);
+    }
+
+    /// Regression: the earlier `hi - lo + 1` form would underflow
+    /// `usize` (panic in debug) on a malformed `hi < lo` line.
+    /// Pin: saturating arithmetic survives garbage input.
+    #[test]
+    fn cpu_list_does_not_underflow_on_inverted_range() {
+        // Should not panic; result is whatever fits the saturating
+        // arithmetic — the exact count doesn't matter because the
+        // input is unspecified, only that the function survives.
+        let _ = parse_cpu_online_list("15-0");
+        let _ = parse_cpu_online_list("99-1,5-2");
+    }
+
+    #[test]
+    fn cpu_list_returns_at_least_one_on_empty_input() {
+        // Defensive: a missing /sys/devices/system/cpu/online line
+        // shouldn't make the rest of preflight think there are zero
+        // cores (which would NaN the loadavg ratio). Pin the floor.
+        assert!(parse_cpu_online_list("") >= 1);
+        assert!(parse_cpu_online_list("garbage") >= 1);
+    }
 }

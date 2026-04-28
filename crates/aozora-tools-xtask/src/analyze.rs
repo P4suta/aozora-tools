@@ -515,7 +515,11 @@ fn lookup_symbol(syms: &BinarySymbols, rva: u32) -> Option<String> {
         return None;
     }
     let (start, size, ref name) = syms.entries[i - 1];
-    if rva >= start && rva < start + size {
+    // `start + size` would overflow when a symbol sits near u32::MAX
+    // — saturate so the check still returns the correct bool without
+    // panicking in debug builds.
+    let end = start.saturating_add(size);
+    if rva >= start && rva < end {
         Some(name.clone())
     } else {
         None
@@ -658,6 +662,40 @@ mod tests {
         assert_eq!(lookup_symbol(&syms, 250), None);
     }
 
+    /// Regression: a symbol whose `start + size` overflows `u32`
+    /// would panic in debug builds before the saturating-add fix.
+    /// Real linkers don't emit such monsters but parser fuzz / a
+    /// truncated sidecar can produce them, and an analyser that
+    /// crashes on bad input is worse than one that returns `None`.
+    #[test]
+    fn lookup_symbol_does_not_panic_on_size_overflow() {
+        let syms = BinarySymbols {
+            entries: vec![(u32::MAX - 5, u32::MAX, "monster".to_owned())],
+        };
+        // Should match (rva sits inside the saturated range)…
+        assert_eq!(
+            lookup_symbol(&syms, u32::MAX - 1).as_deref(),
+            Some("monster"),
+        );
+        // …and should also gracefully return None for an rva below
+        // the symbol's start without panicking on the overflow check.
+        assert_eq!(lookup_symbol(&syms, 0), None);
+    }
+
+    /// `lookup_symbol` correctly resolves the very last byte of a
+    /// symbol's range — `start + size - 1`. The earlier `<` check
+    /// already had this right; pin it explicitly so a future refactor
+    /// to `<=` doesn't accidentally include the next symbol's first
+    /// byte.
+    #[test]
+    fn lookup_symbol_excludes_byte_after_size() {
+        let syms = BinarySymbols {
+            entries: vec![(100, 50, "alpha".to_owned())],
+        };
+        assert_eq!(lookup_symbol(&syms, 149).as_deref(), Some("alpha"));
+        assert_eq!(lookup_symbol(&syms, 150), None);
+    }
+
     #[test]
     fn sidecar_path_for_strips_gz_and_appends_syms() {
         let trace = Path::new("/tmp/aozora-lsp-burst-1234-5678.json.gz");
@@ -688,11 +726,24 @@ mod tests {
 
     #[test]
     fn classify_alloc_pins_categories() {
-        matches!(classify_alloc("malloc"), AllocKind::Malloc);
-        matches!(classify_alloc("_mmap"), AllocKind::Mmap);
-        matches!(classify_alloc("free"), AllocKind::Free);
-        matches!(classify_alloc("brk"), AllocKind::Other);
-        matches!(classify_alloc("aozora_lsp::foo"), AllocKind::None);
+        // `matches!` returns a bool; without `assert!` it's a no-op.
+        // The earlier form silently passed regardless of the function's
+        // output — pin every category explicitly so a regression in
+        // `classify_alloc` actually fails the test.
+        assert!(matches!(classify_alloc("malloc"), AllocKind::Malloc));
+        assert!(matches!(classify_alloc("realloc"), AllocKind::Malloc));
+        assert!(matches!(classify_alloc("calloc"), AllocKind::Malloc));
+        assert!(matches!(classify_alloc("_libc_malloc"), AllocKind::Malloc));
+        assert!(matches!(classify_alloc("_mmap"), AllocKind::Mmap));
+        assert!(matches!(classify_alloc("mmap"), AllocKind::Mmap));
+        assert!(matches!(classify_alloc("munmap"), AllocKind::Mmap));
+        assert!(matches!(classify_alloc("free"), AllocKind::Free));
+        assert!(matches!(classify_alloc("_libc_free"), AllocKind::Free));
+        assert!(matches!(classify_alloc("brk"), AllocKind::Other));
+        assert!(matches!(classify_alloc("sbrk"), AllocKind::Other));
+        assert!(matches!(classify_alloc("_mprotect"), AllocKind::Other));
+        assert!(matches!(classify_alloc("aozora_lsp::foo"), AllocKind::None));
+        assert!(matches!(classify_alloc(""), AllocKind::None));
     }
 
     #[test]
