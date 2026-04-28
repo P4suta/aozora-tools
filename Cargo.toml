@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version      = "0.1.2"
+version      = "0.1.3"
 edition      = "2024"
 rust-version = "1.95.0"
 license      = "Apache-2.0 OR MIT"
@@ -26,11 +26,11 @@ categories   = ["development-tools", "command-line-utilities", "text-editors"]
 #
 # `aozora-encoding` is needed separately for the `gaiji::resolve`
 # entry the hover handler calls into.
-aozora          = { version = "0.2.2", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.2" }
-aozora-encoding = { version = "0.2.2", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.2" }
+aozora          = { version = "0.2.3", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.3" }
+aozora-encoding = { version = "0.2.3", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.3" }
 
 # Internal workspace members
-aozora-fmt = { version = "0.1.2", path = "crates/aozora-fmt" }
+aozora-fmt = { version = "0.1.3", path = "crates/aozora-fmt" }
 
 # CLI
 clap   = { version = "4.6.1", features = ["derive", "wrap_help"] }
