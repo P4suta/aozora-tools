@@ -144,12 +144,16 @@ fn try_link(
 
 /// Walk forward from `start` looking for `target`. Stops at the
 /// scan window or a newline (aozora delimiters never span lines).
+///
+/// The `SCAN_WINDOW` cap is enforced as a *byte distance* on the
+/// fly rather than as a pre-computed end offset — the latter could
+/// land mid-codepoint when the window cuts a multi-byte char in
+/// half (regression: `&source[..mid_codepoint]` panics).
 fn find_partner_forward(source: &str, start: usize, target: char) -> Option<(usize, usize)> {
-    let cap = (start + SCAN_WINDOW).min(source.len());
     let mut idx = start;
-    while idx < cap {
-        let rest = &source[idx..cap];
-        let ch = rest.chars().next()?;
+    let limit = source.len();
+    while idx < limit && idx - start < SCAN_WINDOW {
+        let ch = source[idx..].chars().next()?;
         if ch == '\n' {
             return None;
         }
@@ -162,8 +166,16 @@ fn find_partner_forward(source: &str, start: usize, target: char) -> Option<(usi
 }
 
 /// Walk backward from `end` (exclusive) looking for `target`.
+///
+/// `floor` is snapped to the next valid UTF-8 boundary so a
+/// `SCAN_WINDOW` saturating-sub that lands inside a multi-byte
+/// codepoint does not poison the upcoming slice (regression:
+/// `&source[mid_codepoint..end]` panics).
 fn find_partner_backward(source: &str, end: usize, target: char) -> Option<(usize, usize)> {
-    let floor = end.saturating_sub(SCAN_WINDOW);
+    let mut floor = end.saturating_sub(SCAN_WINDOW);
+    while floor < end && !source.is_char_boundary(floor) {
+        floor += 1;
+    }
     let head = &source[floor..end];
     let mut byte_in_head = head.len();
     for ch in head.chars().rev() {
@@ -265,5 +277,51 @@ mod tests {
         let src = format!("《{filler}》");
         let open_byte = src.find('《').unwrap();
         assert!(linked_editing_at(&src, &LineIndex::new(&src), pos(&src, open_byte)).is_none());
+    }
+
+    /// Regression: a multi-byte filler whose character-count puts the
+    /// `start + SCAN_WINDOW` cap *inside* a multi-byte codepoint used
+    /// to panic with "byte index N is not a char boundary; it is
+    /// inside 'あ'". Pin: forward scan must respect UTF-8 boundaries
+    /// even when the cap falls mid-codepoint.
+    #[test]
+    fn forward_scan_does_not_panic_on_mid_codepoint_window_cap() {
+        // `あ` is 3 UTF-8 bytes; SCAN_WINDOW (1024) is not divisible
+        // by 3, so the cap deliberately lands inside an `あ`.
+        let filler = "あ".repeat(SCAN_WINDOW); // > SCAN_WINDOW bytes
+        let src = format!("《{filler}》");
+        let open_byte = src.find('《').unwrap();
+        // No matching close within the window — the function must
+        // return `None`, not panic.
+        let result = linked_editing_at(&src, &LineIndex::new(&src), pos(&src, open_byte));
+        assert!(result.is_none(), "expected None, got {result:?}");
+    }
+
+    /// Regression: backward scan with `floor = end - SCAN_WINDOW`
+    /// landing inside a multi-byte char used to panic on the slice.
+    #[test]
+    fn backward_scan_does_not_panic_on_mid_codepoint_floor() {
+        // Same idea but mirrored: cursor on the close brace, with
+        // multi-byte filler before it that pushes the backward floor
+        // into a codepoint.
+        let filler = "あ".repeat(SCAN_WINDOW);
+        let src = format!("《{filler}》");
+        let close_byte = src.rfind('》').unwrap();
+        let result = linked_editing_at(&src, &LineIndex::new(&src), pos(&src, close_byte));
+        assert!(result.is_none(), "expected None, got {result:?}");
+    }
+
+    /// Forward scan still finds a partner that sits within the window
+    /// even when multi-byte chars sit between the cursor and the
+    /// close — the boundary fix must not regress the happy path.
+    #[test]
+    fn forward_scan_finds_partner_through_multibyte_filler() {
+        let filler = "あ".repeat(50); // 150 bytes < SCAN_WINDOW
+        let src = format!("《{filler}》");
+        let open_byte = src.find('《').unwrap();
+        let result =
+            linked_editing_at(&src, &LineIndex::new(&src), pos(&src, open_byte)).expect("link");
+        let close_byte = src.rfind('》').unwrap();
+        assert_eq!(result.ranges[1].start, pos(&src, close_byte));
     }
 }

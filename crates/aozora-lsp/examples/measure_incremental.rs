@@ -101,17 +101,17 @@ fn main() {
     println!("post-edit-2 gaiji spans: {v2_spans}");
 
     // Bench another mid-doc edit so caches stay warm and we have a
-    // second data point.
+    // second data point. Snap the next offset to a UTF-8 boundary —
+    // a naïve `mid_offset + 1` lands inside a multi-byte char on
+    // Japanese-heavy fixtures and `apply_changes` rejects it as a
+    // `NonCharBoundary` edit, so the .unwrap() panics.
+    let next_offset = nearest_char_boundary(&state, mid_offset + 1);
     let t = Instant::now();
     state
-        .apply_changes(&[LocalTextEdit::new(
-            mid_offset + 1..mid_offset + 1,
-            " ".to_owned(),
-        )])
+        .apply_changes(&[LocalTextEdit::new(next_offset..next_offset, " ".to_owned())])
         .unwrap();
     println!(
-        "apply_changes (mid-doc @ {} again, incremental path): {:?}",
-        mid_offset + 1,
+        "apply_changes (mid-doc @ {next_offset} again, incremental path): {:?}",
         t.elapsed()
     );
 
@@ -159,13 +159,15 @@ fn main() {
         t.elapsed()
     );
 
+    // Same UTF-8 boundary snap as the bouten path above — `mid + 1`
+    // can land inside a multi-byte char on a kanji-heavy synthetic.
+    let mid_next = nearest_char_boundary(&g_state, mid + 1);
     let t = Instant::now();
     g_state
-        .apply_changes(&[LocalTextEdit::new(mid + 1..mid + 1, " ".to_owned())])
+        .apply_changes(&[LocalTextEdit::new(mid_next..mid_next, " ".to_owned())])
         .unwrap();
     println!(
-        "  apply_changes (mid-doc @ {} again, incremental path): {:?}",
-        mid + 1,
+        "  apply_changes (mid-doc @ {mid_next} again, incremental path): {:?}",
         t.elapsed()
     );
     let g_final = g_state.snapshot().doc_gaiji_spans().len();

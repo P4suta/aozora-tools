@@ -264,6 +264,12 @@ fn shift_existing_spans(
 /// "split at `\n\n` runs" policy. Empty rope yields `[0..0]`.
 /// Worst case (no blank lines for a long stretch) hard-splits at
 /// the [`MAX_PARAGRAPH_BYTES`] cap.
+///
+/// All emitted boundaries land on UTF-8 char boundaries, even when
+/// the cap fallback fires inside a multi-byte codepoint — `\n\n`
+/// boundaries are ASCII-aligned by construction, and the cap path
+/// snaps forward to the next char boundary so downstream
+/// `Rope::byte_slice` calls never panic on mid-codepoint splits.
 #[must_use]
 pub fn paragraph_byte_ranges(rope: &Rope) -> Vec<Range<usize>> {
     let total = rope.len_bytes();
@@ -278,9 +284,15 @@ pub fn paragraph_byte_ranges(rope: &Rope) -> Vec<Range<usize>> {
         let mut end = start;
         let mut soft_end: Option<usize> = None;
         while end < total {
-            // Cap fallback.
+            // Cap fallback: prefer a soft \n boundary that sits
+            // inside the cap window; otherwise hard-split and snap
+            // forward to the next char boundary so the resulting
+            // range is safe to slice through `Rope::byte_slice`.
             if end - start >= MAX_PARAGRAPH_BYTES {
                 end = soft_end.unwrap_or(end).max(start + 1);
+                while end < total && !is_byte_char_boundary(&bytes, end) {
+                    end += 1;
+                }
                 break;
             }
             // \n\n boundary: include the first \n in this segment;
@@ -302,6 +314,17 @@ pub fn paragraph_byte_ranges(rope: &Rope) -> Vec<Range<usize>> {
         out.push(0..total);
     }
     out
+}
+
+/// Return `true` when `bytes[idx]` does NOT continue a UTF-8
+/// multi-byte sequence (i.e. it's the start of a codepoint, or it
+/// equals `bytes.len()`). Continuation bytes have the bit pattern
+/// `10xxxxxx`.
+fn is_byte_char_boundary(bytes: &[u8], idx: usize) -> bool {
+    if idx >= bytes.len() {
+        return idx == bytes.len();
+    }
+    bytes[idx] & 0b1100_0000 != 0b1000_0000
 }
 
 /// Tree-sitter chunked-input callback over a paragraph's local
@@ -380,5 +403,126 @@ mod tests {
         let span = &snap.gaiji_spans[0];
         assert_eq!(span.start_byte, 1000); // local 0 + 1000 offset
         assert_eq!(&*span.description, "a");
+    }
+
+    /// Regression: a multi-byte body with no `\n\n` boundary forced
+    /// the cap-fallback branch to split at exactly
+    /// `start + MAX_PARAGRAPH_BYTES`. `MAX_PARAGRAPH_BYTES` is 65536
+    /// and `あ` is 3 bytes, so the cap landed inside an `あ` and the
+    /// downstream `Rope::byte_slice(range)` panicked.
+    /// Pin: cap-fallback always emits ranges aligned to char boundaries.
+    #[test]
+    fn paragraph_byte_ranges_cap_fallback_aligns_to_char_boundary() {
+        // 30000 × 3 bytes = 90000 > MAX_PARAGRAPH_BYTES, no \n at all.
+        let s: String = "あ".repeat(30000);
+        let r = rope(&s);
+        let ranges = paragraph_byte_ranges(&r);
+        for range in &ranges {
+            assert!(
+                s.is_char_boundary(range.start),
+                "range.start = {} sits inside a multi-byte codepoint",
+                range.start,
+            );
+            assert!(
+                s.is_char_boundary(range.end),
+                "range.end = {} sits inside a multi-byte codepoint",
+                range.end,
+            );
+        }
+        // And every range must be slice-able through the rope without
+        // panicking — that's the actual end-to-end invariant.
+        for range in &ranges {
+            let _ = r.byte_slice(range.clone()).to_string();
+        }
+    }
+
+    /// Regression: even when the cap-fallback fires, the resulting
+    /// ranges must still cover the full source with no gaps. Without
+    /// the boundary-snap fix, the cap landed mid-codepoint and the
+    /// downstream rope splice silently dropped bytes (or panicked).
+    #[test]
+    fn paragraph_byte_ranges_cap_fallback_covers_full_input() {
+        let s: String = "あ".repeat(30000);
+        let r = rope(&s);
+        let ranges = paragraph_byte_ranges(&r);
+        assert_eq!(ranges.first().unwrap().start, 0);
+        assert_eq!(ranges.last().unwrap().end, s.len());
+        for w in ranges.windows(2) {
+            assert_eq!(w[0].end, w[1].start, "no gap or overlap");
+        }
+    }
+
+    /// End-to-end pin for the same bug: constructing a `BufferState`
+    /// from a giant multi-byte stream went through `Rope::byte_slice`
+    /// against the (formerly mid-codepoint) ranges and panicked.
+    /// Documents this scale exist in the wild — `tsumi-to-batsu-x100`
+    /// is one of the workspace's own benchmark fixtures.
+    #[test]
+    fn doc_state_handles_giant_multibyte_paragraph_without_panic() {
+        use crate::state::DocState;
+        // 30 000 あ's = ~90 KB without any newline — used to panic in
+        // `BufferState::new`'s `paragraph_from_rope_slice` call.
+        let s: String = "あ".repeat(30_000);
+        let state = DocState::new(s.clone());
+        // Round-trip text equality is the strongest possible check
+        // that no bytes were dropped or misaligned.
+        assert_eq!(&**state.snapshot().doc_text(), &s);
+    }
+
+    /// `\n\n\n` (triple newline) splits into three paragraphs because
+    /// each `\n\n` boundary forms its own split. Earlier code
+    /// versions with off-by-one boundary logic produced two
+    /// paragraphs, dropping a `\n`. Pin the count explicitly.
+    #[test]
+    fn paragraph_byte_ranges_triple_newline_yields_three_paragraphs() {
+        let r = rope("\n\n\n");
+        let ranges = paragraph_byte_ranges(&r);
+        assert_eq!(ranges, vec![0..1, 1..2, 2..3]);
+    }
+
+    /// Single `\n` is one paragraph (it never forms a `\n\n`
+    /// boundary). The trailing `\n` belongs to the same paragraph
+    /// that contains everything before it.
+    #[test]
+    fn paragraph_byte_ranges_single_trailing_newline_is_one_paragraph() {
+        let r = rope("abc\n");
+        assert_eq!(paragraph_byte_ranges(&r), vec![0..4]);
+    }
+
+    /// Document ending exactly with `\n\n` splits into the prefix
+    /// (with first `\n`) and the trailing single-`\n` paragraph.
+    /// Earlier on we accidentally collapsed the trailing run.
+    #[test]
+    fn paragraph_byte_ranges_trailing_blank_run_keeps_blank_paragraph() {
+        let r = rope("X\n\n");
+        let ranges = paragraph_byte_ranges(&r);
+        // p0 = "X\n" (bytes 0..2), p1 = "\n" (bytes 2..3)
+        assert_eq!(ranges, vec![0..2, 2..3]);
+    }
+
+    /// Even when the cap-fallback fires multiple times, each
+    /// successive range still stays char-boundary-aligned and
+    /// non-overlapping. Stress-test with ~3× the cap so we exercise
+    /// at least three cap splits.
+    #[test]
+    fn paragraph_byte_ranges_repeated_cap_fallback_aligns_each_split() {
+        // 80 000 `あ` * 3 bytes = 240 000 bytes ≈ 4× the 64 KB cap.
+        let s: String = "あ".repeat(80_000);
+        let r = rope(&s);
+        let ranges = paragraph_byte_ranges(&r);
+        assert!(ranges.len() >= 3, "expected ≥3 cap splits: {ranges:?}");
+        for range in &ranges {
+            assert!(s.is_char_boundary(range.start));
+            assert!(s.is_char_boundary(range.end));
+            // Slicing through the rope must succeed without panic.
+            let _ = r.byte_slice(range.clone()).to_string();
+        }
+        // Coverage: ranges must cover [0, total) with no gap and no
+        // overlap, regardless of how many cap splits happened.
+        for w in ranges.windows(2) {
+            assert_eq!(w[0].end, w[1].start);
+        }
+        assert_eq!(ranges.first().unwrap().start, 0);
+        assert_eq!(ranges.last().unwrap().end, s.len());
     }
 }
