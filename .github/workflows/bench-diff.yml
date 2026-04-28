@@ -51,12 +51,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout aozora-tools
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: aozora-tools
 
       - name: Checkout sibling aozora repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: P4suta/aozora
           path: aozora
@@ -82,7 +82,7 @@ jobs:
             --save-baseline main 2>&1 | tee bench-main.log
 
       - name: Upload baseline artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: criterion-baseline-main
           # Artifact retains across runs; we always download the
@@ -91,7 +91,7 @@ jobs:
           retention-days: 90
 
       - name: Upload bench log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-log-main-${{ github.sha }}
           path: aozora-tools/bench-main.log
@@ -107,12 +107,12 @@ jobs:
       pull-requests: write
     steps:
       - name: Checkout aozora-tools
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: aozora-tools
 
       - name: Checkout sibling aozora repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: P4suta/aozora
           path: aozora
@@ -127,7 +127,7 @@ jobs:
           workspaces: aozora-tools
 
       - name: Download baseline artifact from main
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v20
         with:
           workflow: bench-diff.yml
           branch: main
@@ -155,14 +155,14 @@ jobs:
             bench-pr.log > bench-summary.md
 
       - name: Upload PR bench log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-log-pr-${{ github.event.pull_request.number }}
           path: aozora-tools/bench-pr.log
           retention-days: 30
 
       - name: Comment on PR with diff
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: bench-diff
           path: aozora-tools/bench-summary.md
