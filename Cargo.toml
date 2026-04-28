@@ -68,7 +68,7 @@ proptest = "1"
 # operations without needing a custom sync primitive (where Loom
 # would have been the choice). Gated behind a `shuttle` feature so
 # the dependency is opt-in.
-shuttle = "0.7"
+shuttle = "0.9"
 
 # Latency histogram for per-document Metrics. Mean alone hides tail
 # latency (p99 / max); HDRHistogram gives constant-memory percentile
