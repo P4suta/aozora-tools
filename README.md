@@ -4,9 +4,16 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
 
 <p align="center">
   <a href="https://github.com/P4suta/aozora-tools/actions/workflows/ci.yml"><img alt="ci" src="https://github.com/P4suta/aozora-tools/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml"><img alt="docs deploy" src="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml/badge.svg"></a>
+  <a href="https://github.com/P4suta/aozora-tools/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/P4suta/aozora-tools?display_name=tag&sort=semver"></a>
   <a href="./LICENSE-APACHE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue"></a>
   <a href="./rust-toolchain.toml"><img alt="msrv" src="https://img.shields.io/badge/rust-1.95%2B-orange"></a>
-  <a href="https://p4suta.github.io/aozora-tools/"><img alt="docs" src="https://img.shields.io/badge/docs-GitHub%20Pages-blue"></a>
+</p>
+
+<p align="center">
+  📖 <a href="https://p4suta.github.io/aozora-tools/"><strong>API reference (rustdoc)</strong></a>
+  · 📦 <a href="https://github.com/P4suta/aozora-tools/releases"><strong>Releases &amp; binaries</strong></a>
+  · 📝 <a href="./CHANGELOG.md"><strong>Changelog</strong></a>
 </p>
 
 The parser / AST / lexer / encoding crates live in the sibling
@@ -57,7 +64,7 @@ for the preview wire format.
 ## Build and run
 
 The workspace pins [`aozora`](https://github.com/P4suta/aozora) at the
-public `v0.2.0` tag, so a fresh clone needs nothing more than a
+public `v0.2.3` tag, so a fresh clone needs nothing more than a
 matching Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
 [`bun`](https://bun.sh/) for the VS Code extension.
 
@@ -88,6 +95,21 @@ WebView markup, tree-sitter grammar tweaks). Splitting them lets the
 parser keep a strict release cadence with bench gates and corpus
 sweeps, while the tools repo iterates on the developer-experience
 surface without dragging the parser tag forward.
+
+## Install
+
+Pre-built `aozora-fmt` + `aozora-lsp` binaries for **Linux x86_64**,
+**macOS arm64**, and **Windows x86_64** are attached to every GitHub
+Release — see [the releases page](https://github.com/P4suta/aozora-tools/releases)
+and pick a `aozora-tools-vX.Y.Z-<target>.{tar.gz,zip}`. SHA256 sums
+are published as `SHA256SUMS` next to the archives.
+
+Or build from source:
+
+```sh
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-fmt
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-lsp
+```
 
 ## Versioning and release
 
