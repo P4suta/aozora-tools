@@ -1,0 +1,156 @@
+# Release workflow for aozora-tools.
+#
+# Trigger on: annotated tags matching `v*`, plus manual `workflow_dispatch`
+# for dry runs. Builds the `aozora-fmt` + `aozora-lsp` binaries on five
+# target triples and uploads the archives + SHA256SUMS to the GitHub
+# Release.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            archive: tar.gz
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            archive: tar.gz
+            extra-deps: musl-tools
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            archive: tar.gz
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install musl toolchain (linux-musl only)
+        if: matrix.extra-deps == 'musl-tools'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build aozora-fmt + aozora-lsp
+        run: |
+          cargo build --release --target ${{ matrix.target }} --package aozora-fmt
+          cargo build --release --target ${{ matrix.target }} --package aozora-lsp
+
+      - name: Assemble archive
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+              tag="v0.0.0-dispatch.$(date -u +%Y%m%d%H%M%S)"
+          else
+              tag="${GITHUB_REF_NAME}"
+          fi
+
+          name="aozora-tools-${tag}-${{ matrix.target }}"
+          staging="${RUNNER_TEMP}/${name}"
+          mkdir -p "${staging}"
+
+          bin_suffix=""
+          [[ "${{ matrix.archive }}" == "zip" ]] && bin_suffix=".exe"
+          cp "target/${{ matrix.target }}/release/aozora-fmt${bin_suffix}" "${staging}/"
+          cp "target/${{ matrix.target }}/release/aozora-lsp${bin_suffix}" "${staging}/"
+
+          cp LICENSE-APACHE LICENSE-MIT README.md "${staging}/"
+
+          cd "${RUNNER_TEMP}"
+          case "${{ matrix.archive }}" in
+              zip)
+                  7z a "${name}.zip" "${name}" > /dev/null
+                  artefact="${name}.zip"
+                  ;;
+              tar.gz)
+                  tar czf "${name}.tar.gz" "${name}"
+                  artefact="${name}.tar.gz"
+                  ;;
+          esac
+
+          if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "${artefact}" > "${artefact}.sha256"
+          else
+              sha256sum "${artefact}" > "${artefact}.sha256"
+          fi
+
+          echo "archive=${RUNNER_TEMP}/${artefact}" >> "$GITHUB_OUTPUT"
+          echo "checksum=${RUNNER_TEMP}/${artefact}.sha256" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.archive.outputs.name }}
+          path: |
+            ${{ steps.archive.outputs.archive }}
+            ${{ steps.archive.outputs.checksum }}
+          retention-days: 7
+
+  publish:
+    name: publish release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: aozora-tools-*
+          merge-multiple: true
+          path: artefacts
+
+      - name: Aggregate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd artefacts
+          sha256sum aozora-tools-*.tar.gz aozora-tools-*.zip 2>/dev/null | sort > SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artefacts/aozora-tools-*.tar.gz
+            artefacts/aozora-tools-*.zip
+            artefacts/*.sha256
+            artefacts/SHA256SUMS
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
