@@ -227,9 +227,15 @@ impl BufferState {
     }
 
     /// Resolve a doc-absolute byte to (`paragraph_idx`, `local_byte`).
-    /// Boundary at `paragraphs[i].end == paragraphs[i+1].start`
-    /// is reported as the LEFT paragraph (consistent with the
-    /// `paragraph_byte_ranges` boundary policy).
+    ///
+    /// At a paragraph boundary `b == paragraphs[i].end ==
+    /// paragraphs[i+1].start`, the byte is reported as belonging to
+    /// the **right** paragraph (`paragraph_idx == i + 1`,
+    /// `local_byte == 0`) — consistent with `paragraph_byte_ranges`,
+    /// where the boundary byte is the inclusive start of the right
+    /// half-open range. Only the doc-end byte (`b == total_bytes`)
+    /// belongs to the last paragraph as `local_byte == len`, since
+    /// there is no rightward paragraph to take ownership of it.
     ///
     /// `O(N)` walk over paragraphs (no cumulative-offset cache on
     /// the writer side). At LSP keystroke rates with paragraph
@@ -239,11 +245,12 @@ impl BufferState {
         let last = self.paragraphs.len().saturating_sub(1);
         for (idx, paragraph) in self.paragraphs.iter().enumerate() {
             let len = paragraph.text.len_bytes();
-            // `<` so that the boundary at `acc + len` belongs to the
-            // LEFT paragraph; the final paragraph also catches `acc +
-            // len` exactly via the `idx == last` short-circuit, since
-            // there is no rightward paragraph to take ownership of
-            // doc_byte == total_bytes.
+            // `<` so the boundary at `acc + len` falls through to the
+            // rightward paragraph, which then sees `local_byte == 0`.
+            // The final paragraph also catches `acc + len` exactly via
+            // the `idx == last` short-circuit, since there is no
+            // rightward paragraph to take ownership of
+            // `doc_byte == total_bytes`.
             if doc_byte < acc + len || idx == last {
                 return (idx, doc_byte.saturating_sub(acc));
             }
@@ -465,8 +472,14 @@ impl Snapshot {
     /// Find the paragraph index that contains `doc_byte`. Returns
     /// `None` only when the snapshot has zero paragraphs (which we
     /// avoid in practice — empty documents still have one
-    /// zero-length paragraph). Boundaries belong to the LEFT
-    /// paragraph (consistent with `paragraph_byte_ranges`).
+    /// zero-length paragraph).
+    ///
+    /// At a boundary `b == paragraph_starts[i + 1]`, `doc_byte`
+    /// resolves to the **right** paragraph (index `i + 1`),
+    /// matching `paragraph_byte_ranges`'s half-open ranges (where
+    /// the boundary is the inclusive start of the right range).
+    /// Only `doc_byte == total_bytes` resolves to the last
+    /// paragraph, since no rightward paragraph exists.
     #[must_use]
     pub fn paragraph_at(&self, doc_byte: usize) -> Option<usize> {
         if self.paragraph_starts.is_empty() {
@@ -839,5 +852,160 @@ mod tests {
         // After the first \n\n, we should be in paragraph 1.
         let after_first_blank = "一\n\n".len();
         assert_eq!(snap.paragraph_at(after_first_blank), Some(1));
+    }
+
+    /// Round-trip invariant: a sequence of in-place inserts at
+    /// monotonically advancing offsets must leave the buffer
+    /// byte-identical to the equivalent doc-built-from-text. This is
+    /// the strongest cross-check between the paragraph-segmented
+    /// edit path and the cold-start path.
+    #[test]
+    fn sequential_inserts_match_cold_start_text() {
+        let state = doc("");
+        let chunks = ["｜青空", "《", "あおぞら", "》", "の", "下"];
+        let mut expected = String::new();
+        for chunk in chunks {
+            let pos = expected.len();
+            state
+                .apply_changes(&[LocalTextEdit::new(pos..pos, chunk.to_owned())])
+                .expect("valid edit");
+            expected.push_str(chunk);
+        }
+        assert_eq!(&**state.snapshot().doc_text(), &expected);
+        // And a fresh DocState built from the same final text must
+        // produce the same paragraph shape.
+        let cold = doc(&expected);
+        assert_eq!(
+            &**cold.snapshot().doc_text(),
+            &**state.snapshot().doc_text(),
+        );
+    }
+
+    /// Cross-paragraph delete that collapses the `\n\n` boundary
+    /// between two paragraphs must merge them and keep doc text
+    /// consistent. The snapshot must report exactly one paragraph
+    /// after the merge.
+    #[test]
+    fn cross_paragraph_delete_collapses_boundary() {
+        let state = doc("段落1\n\n段落2");
+        let pre = state.snapshot();
+        assert_eq!(pre.paragraphs.len(), 2);
+        // Delete the entire `\n\n` boundary.
+        let blank_at = "段落1".len();
+        let edit = LocalTextEdit::new(blank_at..blank_at + 2, String::new());
+        state.apply_changes(&[edit]).expect("valid edit");
+        let post = state.snapshot();
+        assert_eq!(&**post.doc_text(), "段落1段落2");
+        assert_eq!(post.paragraphs.len(), 1, "{post:?}");
+    }
+
+    /// In-place insert inside an existing `\n\n` widens the gap but
+    /// must NOT create a third paragraph (the boundary policy keeps
+    /// blank-line runs collapsed to one boundary).
+    #[test]
+    fn insert_inside_blank_line_preserves_two_paragraphs() {
+        let state = doc("一\n\n二");
+        let blank_at = "一\n".len();
+        let edit = LocalTextEdit::new(blank_at..blank_at, "\n".to_owned());
+        state.apply_changes(&[edit]).expect("valid edit");
+        let snap = state.snapshot();
+        // Three newlines in a row → still two paragraphs.
+        assert_eq!(&**snap.doc_text(), "一\n\n\n二");
+        assert_eq!(snap.paragraphs.len(), 2, "{snap:?}");
+    }
+
+    /// Empty-text replace must leave the state in a queryable shape:
+    /// one (empty) paragraph, zero total bytes, `paragraph_at(0)`
+    /// returns Some(0). Pin so the empty-doc invariant stays valid.
+    #[test]
+    fn replace_with_empty_text_yields_one_empty_paragraph() {
+        let state = doc("｜青空《あおぞら》");
+        state.replace_text(String::new());
+        let snap = state.snapshot();
+        assert_eq!(&**snap.doc_text(), "");
+        assert_eq!(snap.paragraphs.len(), 1);
+        assert_eq!(snap.total_bytes, 0);
+        assert_eq!(snap.paragraph_at(0), Some(0));
+    }
+
+    /// Boundary case: an edit at the exact end of the document must
+    /// be accepted (it's an append) and must not fall through to the
+    /// "out of bounds" rejection path.
+    #[test]
+    fn append_at_eof_is_accepted() {
+        let state = doc("hello");
+        let len = "hello".len();
+        let edit = LocalTextEdit::new(len..len, " world".to_owned());
+        assert!(state.apply_changes(&[edit]).is_some());
+        assert_eq!(&**state.snapshot().doc_text(), "hello world");
+    }
+
+    /// Multiple sorted edits in one batch compose correctly. The
+    /// reverse-order application inside `apply_one_edit` must not
+    /// corrupt offsets for later edits whose ranges sit AFTER the
+    /// first's.
+    #[test]
+    fn batched_edits_compose_in_source_order() {
+        let state = doc("AAAA BBBB CCCC");
+        let edits = vec![
+            LocalTextEdit::new(0..4, "aa".to_owned()),
+            LocalTextEdit::new(5..9, "bb".to_owned()),
+            LocalTextEdit::new(10..14, "cc".to_owned()),
+        ];
+        state.apply_changes(&edits).expect("valid batch");
+        assert_eq!(&**state.snapshot().doc_text(), "aa bb cc");
+    }
+
+    /// Round-trip pin: building a document from an exact `\n\n` run
+    /// at the start of the buffer must keep the buffer byte-equal
+    /// after a snapshot rebuild. Earlier paragraph-boundary regressions
+    /// silently dropped leading newlines.
+    #[test]
+    fn leading_blank_paragraph_round_trips() {
+        let s = "\n\n本文";
+        let state = doc(s);
+        assert_eq!(&**state.snapshot().doc_text(), s);
+    }
+
+    /// Pin the boundary policy for `paragraph_at`: a byte sitting at
+    /// `paragraph_starts[i + 1]` (the inclusive start of the right
+    /// paragraph) resolves to **the right paragraph**, matching
+    /// `paragraph_byte_ranges`'s half-open ranges. Only the doc-end
+    /// byte (`total_bytes`) resolves to the last paragraph.
+    ///
+    /// An earlier docstring claimed the boundary belongs to the LEFT
+    /// paragraph; the actual behaviour was always RIGHT. This test
+    /// pins the RIGHT behaviour explicitly so a future doc-following
+    /// refactor cannot silently swap policies.
+    #[test]
+    fn paragraph_at_boundary_byte_belongs_to_right_paragraph() {
+        let state = doc("段落1\n\n段落2");
+        let snap = state.snapshot();
+        // The two paragraphs in `paragraph_byte_ranges`'s split are:
+        //   p0 = bytes 0..("段落1\n".len())   = 0..10
+        //   p1 = bytes ("段落1\n".len())..end = 10..(text.len())
+        // So byte 10 (the 2nd `\n`) belongs to p1.
+        let boundary = "段落1\n".len();
+        assert_eq!(snap.paragraph_at(boundary), Some(1));
+        // Byte boundary - 1 (the 1st `\n`) belongs to p0.
+        assert_eq!(snap.paragraph_at(boundary - 1), Some(0));
+        // The doc-end byte resolves to the LAST paragraph (no
+        // rightward paragraph to take ownership).
+        let total = snap.doc_text().len();
+        assert_eq!(snap.paragraph_at(total), Some(1));
+    }
+
+    /// `paragraph_at` past EOF returns the last paragraph index — a
+    /// graceful clamp matching most LSP clients' "out of range
+    /// position resolves to EOF" behaviour.
+    #[test]
+    fn paragraph_at_past_eof_clamps_to_last_paragraph() {
+        let state = doc("a\n\nb");
+        let snap = state.snapshot();
+        let total = snap.doc_text().len();
+        assert_eq!(
+            snap.paragraph_at(total + 1000),
+            Some(snap.paragraphs.len() - 1)
+        );
     }
 }
