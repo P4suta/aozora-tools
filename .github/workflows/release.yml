@@ -54,7 +54,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.95.0
-          targets: ${{ matrix.target }}
+
+      # Explicit `rustup target add` is more reliable than the action's
+      # `targets:` input across stable channel updates — `rustup target
+      # add` is idempotent and unambiguous on every cache state.
+      - run: rustup target add ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
         with:
