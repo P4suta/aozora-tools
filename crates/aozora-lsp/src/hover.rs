@@ -250,4 +250,60 @@ mod tests {
         assert!(md.contains("辞書にマッチせず"));
         assert!(md.contains("未知字"));
     }
+
+    /// Cursor exactly on the leading `※` byte must still resolve the
+    /// containing gaiji span. Earlier `rfind`-based detection missed
+    /// this boundary because the prefix ending at the cursor didn't
+    /// yet contain the trigram. Pin the boundary explicitly.
+    #[test]
+    fn hover_on_leading_kome_byte_resolves_span() {
+        let src = "前※［＃「desc」、第3水準1-85-54］後";
+        let kome_byte = src.find('※').unwrap();
+        let pos = byte_offset_to_position(src, kome_byte);
+        assert!(
+            hover_at(src, pos).is_some(),
+            "cursor on the leading ※ must still hover the span",
+        );
+    }
+    /// Cursor on the closing `］` byte resolves the same span — tests
+    /// the inclusive-end side of the window scan.
+    #[test]
+    fn hover_on_closing_bracket_byte_resolves_span() {
+        let src = "前※［＃「desc」、第3水準1-85-54］後";
+        let close_byte = src.rfind('］').unwrap();
+        let pos = byte_offset_to_position(src, close_byte);
+        assert!(
+            hover_at(src, pos).is_some(),
+            "cursor on the closing ］ must still hover the span",
+        );
+    }
+    /// Hover on a span far past the locality window (a pathological
+    /// `MAX_GAIJI_SPAN_LEN` distance) returns None — the window
+    /// bound is what keeps hover O(1) regardless of doc length, so
+    /// pin that the window cap is honoured.
+    #[test]
+    fn hover_far_outside_window_returns_none() {
+        // Place a gaiji span at the start, then cursor deep into a
+        // long tail. The cursor's window is [cursor - MAX, cursor + MAX],
+        // so spans before that window must NOT resolve.
+        let span = "※［＃「desc」、第3水準1-85-54］";
+        let tail: String = "x".repeat(super::MAX_GAIJI_SPAN_LEN * 2 + 50);
+        let src = format!("{span}{tail}");
+        let cursor_byte = src.len();
+        let pos = byte_offset_to_position(&src, cursor_byte);
+        assert!(
+            hover_at(&src, pos).is_none(),
+            "span sits before the cursor's hover window, must not resolve",
+        );
+    }
+
+    /// Empty source must not panic on a hover call. Defensive guard
+    /// pin — the early `source.is_empty()` short-circuit is what
+    /// prevents the window-snap math from going through `&""[0..0]`
+    /// arithmetic that some prior versions miscomputed.
+    #[test]
+    fn hover_on_empty_source_returns_none_without_panic() {
+        assert!(hover_at("", Position::new(0, 0)).is_none());
+        assert!(hover_at("", Position::new(99, 99)).is_none());
+    }
 }

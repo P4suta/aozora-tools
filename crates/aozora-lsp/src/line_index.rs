@@ -20,7 +20,7 @@
 //!
 //! ## Lifecycle
 //!
-//! Built when [`Self::new`] is called against a fresh source. The
+//! Built when [`LineIndex::new`] is called against a fresh source. The
 //! `DocState` rebuilds the index on every `did_change` (cheap —
 //! a single SIMD `memchr` pass over the full text). Reads are
 //! immutable so the index is shared across concurrent LSP
@@ -199,5 +199,47 @@ mod tests {
     fn position_past_eof_returns_none() {
         let idx = LineIndex::new("one\ntwo");
         assert_eq!(idx.byte_offset("one\ntwo", Position::new(5, 0)), None);
+    }
+
+    /// CRLF line endings: the `\r` is treated as part of the line
+    /// (line breaks are split by `\n` only), so a position past the
+    /// `\r`'s column resolves to byte position of `\n` (= `line_end`).
+    /// Pin so an editor that submits Windows-style line endings
+    /// behaves consistently.
+    #[test]
+    fn crlf_line_ends_keep_cr_inside_the_line() {
+        let src = "abc\r\ndef";
+        let idx = LineIndex::new(src);
+        assert_eq!(idx.line_count(), 2);
+        // Byte 3 = '\r', byte 4 = '\n'.
+        assert_eq!(idx.position(src, 3), Position::new(0, 3));
+        assert_eq!(idx.position(src, 4), Position::new(0, 4));
+        // Round-trip: position (0, 4) should resolve back to byte 4.
+        assert_eq!(idx.byte_offset(src, Position::new(0, 4)), Some(4));
+    }
+
+    /// An `\n`-only document yields two lines: the empty line before
+    /// the newline and the empty line after. Pin so a future
+    /// "trim trailing newline" change doesn't quietly drop a line.
+    #[test]
+    fn lone_newline_yields_two_lines() {
+        let src = "\n";
+        let idx = LineIndex::new(src);
+        assert_eq!(idx.line_count(), 2);
+        // Position (0, 0) → byte 0; (1, 0) → byte 1 (past the \n).
+        assert_eq!(idx.byte_offset(src, Position::new(0, 0)), Some(0));
+        assert_eq!(idx.byte_offset(src, Position::new(1, 0)), Some(1));
+    }
+
+    /// Empty source: one line, position (0, 0) round-trips, anything
+    /// past returns None or clamps to EOF on the position side.
+    #[test]
+    fn empty_source_round_trips_origin_position() {
+        let src = "";
+        let idx = LineIndex::new(src);
+        assert_eq!(idx.line_count(), 1);
+        assert_eq!(idx.position(src, 0), Position::new(0, 0));
+        assert_eq!(idx.byte_offset(src, Position::new(0, 0)), Some(0));
+        assert_eq!(idx.byte_offset(src, Position::new(0, 99)), Some(0));
     }
 }

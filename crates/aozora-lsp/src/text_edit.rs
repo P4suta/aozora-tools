@@ -2,7 +2,7 @@
 //! sprint, was `aozora_parser::{TextEdit, apply_edits}`).
 //!
 //! The retired top-level `aozora-parser` crate carried a public
-//! [`TextEdit`] + [`apply_edits`] pair so any LSP / TextMate-grammar
+//! [`LocalTextEdit`] + [`apply_edits`] pair so any LSP / TextMate-grammar
 //! integration could turn `(byte_range, new_text)` pairs into a
 //! validated string splice. The 0.2 split removed that crate; the
 //! splice routine itself is small and editor-only, so the LSP brings
@@ -210,5 +210,61 @@ mod tests {
         let src = "abc";
         let edit = LocalTextEdit::new(3..3, "DEF".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "abcDEF");
+    }
+
+    /// Two pure inserts at the same offset: both are non-overlapping
+    /// (`start < prev_end` is false because both `end`s equal 0), so
+    /// validation passes. The forward apply produces them in source
+    /// order — first edit's text precedes second's. Pin so any change
+    /// to the apply order surfaces here instead of silently re-ordering
+    /// inserted content.
+    #[test]
+    fn two_inserts_at_same_offset_apply_in_source_order() {
+        let src = "X";
+        let edits = vec![
+            LocalTextEdit::new(0..0, "a".to_owned()),
+            LocalTextEdit::new(0..0, "b".to_owned()),
+        ];
+        assert_eq!(apply_edits(src, &edits).unwrap(), "abX");
+    }
+
+    /// Adjacent edits — second edit starts exactly at first edit's
+    /// end. Allowed by the validator (`start < prev_end` is false
+    /// when `start == prev_end`). The two edits should compose into
+    /// a single replacement-like result.
+    #[test]
+    fn adjacent_edits_compose() {
+        let src = "ABCD";
+        let edits = vec![
+            LocalTextEdit::new(0..2, "x".to_owned()),
+            LocalTextEdit::new(2..4, "y".to_owned()),
+        ];
+        assert_eq!(apply_edits(src, &edits).unwrap(), "xy");
+    }
+
+    /// A multi-byte replacement at the start of source must not
+    /// affect the trailing tail; pin via a Japanese run so the byte
+    /// math (3 bytes per char) is non-trivial.
+    #[test]
+    fn multibyte_replacement_at_start_preserves_tail() {
+        let src = "あいう";
+        let edit = LocalTextEdit::new(0..3, "X".to_owned());
+        assert_eq!(apply_edits(src, &[edit]).unwrap(), "Xいう");
+    }
+
+    /// Validation arithmetic regression: `total_new` and
+    /// `total_removed` are computed from edits to size the output
+    /// `String::with_capacity`. A pure-deletion-then-pure-insertion
+    /// pair must not under- or over-allocate enough that the
+    /// resulting string differs from the expected splice.
+    #[test]
+    fn delete_then_insert_in_separate_edits_produces_expected_text() {
+        let src = "ABCDEF";
+        let edits = vec![
+            LocalTextEdit::new(0..2, String::new()),
+            LocalTextEdit::new(4..4, "XYZ".to_owned()),
+        ];
+        // Remove "AB" (0..2), then insert "XYZ" at 4 (= "F" position).
+        assert_eq!(apply_edits(src, &edits).unwrap(), "CDXYZEF");
     }
 }
