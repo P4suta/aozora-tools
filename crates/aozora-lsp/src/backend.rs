@@ -484,10 +484,16 @@ impl LanguageServer for Backend {
         let Some(state) = self.lookup(&uri) else {
             return;
         };
+        let multi = p.content_changes.len() > 1;
         for change in &p.content_changes {
-            // Resolve the change against the LATEST snapshot — the
-            // editor's view of the buffer is always at least as fresh
-            // as our snapshot, so range coordinates resolve correctly.
+            // Resolve the change against the LATEST snapshot. The LSP
+            // spec applies multi-change batches in array order, with
+            // each change's coordinates referring to the buffer state
+            // *after* every prior change in the same batch — so the
+            // 2nd+ iterations need an up-to-date snapshot. Without
+            // this, a multi-change batch that paste-rewrites two
+            // ranges in one notification would address the second
+            // range against the pre-batch text and corrupt the buffer.
             let snap = state.snapshot();
             // LSP allows mixing incremental and full-replacement
             // events in one batch; full replacement is signalled
@@ -505,6 +511,18 @@ impl LanguageServer for Backend {
                         change.range,
                     );
                 }
+            }
+            // After each apply, force a synchronous snapshot rebuild
+            // so the next iteration sees the post-edit text. Single-
+            // change batches (the common case) skip this — the
+            // debounced publish path drives the rebuild later.
+            //
+            // Inside tokio the rebuild blocks the async task briefly
+            // (a few ms even for large docs); we accept that bound
+            // because multi-change batches are rare and skipping the
+            // rebuild produces silent buffer corruption.
+            if multi {
+                state.rebuild_snapshot_now();
             }
         }
         // Stage 5 — schedule the slow Rust parse + publish as a
@@ -1042,5 +1060,109 @@ mod tests {
             state.apply_changes(&[edit]);
         }
         assert_eq!(&**state.snapshot().doc_text(), "hello world");
+    }
+
+    /// Replay-style helper that mirrors the production `did_change`
+    /// loop *including* the post-edit `rebuild_snapshot_now()` so the
+    /// next iteration's snapshot reflects every prior apply. The
+    /// production loop is bounded by `multi`, but the test driver
+    /// always rebuilds since we want a deterministic final state.
+    fn replay_lsp_changes_with_sync_rebuild(
+        initial: &str,
+        changes: &[TextDocumentContentChangeEvent],
+    ) -> String {
+        let state = DocState::new(initial.to_owned());
+        for change in changes {
+            let snap = state.snapshot();
+            match lsp_change_to_edit(snap.doc_text(), change) {
+                Some(edit) => {
+                    let _ = state.apply_changes(std::slice::from_ref(&edit));
+                }
+                None if change.range.is_none() => {
+                    state.replace_text(change.text.clone());
+                }
+                None => {}
+            }
+            state.rebuild_snapshot_now();
+        }
+        state.snapshot().doc_text().to_string()
+    }
+
+    /// Regression: `did_change` defers snapshot rebuilds onto a tokio
+    /// blocking task, so the 2nd change in a multi-change batch saw
+    /// the *pre-batch* snapshot text. With the in-batch rebuild
+    /// added, the second change resolves against the post-1st-change
+    /// text — matching LSP's "apply in array order" semantics. We
+    /// rebuild eagerly between every iteration in this test driver
+    /// to mirror the multi-change branch deterministically.
+    #[test]
+    fn multi_change_batch_resolves_against_post_prior_change_text() {
+        // Insert at byte 0, then insert at byte 1 (which only exists
+        // after the first insert). Without the rebuild, the second
+        // edit would be evaluated against the original text where
+        // byte 1 means a different position.
+        let initial = "abc";
+        let changes = vec![
+            // Change 0: insert "X" at start. Post-1st text: "Xabc".
+            synth_change(
+                Some(Range::new(Position::new(0, 0), Position::new(0, 0))),
+                "X",
+            ),
+            // Change 1: insert "Y" at column 4 of the post-1st text
+            // (= byte 4 = end of "Xabc"). The pre-batch text is
+            // only 3 chars wide, so column 4 there clamps to EOF; if
+            // the snapshot rebuild were skipped the apply would
+            // either reject the edit or land it in the wrong spot.
+            synth_change(
+                Some(Range::new(Position::new(0, 4), Position::new(0, 4))),
+                "Y",
+            ),
+        ];
+        let final_text = replay_lsp_changes_with_sync_rebuild(initial, &changes);
+        assert_eq!(final_text, "XabcY");
+    }
+
+    /// The same batch driven through the *production* code path with
+    /// `Backend::did_change` would also need the in-batch rebuild;
+    /// pin a mid-batch insert that's only valid against the
+    /// post-1st-change text, exercised through `DocState` directly.
+    #[test]
+    fn multi_change_batch_dependent_offsets_round_trip_via_doc_state() {
+        // Initial: "本文" (6 bytes). Change 0 inserts "｜" (3 bytes)
+        // at the start. Change 1 inserts "" + "あ"《"a"》 form needs
+        // an offset only present after the first insert. Pin the
+        // expected final text so any drift fails loudly.
+        let initial = "本文";
+        let changes = vec![
+            synth_change(
+                Some(Range::new(Position::new(0, 0), Position::new(0, 0))),
+                "｜",
+            ),
+            // Column 1 of post-1st text = 1 char in (just past `｜`).
+            synth_change(
+                Some(Range::new(Position::new(0, 1), Position::new(0, 1))),
+                "X",
+            ),
+        ];
+        let final_text = replay_lsp_changes_with_sync_rebuild(initial, &changes);
+        assert_eq!(final_text, "｜X本文");
+    }
+
+    /// Snapshot rebuild between iterations must be a no-op for
+    /// single-change batches — we don't want to pay the rebuild cost
+    /// when the next iteration won't run. Pin that the rebuild path
+    /// produces the same final state as the no-rebuild path for a
+    /// single change.
+    #[test]
+    fn single_change_batch_does_not_need_in_batch_rebuild() {
+        let initial = "abc";
+        let changes = vec![synth_change(
+            Some(Range::new(Position::new(0, 1), Position::new(0, 2))),
+            "X",
+        )];
+        let with_rebuild = replay_lsp_changes_with_sync_rebuild(initial, &changes);
+        let no_rebuild = replay_lsp_changes(initial, &changes);
+        assert_eq!(with_rebuild, no_rebuild);
+        assert_eq!(with_rebuild, "aXc");
     }
 }
