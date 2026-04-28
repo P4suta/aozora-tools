@@ -104,3 +104,21 @@ opt-level     = 3
 inherits = "release"
 strip    = "none"
 debug    = 1
+
+# Dev-mode build tuning (matches afm/aozora baselines). Two wins
+# documented by Fairy Devices and the rust-perf-book:
+#   1. `split-debuginfo = "unpacked"` keeps debug info in sibling
+#      `.dwo` files instead of inlining into every `.o`. On Linux/macOS
+#      this halves link wall-time on incremental rebuilds because the
+#      linker doesn't need to copy/relocate large debug sections.
+#   2. `[profile.dev.package."*"]` opt-level = 1 lightly optimises
+#      *dependency* crates only (workspace members keep opt-level = 0
+#      for fast iteration + debuggability). Tests and benches that
+#      spend most of their CPU inside dependencies (proptest,
+#      criterion, tower-lsp) run measurably faster without losing
+#      breakpoint quality on first-party code.
+[profile.dev]
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+opt-level = 1

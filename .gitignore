@@ -1,8 +1,16 @@
 /target
 **/*.rs.bk
 
-# Local Cargo cache (large registry/git blobs not to be committed)
-/.cargo/
+# Local Cargo cache (large registry/git blobs not to be committed).
+# `.cargo/config.toml` is project-level cargo config and IS tracked —
+# only the runtime cache directories below should stay out of the repo.
+/.cargo/registry/
+/.cargo/git/
+/.cargo/.global-cache
+/.cargo/.package-cache
+/.cargo/.package-cache-mutate
+/.cargo/.crates.toml
+/.cargo/.crates2.json
 
 # Huge stress-test fixtures (built from corpus, not source-of-truth)
 samples/tsumi-to-batsu-x100.afm

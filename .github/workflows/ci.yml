@@ -1,8 +1,22 @@
 # CI for aozora-tools.
 #
 # Runs on every push and PR to main. The aozora dependency is fetched
-# from the public sibling repo (P4suta/aozora) at the pinned v0.2.0
-# tag; the only checkout this workflow needs is aozora-tools itself.
+# from the public sibling repo (P4suta/aozora) at the pinned tag; the
+# only checkout this workflow needs is aozora-tools itself.
+#
+# Build optimisation policy (per Fairy Devices 2025-01-07 +
+# Aleksey Kladov 2021 + rust-perf-book):
+#   - mold linker on Linux (rui314/setup-mold)
+#   - sccache with the GHA backend (mozilla-actions/sccache-action)
+#   - target-dir cache via Swatinem/rust-cache@v2 with shared-key so
+#     fmt/clippy/test/doc/bench-build all reuse one cache slot
+#   - cargo-nextest for parallel test execution (taiki-e/install-action)
+#   - CARGO_PROFILE_DEV_DEBUG=line-tables-only to halve the target
+#     directory (panic backtraces still resolve to file:line)
+#   - CARGO_INCREMENTAL=0 (CI runs are mostly cold; incremental adds
+#     overhead and bloats the cache)
+#   - RUSTFLAGS=-D warnings as a belt-and-braces gate alongside the
+#     workspace `[lints]` settings
 
 name: ci
 
@@ -20,10 +34,16 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_NET_RETRY: 10
+  RUSTFLAGS: -D warnings
+  RUSTDOCFLAGS: -D warnings
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
 
 jobs:
   rust:
-    name: rust (fmt + clippy + test + doc)
+    name: rust (fmt + clippy + test + doc + bench)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,28 +55,56 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      - name: Cache cargo
+      # mold: Linux x86_64 link speed-up (~5-10× over GNU ld; see
+      # `.cargo/config.toml`). The action installs the latest stable
+      # mold from upstream releases — newer than apt's package.
+      - name: Install mold linker
+        uses: rui314/setup-mold@v1
+
+      # sccache with native GitHub Actions Cache backend. Complements
+      # Swatinem/rust-cache below: sccache caches compilation units
+      # (rustc artefact-level), Swatinem caches the whole `target/`
+      # plus registry index (target-dir-level). Together: cold cache
+      # builds in ~1m, warm cache in ~30s.
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.7
+
+      - name: Cache cargo target / registry
         uses: Swatinem/rust-cache@v2
+        with:
+          # Single shared cache slot for every step in this job.
+          shared-key: aozora-tools-ci
+          # Save cache only on main pushes — PR runs only restore.
+          # Saves GHA cache quota and avoids racing parallel PRs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # cargo-nextest pulled as a precompiled binary (~5s) instead of
+      # `cargo install --locked cargo-nextest` (~3 min compile).
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
 
       - name: fmt --check
         run: cargo fmt --all -- --check
 
       - name: clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
-      - name: build
-        run: cargo build --workspace --all-targets --locked
+      - name: nextest
+        run: cargo nextest run --workspace --all-targets --locked
 
-      - name: test
-        run: cargo test --workspace --all-targets --locked
+      - name: doc test
+        run: cargo test --doc --workspace --locked
 
       - name: doc (deny broken intra-doc links)
-        env:
-          RUSTDOCFLAGS: -D warnings
         run: cargo doc --workspace --no-deps --document-private-items --locked
 
       - name: bench --no-run
         run: cargo bench --workspace --no-run --locked
+
+      - name: sccache stats
+        run: sccache --show-stats
 
   typos:
     name: typos

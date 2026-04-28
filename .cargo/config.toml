@@ -1,0 +1,36 @@
+# Cargo build profile knobs that apply both locally and in CI.
+#
+# Linker policy (from Fairy Devices' 2025-01-07 ベストプラクティス + Aleksey
+# Kladov's 2021 "Fast Rust Builds"): on Linux x86_64, GNU ld is the default
+# but is significantly slower than mold. mold is ~5-10× faster than ld and
+# ~2× faster than LLVM lld on multi-crate workspaces. Using clang as the
+# driver lets us pass `-fuse-ld=mold` portably across glibc / musl / different
+# GCC versions; if mold is missing the build fails fast rather than silently
+# falling back to ld. mold is installed in CI via `rui314/setup-mold@v1`
+# and locally via `apt install mold` (Ubuntu/Debian) or distro equivalent.
+#
+# References:
+#   - https://github.com/rui314/mold
+#   - https://nnethercote.github.io/perf-book/build-configuration.html
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# Linux aarch64 (e.g. arm64 cloud runners): same story — mold supports arm64.
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
+# macOS / Windows: rely on the platform default (Apple ld for macOS, MSVC
+# linker for windows-msvc). Apple's 2023 ld redesign made it fast enough that
+# overriding adds complexity without measurable wins; lld on macOS has known
+# Mach-O incompatibilities.
+
+[net]
+# CI on slow / flaky networks benefits from extra retries on cargo registry
+# fetches. Default is 3; bumping to 10 matches GitHub Actions Rust template.
+retry = 10
+
+[term]
+# Make `cargo test` failure summaries readable in CI logs.
+verbose = false
