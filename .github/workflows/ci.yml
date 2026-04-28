@@ -36,8 +36,11 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_NET_RETRY: 10
-  RUSTFLAGS: -D warnings
-  RUSTDOCFLAGS: -D warnings
+  # mold via setup-mold (below) is the linker; clang is the driver.
+  # `-D warnings` keeps the workspace `[lints]` policy honoured even
+  # for crates that don't inherit it through workspace.lints.
+  RUSTFLAGS: -D warnings -C linker=clang -C link-arg=-fuse-ld=mold
+  RUSTDOCFLAGS: -D warnings -C linker=clang -C link-arg=-fuse-ld=mold
   # NB: sccache via mozilla-actions/sccache-action was tried with the
   # GHA Cache backend but the runner-side sccache init writes a probe
   # blob (`.sccache_check`) at startup and the action exits non-zero
@@ -64,9 +67,13 @@ jobs:
           toolchain: 1.95.0
           components: rustfmt, clippy
 
-      # mold: Linux x86_64 link speed-up (~5-10× over GNU ld; see
-      # `.cargo/config.toml`). The action installs the latest stable
-      # mold from upstream releases — newer than apt's package.
+      # mold: Linux x86_64 link speed-up (~5-10× over GNU ld). The
+      # action installs the latest stable mold from upstream releases
+      # — newer than apt's package. RUSTFLAGS above injects
+      # `-C linker=clang -C link-arg=-fuse-ld=mold` so cargo picks it
+      # up; we don't put that in .cargo/config.toml because then any
+      # environment without mold (docs.yml runner before this action,
+      # fresh dev clones, fork PRs) would fail at link time.
       - name: Install mold linker
         uses: rui314/setup-mold@v1
 
