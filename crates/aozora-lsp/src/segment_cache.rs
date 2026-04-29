@@ -30,9 +30,10 @@
 //! `0` / `1` (every reparse is a "miss" by definition under the new
 //! whole-document model).
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use aozora::{AozoraTree, Diagnostic, Document};
+use tracing::field::Empty as TracingEmpty;
 
 /// Per-call statistics emitted by [`SegmentCache::reparse`].
 ///
@@ -75,7 +76,7 @@ impl SegmentCache {
         skip_all,
         fields(
             text_bytes = text.len(),
-            latency_us = tracing::field::Empty,
+            latency_us = TracingEmpty,
         ),
     )]
     pub fn reparse(&mut self, text: &str) -> (Vec<Diagnostic>, ReparseStats) {
@@ -136,14 +137,14 @@ impl SegmentCache {
     /// Whether any text has been parsed yet.
     #[cfg(test)]
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.text.is_empty() && self.diagnostics.is_empty()
     }
 }
 
 /// Convert a `Duration` to whole microseconds, saturating at
 /// `u64::MAX`.
-fn duration_as_us(d: std::time::Duration) -> u64 {
+fn duration_as_us(d: Duration) -> u64 {
     u64::try_from(d.as_micros()).unwrap_or(u64::MAX)
 }
 
@@ -163,8 +164,8 @@ mod tests {
     #[test]
     fn reparse_updates_text_and_with_tree_sees_it() {
         let mut cache = SegmentCache::default();
-        let _ = cache.reparse("first");
-        let _ = cache.reparse("｜青梅《おうめ》");
+        drop(cache.reparse("first"));
+        drop(cache.reparse("｜青梅《おうめ》"));
         let inline_count = cache
             .with_tree(|tree| tree.lex_output().registry.inline.len())
             .expect("populated");

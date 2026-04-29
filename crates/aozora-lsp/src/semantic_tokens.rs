@@ -76,19 +76,27 @@ const TT_RUBY_READING: u32 = 2;
 /// The per-paragraph walk is iterative single-cursor — same shape
 /// as the gaiji extraction walker — so it stays linear in tree-node
 /// count.
+/// Per-paragraph context handed to the tree walker. Bundling these
+/// references keeps [`walk_paragraph_tree`] / [`push_token`] under
+/// the workspace `too-many-arguments-threshold`.
+struct ParagraphCtx<'a> {
+    text: &'a str,
+    line_index: &'a LineIndex,
+    line_offset: u32,
+}
+
 #[must_use]
 pub fn semantic_tokens_full(paragraphs: &[Arc<ParagraphSnapshot>]) -> SemanticTokens {
     let mut tokens: Vec<RawToken> = Vec::new();
     let mut line_offset: u32 = 0;
     for paragraph in paragraphs {
         if let Some(tree) = paragraph.tree.as_ref() {
-            walk_paragraph_tree(
-                tree,
-                &paragraph.text,
-                &paragraph.line_index,
+            let ctx = ParagraphCtx {
+                text: &paragraph.text,
+                line_index: &paragraph.line_index,
                 line_offset,
-                &mut tokens,
-            );
+            };
+            walk_paragraph_tree(tree, &ctx, &mut tokens);
         }
         line_offset = line_offset.saturating_add(count_newlines(&paragraph.text));
     }
@@ -102,13 +110,7 @@ fn count_newlines(s: &str) -> u32 {
     u32::try_from(s.bytes().filter(|&b| b == b'\n').count()).unwrap_or(u32::MAX)
 }
 
-fn walk_paragraph_tree(
-    tree: &Tree,
-    text: &str,
-    line_index: &LineIndex,
-    line_offset: u32,
-    out: &mut Vec<RawToken>,
-) {
+fn walk_paragraph_tree(tree: &Tree, ctx: &ParagraphCtx<'_>, out: &mut Vec<RawToken>) {
     let mut cursor = tree.root_node().walk();
     'walk: loop {
         let node = cursor.node();
@@ -117,16 +119,16 @@ fn walk_paragraph_tree(
         } else {
             match node.kind() {
                 kind::GAIJI => {
-                    push_token(out, node, text, line_index, line_offset, TT_GAIJI);
+                    push_token(out, node, ctx, TT_GAIJI);
                 }
                 kind::RUBY_BASE_EXPLICIT | kind::RUBY_BASE_IMPLICIT => {
                     if is_inside_ruby(node) {
-                        push_token(out, node, text, line_index, line_offset, TT_RUBY_BASE);
+                        push_token(out, node, ctx, TT_RUBY_BASE);
                     }
                 }
                 kind::RUBY_READING => {
                     if is_inside_ruby(node) {
-                        push_token(out, node, text, line_index, line_offset, TT_RUBY_READING);
+                        push_token(out, node, ctx, TT_RUBY_READING);
                     }
                 }
                 _ => {
@@ -168,15 +170,13 @@ struct RawToken {
 fn push_token(
     out: &mut Vec<RawToken>,
     node: tree_sitter::Node<'_>,
-    source: &str,
-    line_index: &LineIndex,
-    line_offset: u32,
+    ctx: &ParagraphCtx<'_>,
     token_type: u32,
 ) {
-    let mut start = line_index.position(source, node.start_byte());
-    let mut end = line_index.position(source, node.end_byte());
-    start.line = start.line.saturating_add(line_offset);
-    end.line = end.line.saturating_add(line_offset);
+    let mut start = ctx.line_index.position(ctx.text, node.start_byte());
+    let mut end = ctx.line_index.position(ctx.text, node.end_byte());
+    start.line = start.line.saturating_add(ctx.line_offset);
+    end.line = end.line.saturating_add(ctx.line_offset);
     // Single-line tokens only (LSP spec); split multi-line spans
     // into per-line segments so the editor highlights each line.
     if start.line == end.line {

@@ -18,6 +18,8 @@
 //! cargo run -p aozora-lsp --release --example measure_incremental
 //! ```
 
+use std::env;
+use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
@@ -44,7 +46,7 @@ fn synth_gaiji_doc(count: usize) -> String {
 /// keeps the display lossless for any document size that fits in
 /// `usize` (overflow only at exabyte scale, well past anything
 /// realistic) and avoids `clippy::cast_precision_loss`.
-fn bytes_mb_tenths(n: usize) -> (usize, usize) {
+const fn bytes_mb_tenths(n: usize) -> (usize, usize) {
     // Round-half-to-even on the tenths boundary by computing in
     // tenths and dividing once: `n * 10 / MiB` gives the tenths
     // value with truncation; that matches the prior `{:.1}` printf
@@ -55,14 +57,13 @@ fn bytes_mb_tenths(n: usize) -> (usize, usize) {
     (tenths_total / 10, tenths_total % 10)
 }
 
-fn main() {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+fn measure_corpus_doc() {
+    let manifest = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     let path = Path::new(&manifest)
         .join("../..")
         .join("samples")
         .join("bouten.afm");
-    let text =
-        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     let (mb, tenths) = bytes_mb_tenths(text.len());
     println!(
         "loaded fixture: {} bytes from {} ({mb}.{tenths} MiB)",
@@ -72,7 +73,7 @@ fn main() {
 
     // Cold-start cost (DocState::new)
     let t = Instant::now();
-    let state = DocState::new(text.clone());
+    let state = DocState::new(text);
     println!("DocState::new: {:?}", t.elapsed());
 
     let initial_spans = state.snapshot().doc_gaiji_spans().len();
@@ -120,7 +121,10 @@ fn main() {
         "apply_changes (mid-doc @ {next_offset} again, incremental path): {:?}",
         t.elapsed()
     );
+}
 
+fn main() {
+    measure_corpus_doc();
     // Synthetic gaiji-rich document so the incremental algorithm has
     // spans to carry forward. bouten.afm has zero gaiji (it's all
     // 傍点 annotations, a different node kind), which masks the
@@ -132,7 +136,7 @@ fn main() {
     println!("synth doc: {} bytes ({mb}.{tenths} MiB)", gaiji_text.len());
 
     let t = Instant::now();
-    let g_state = DocState::new(gaiji_text.clone());
+    let g_state = DocState::new(gaiji_text);
     println!("  DocState::new: {:?}", t.elapsed());
     let g_initial = g_state.snapshot().doc_gaiji_spans().len();
     println!("  initial gaiji spans: {g_initial}");

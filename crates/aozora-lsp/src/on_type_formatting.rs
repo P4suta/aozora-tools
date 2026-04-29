@@ -38,6 +38,7 @@ use tower_lsp::lsp_types::{Position, Range, TextEdit};
 use crate::position::{byte_offset_to_position, position_to_byte_offset};
 
 /// The trigger char list advertised in `documentOnTypeFormattingProvider`.
+///
 /// The server capability splits this into `first_trigger_character` +
 /// `more_trigger_character`; this constant keeps the canonical list in
 /// one place so `backend.rs` and tests cannot drift.

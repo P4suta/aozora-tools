@@ -33,6 +33,7 @@ use crate::gaiji_spans::{GaijiSpan, spans_in_byte_range};
 use crate::line_index::LineIndex;
 
 /// Compute every inlay hint inside `range` (in LSP coordinates).
+///
 /// Spans are filtered to the requested viewport via binary search;
 /// each surviving span is resolved through `gaiji::lookup` and
 /// formatted into an `InlayHint`.
@@ -60,7 +61,7 @@ fn build_hint(span: &GaijiSpan, source: &str, line_index: &LineIndex) -> Option<
     let resolved = gaiji::lookup(None, span.mencode.as_deref(), &span.description)?;
 
     let mut display = String::new();
-    let _ = resolved.write_to(&mut display);
+    _ = resolved.write_to(&mut display);
     let codepoints: String = display
         .chars()
         .map(|c| format!("U+{:04X}", c as u32))

@@ -62,7 +62,7 @@ impl MutParagraph {
     /// Caller is responsible for invoking the parser; we don't hold
     /// one because the parser lives on `BufferState` (one per doc).
     #[must_use]
-    pub fn new(text: Rope) -> Self {
+    pub const fn new(text: Rope) -> Self {
         Self { text, tree: None }
     }
 
@@ -95,10 +95,11 @@ impl MutParagraph {
     }
 }
 
-/// Immutable per-paragraph snapshot. Held inside `Arc` inside
-/// [`crate::state::Snapshot::paragraphs`]. Carries the data each LSP
-/// request handler needs to operate against this paragraph without
-/// touching the writer side.
+/// Immutable per-paragraph snapshot.
+///
+/// Held inside `Arc` inside [`crate::state::Snapshot::paragraphs`].
+/// Carries the data each LSP request handler needs to operate against
+/// this paragraph without touching the writer side.
 ///
 /// ## Coordinate frames
 ///
@@ -155,7 +156,10 @@ pub struct ParagraphSnapshot {
 /// Build an immutable [`ParagraphSnapshot`] from a mutable paragraph
 /// plus its document-absolute byte offset.
 #[must_use]
-pub fn build_paragraph_snapshot(paragraph: &MutParagraph, byte_offset: usize) -> ParagraphSnapshot {
+pub(crate) fn build_paragraph_snapshot(
+    paragraph: &MutParagraph,
+    byte_offset: usize,
+) -> ParagraphSnapshot {
     let text_string = paragraph.text.to_string();
     let len = text_string.len();
     let line_index = LineIndex::new(&text_string);
@@ -271,7 +275,7 @@ fn shift_existing_spans(
 /// snaps forward to the next char boundary so downstream
 /// `Rope::byte_slice` calls never panic on mid-codepoint splits.
 #[must_use]
-pub fn paragraph_byte_ranges(rope: &Rope) -> Vec<Range<usize>> {
+pub(crate) fn paragraph_byte_ranges(rope: &Rope) -> Vec<Range<usize>> {
     let total = rope.len_bytes();
     let mut out: Vec<Range<usize>> = Vec::new();
     if total == 0 {
@@ -330,7 +334,7 @@ fn is_byte_char_boundary(bytes: &[u8], idx: usize) -> bool {
 /// Tree-sitter chunked-input callback over a paragraph's local
 /// `Rope`. Used by both the cold-start and incremental parse
 /// paths.
-pub fn chunk_callback<'r>(rope: &'r Rope) -> impl FnMut(usize, Point) -> &'r [u8] {
+pub(crate) fn chunk_callback<'r>(rope: &'r Rope) -> impl FnMut(usize, Point) -> &'r [u8] {
     let len = rope.len_bytes();
     move |byte_idx, _pos| -> &'r [u8] {
         if byte_idx >= len {
@@ -432,7 +436,7 @@ mod tests {
         // And every range must be slice-able through the rope without
         // panicking — that's the actual end-to-end invariant.
         for range in &ranges {
-            let _ = r.byte_slice(range.clone()).to_string();
+            drop(r.byte_slice(range.clone()).to_string());
         }
     }
 
@@ -515,7 +519,7 @@ mod tests {
             assert!(s.is_char_boundary(range.start));
             assert!(s.is_char_boundary(range.end));
             // Slicing through the rope must succeed without panic.
-            let _ = r.byte_slice(range.clone()).to_string();
+            drop(r.byte_slice(range.clone()).to_string());
         }
         // Coverage: ranges must cover [0, total) with no gap and no
         // overlap, regardless of how many cap splits happened.

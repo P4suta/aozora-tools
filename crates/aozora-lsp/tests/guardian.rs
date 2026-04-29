@@ -27,6 +27,7 @@
 //!    survive malformed `data` JSON without panicking.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use aozora_fmt::format_source;
@@ -36,7 +37,9 @@ use aozora_lsp::{
     format_on_type, hover_at, linked_editing_at, position_to_byte_offset, snippet_completions,
     wrap_selection_actions,
 };
+use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
+use proptest::sample::select;
 use tower_lsp::lsp_types::{Position, Range, Url};
 
 // ---------------------------------------------------------------
@@ -121,7 +124,7 @@ fn position_corpus() -> Vec<Position> {
 fn hover_never_panics_on_corpus() {
     for src in adversarial_corpus() {
         for pos in position_corpus() {
-            let _ = hover_at(&src, pos);
+            drop(hover_at(&src, pos));
         }
     }
 }
@@ -130,9 +133,9 @@ fn hover_never_panics_on_corpus() {
 fn completion_never_panics_on_corpus() {
     for src in adversarial_corpus() {
         for pos in position_corpus() {
-            let _ = completion_at(&src, pos);
-            let _ = emmet_completions(&src, pos);
-            let _ = snippet_completions(&src, pos);
+            drop(completion_at(&src, pos));
+            drop(emmet_completions(&src, pos));
+            drop(snippet_completions(&src, pos));
         }
     }
 }
@@ -145,7 +148,7 @@ fn format_on_type_never_panics_on_corpus() {
     for src in adversarial_corpus() {
         for pos in position_corpus() {
             for t in triggers {
-                let _ = format_on_type(&src, pos, t);
+                drop(format_on_type(&src, pos, t));
             }
         }
     }
@@ -156,7 +159,7 @@ fn linked_editing_never_panics_on_corpus() {
     for src in adversarial_corpus() {
         let idx = LineIndex::new(&src);
         for pos in position_corpus() {
-            let _ = linked_editing_at(&src, &idx, pos);
+            drop(linked_editing_at(&src, &idx, pos));
         }
     }
 }
@@ -164,11 +167,11 @@ fn linked_editing_never_panics_on_corpus() {
 #[test]
 fn diagnostics_format_folding_symbol_never_panic_on_corpus() {
     for src in adversarial_corpus() {
-        let _ = compute_diagnostics(&src);
-        let _ = format_edits(&src);
-        let _ = folding_ranges(&src);
+        drop(compute_diagnostics(&src));
+        drop(format_edits(&src));
+        drop(folding_ranges(&src));
         let idx = LineIndex::new(&src);
-        let _ = document_symbols(&src, &idx);
+        drop(document_symbols(&src, &idx));
     }
 }
 
@@ -212,7 +215,7 @@ fn wrap_actions_never_panic_on_corpus_ranges() {
     for src in adversarial_corpus() {
         let idx = LineIndex::new(&src);
         for r in ranges {
-            let _ = wrap_selection_actions(&src, &idx, &uri, r);
+            drop(wrap_selection_actions(&src, &idx, &uri, r));
         }
     }
 }
@@ -244,7 +247,7 @@ proptest! {
 /// deterministic across runs so a regression reproduces.
 struct Xorshift(u64);
 impl Xorshift {
-    fn new(seed: u64) -> Self {
+    const fn new(seed: u64) -> Self {
         // The all-zero seed is a fixed point for xorshift; rotate
         // any zero into something benign.
         Self(if seed == 0 {
@@ -253,7 +256,7 @@ impl Xorshift {
             seed
         })
     }
-    fn next(&mut self) -> u64 {
+    const fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 7;
@@ -272,7 +275,7 @@ impl Xorshift {
         let bits = self.next() & u64::from(u32::MAX);
         lo + (usize::try_from(bits).unwrap_or(0) % span)
     }
-    fn flip(&mut self) -> bool {
+    const fn flip(&mut self) -> bool {
         self.next() & 1 == 1
     }
 }
@@ -353,16 +356,16 @@ fn random_replace_burst_matches_string_oracle() {
 #[test]
 fn snapshot_reads_under_write_pressure_stay_consistent() {
     let state = DocState::new("seed\n\nseed".to_owned());
-    let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
 
     let writer_state = Arc::clone(&state);
     let writer_stop = Arc::clone(&stop);
     let writer = thread::spawn(move || {
         for _ in 0..200 {
-            if writer_stop.load(std::sync::atomic::Ordering::Relaxed) {
+            if writer_stop.load(Ordering::Relaxed) {
                 break;
             }
-            let _ = writer_state.apply_changes(&[LocalTextEdit::new(0..0, "X".to_owned())]);
+            _ = writer_state.apply_changes(&[LocalTextEdit::new(0..0, "X".to_owned())]);
             // Force the snapshot rebuild to happen inline
             // (otherwise it's queued on the blocking pool and
             // readers would always race the same stale snapshot).
@@ -377,7 +380,7 @@ fn snapshot_reads_under_write_pressure_stay_consistent() {
         readers.push(thread::spawn(move || {
             let mut last_seen_version = 0u64;
             for _ in 0..1000 {
-                if reader_stop.load(std::sync::atomic::Ordering::Relaxed) {
+                if reader_stop.load(Ordering::Relaxed) {
                     break;
                 }
                 let snap = reader_state.snapshot();
@@ -393,7 +396,7 @@ fn snapshot_reads_under_write_pressure_stay_consistent() {
     }
 
     writer.join().expect("writer panicked");
-    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    stop.store(true, Ordering::Relaxed);
     for r in readers {
         r.join().expect("reader panicked");
     }
@@ -450,6 +453,5 @@ fn realistic_text_strategy() -> impl Strategy<Value = String> {
         "\r\n",
         "X\nY",
     ];
-    proptest::collection::vec(proptest::sample::select(fragments), 0usize..12usize)
-        .prop_map(|frags| frags.concat())
+    proptest_vec(select(fragments), 0usize..12usize).prop_map(|frags| frags.concat())
 }

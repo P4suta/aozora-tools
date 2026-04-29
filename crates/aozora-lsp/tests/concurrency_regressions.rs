@@ -29,7 +29,7 @@ fn shared_cache_under_lock_handles_burst_reparse_load() {
                 };
                 for _ in 0..16 {
                     let mut guard = cache.lock().expect("lock cache");
-                    let _ = guard.reparse(&payload);
+                    drop(guard.reparse(&payload));
                 }
             })
         })
@@ -46,15 +46,17 @@ fn last_reparse_wins_under_serialised_access() {
     let cache = Arc::new(Mutex::new(SegmentCache::default()));
     {
         let mut guard = cache.lock().expect("lock");
-        let _ = guard.reparse("first");
+        drop(guard.reparse("first"));
     }
     {
         let mut guard = cache.lock().expect("lock");
-        let _ = guard.reparse("｜青梅《おうめ》");
+        drop(guard.reparse("｜青梅《おうめ》"));
     }
-    let guard = cache.lock().expect("lock");
-    let inline = guard
-        .with_tree(|tree| tree.lex_output().registry.inline.len())
-        .expect("populated");
+    let inline = {
+        let guard = cache.lock().expect("lock");
+        guard
+            .with_tree(|tree| tree.lex_output().registry.inline.len())
+            .expect("populated")
+    };
     assert_eq!(inline, 1);
 }

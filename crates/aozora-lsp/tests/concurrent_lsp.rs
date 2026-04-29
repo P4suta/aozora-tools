@@ -31,7 +31,7 @@ fn concurrent_reparse_two_independent_caches_completes_without_deadlock() {
         thread::spawn(move || {
             for _ in 0..32 {
                 let mut guard = cache.lock().expect("lock cache_a");
-                let _ = guard.reparse("｜青梅《おうめ》");
+                drop(guard.reparse("｜青梅《おうめ》"));
             }
         })
     };
@@ -40,7 +40,7 @@ fn concurrent_reparse_two_independent_caches_completes_without_deadlock() {
         thread::spawn(move || {
             for _ in 0..32 {
                 let mut guard = cache.lock().expect("lock cache_b");
-                let _ = guard.reparse("plain text");
+                drop(guard.reparse("plain text"));
             }
         })
     };
@@ -54,7 +54,7 @@ fn segment_cache_with_tree_after_reparse_is_consistent() {
     // thread (DashMap-style entry handoff). Pins the invariant that a
     // reparse always populates a tree that `with_tree` can borrow.
     let mut cache = SegmentCache::default();
-    let _ = cache.reparse("｜青梅《おうめ》");
+    drop(cache.reparse("｜青梅《おうめ》"));
     let inline_count = cache
         .with_tree(|tree| tree.lex_output().registry.inline.len())
         .expect("populated");

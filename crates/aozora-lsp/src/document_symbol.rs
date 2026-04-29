@@ -225,19 +225,19 @@ enum HeadingLevel {
 }
 
 impl HeadingLevel {
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
-            HeadingLevel::Major => "大見出し",
-            HeadingLevel::Middle => "中見出し",
-            HeadingLevel::Minor => "小見出し",
+            Self::Major => "大見出し",
+            Self::Middle => "中見出し",
+            Self::Minor => "小見出し",
         }
     }
 
-    fn symbol_kind(self) -> SymbolKind {
+    const fn symbol_kind(self) -> SymbolKind {
         match self {
-            HeadingLevel::Major => SymbolKind::CLASS,
-            HeadingLevel::Middle => SymbolKind::NAMESPACE,
-            HeadingLevel::Minor => SymbolKind::FUNCTION,
+            Self::Major => SymbolKind::CLASS,
+            Self::Middle => SymbolKind::NAMESPACE,
+            Self::Minor => SymbolKind::FUNCTION,
         }
     }
 }

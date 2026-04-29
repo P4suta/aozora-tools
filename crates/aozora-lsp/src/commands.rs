@@ -35,10 +35,11 @@ use tower_lsp::lsp_types::{Range, TextEdit, Url, WorkspaceEdit};
 /// `VSCode` `contributes.commands` convention (`<extension>.<verb>`).
 pub const COMMAND_CANONICALIZE_SLUG: &str = "aozora.canonicalizeSlug";
 
-/// Compute the [`WorkspaceEdit`] that canonicalises the slug body
-/// inside `body_text` against `range` in `uri`. `body_text` is the
-/// substring the editor has already extracted from `range` — the LSP
-/// backend looks up the document and slices.
+/// Compute the [`WorkspaceEdit`] that canonicalises the slug body.
+///
+/// `body_text` is the substring the editor has already extracted from
+/// `range` against `uri` — the LSP backend looks up the document and
+/// slices.
 ///
 /// Returns `None` if no canonicalisation applies (the body is already
 /// canonical, or it's not a recognised slug). The caller maps `None`

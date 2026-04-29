@@ -161,7 +161,7 @@ fn lifecycle_iteration() {
     // `uri_b` names without `clippy::similar_names` flagging the
     // outer-scope bindings.
     let writer_inputs = ThreadInputs {
-        docs: docs.clone(),
+        docs: Arc::clone(&docs),
         uri_a: uri_a.clone(),
         uri_b: uri_b.clone(),
     };
@@ -185,9 +185,9 @@ fn lifecycle_iteration() {
     });
 
     let mutator_inputs = ThreadInputs {
-        docs: docs.clone(),
-        uri_a: uri_a.clone(),
-        uri_b: uri_b.clone(),
+        docs: Arc::clone(&docs),
+        uri_a,
+        uri_b,
     };
     let t2 = thread::spawn(move || {
         let ThreadInputs { docs, uri_a, uri_b } = mutator_inputs;
@@ -214,13 +214,18 @@ fn lifecycle_iteration() {
     // the cached length wasn't updated.
     let snapshot: Vec<(Url, Arc<ShuttleMutex<ShuttleDoc>>)> = {
         let guard = docs.lock().unwrap();
-        guard.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        guard
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::clone(v)))
+            .collect()
     };
     for (uri, doc) in snapshot {
-        let doc = doc.lock().unwrap();
+        let (cached_len, expected_len) = {
+            let doc = doc.lock().unwrap();
+            (doc.parsed_normalized_len, parsed_state_proxy(&doc.text))
+        };
         assert_eq!(
-            doc.parsed_normalized_len,
-            parsed_state_proxy(&doc.text),
+            cached_len, expected_len,
             "doc {uri}: cached parsed-state proxy disagrees with fresh derivation",
         );
     }

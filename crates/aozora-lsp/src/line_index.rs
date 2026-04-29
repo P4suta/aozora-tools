@@ -62,7 +62,7 @@ impl LineIndex {
 
     /// Total number of lines in the indexed source. Always `>= 1`.
     #[must_use]
-    pub fn line_count(&self) -> usize {
+    pub const fn line_count(&self) -> usize {
         self.line_starts.len()
     }
 
@@ -115,11 +115,12 @@ impl LineIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::position::byte_offset_to_position;
 
     fn matches_legacy(source: &str, byte_offset: usize) -> bool {
         let idx = LineIndex::new(source);
         let via_index = idx.position(source, byte_offset);
-        let via_scan = crate::position::byte_offset_to_position(source, byte_offset);
+        let via_scan = byte_offset_to_position(source, byte_offset);
         via_index == via_scan
     }
 

@@ -31,7 +31,7 @@ pub struct LocalTextEdit {
 
 impl LocalTextEdit {
     #[must_use]
-    pub fn new(range: Range<usize>, new_text: String) -> Self {
+    pub const fn new(range: Range<usize>, new_text: String) -> Self {
         Self { range, new_text }
     }
 }
@@ -190,7 +190,7 @@ mod tests {
         // trigger clippy::reversed_empty_ranges, so we build the
         // Range struct from its endpoints.
         let edit = LocalTextEdit {
-            range: std::ops::Range { start: 5, end: 2 },
+            range: Range { start: 5, end: 2 },
             new_text: String::new(),
         };
         let err = apply_edits("hello", &[edit]).unwrap_err();

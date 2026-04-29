@@ -21,6 +21,9 @@
 //!
 //! Run with `cargo bench -p aozora-lsp --bench burst`.
 
+use std::env;
+use std::fs;
+use std::hint::black_box;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -33,13 +36,13 @@ use criterion::{BatchSize, BenchmarkGroup, Criterion, criterion_group, criterion
 use tower_lsp::lsp_types::{Position, Range};
 
 fn load_fixture(name: &str) -> String {
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let manifest = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
     // crates/aozora-lsp → ../.. = workspace root
     let path = Path::new(&manifest)
         .join("../..")
         .join("samples")
         .join(name);
-    std::fs::read_to_string(&path).unwrap_or_else(|err| {
+    fs::read_to_string(&path).unwrap_or_else(|err| {
         panic!(
             "fixture {name} not at {}: {err}; copy your bouten/sample into samples/",
             path.display()
@@ -65,7 +68,7 @@ fn bench_apply_changes(c: &mut Criterion) {
         b.iter_batched(
             || DocState::new(text.clone()),
             |state| {
-                let _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+                _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
             },
             BatchSize::PerIteration,
         );
@@ -75,7 +78,7 @@ fn bench_apply_changes(c: &mut Criterion) {
             || DocState::new(text.clone()),
             |state| {
                 for _ in 0..100 {
-                    let _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+                    _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
                 }
             },
             BatchSize::PerIteration,
@@ -93,7 +96,7 @@ fn bench_apply_changes(c: &mut Criterion) {
         b.iter_batched(
             || DocState::new(text.clone()),
             move |state| {
-                let _ = state
+                _ = state
                     .apply_changes(&[LocalTextEdit::new(mid_offset..mid_offset, " ".to_owned())]);
             },
             BatchSize::PerIteration,
@@ -115,7 +118,7 @@ fn nearest_char_boundary(text: &str, target: usize) -> usize {
 
 fn bench_inlay(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
-    let state = DocState::new(text.clone());
+    let state = DocState::new(text);
     let snap = state.snapshot();
     // `inlay_hints` (the public library helper for editors that prefer
     // server-side inlay) takes a sorted slice — collect from the
@@ -127,7 +130,12 @@ fn bench_inlay(c: &mut Criterion) {
     let mut g = c.benchmark_group("inlay");
     g.bench_function("solo_full_range_bouten_6mb", |b| {
         b.iter(|| {
-            let _ = inlay_hints(snap.doc_text(), &spans, snap.doc_line_index(), range);
+            drop(inlay_hints(
+                snap.doc_text(),
+                &spans,
+                snap.doc_line_index(),
+                range,
+            ));
         });
     });
     g.finish();
@@ -159,7 +167,7 @@ fn bench_line_index_build(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("line_index_build_bouten_6mb", |b| {
         b.iter(|| {
             let idx = LineIndex::new(text);
-            std::hint::black_box(idx);
+            black_box(idx);
         });
     });
 }
@@ -176,7 +184,7 @@ fn bench_gaiji_span_extract(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
                 let spans = doc
                     .with_tree(|tree| aozora_lsp::extract_gaiji_spans_for_bench(tree, text))
                     .unwrap_or_else(|| Arc::from(Vec::new()));
-                std::hint::black_box(spans);
+                black_box(spans);
             },
             BatchSize::PerIteration,
         );
@@ -189,7 +197,7 @@ fn bench_ts_parse_full(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
             IncrementalDoc::new,
             |doc| {
                 doc.parse_full(text);
-                std::hint::black_box(doc);
+                black_box(doc);
             },
             BatchSize::PerIteration,
         );
@@ -205,7 +213,7 @@ fn bench_apply_edits_insert(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
         let edit = vec![LocalTextEdit::new(0..0, " ".to_owned())];
         b.iter(|| {
             let new_text = apply_edits(text, &edit).expect("valid edit");
-            std::hint::black_box(new_text);
+            black_box(new_text);
         });
     });
 }
@@ -227,7 +235,7 @@ fn bench_ts_apply_edit_offset_0(g: &mut BenchmarkGroup<'_, WallTime>, text: &str
                 new_text.push(' ');
                 new_text.push_str(text);
                 doc.apply_edit(&new_text, edit);
-                std::hint::black_box(doc);
+                black_box(doc);
             },
             BatchSize::PerIteration,
         );
@@ -254,7 +262,7 @@ fn bench_ts_apply_edit_mid_doc(g: &mut BenchmarkGroup<'_, WallTime>, text: &str)
                 new_text.push(' ');
                 new_text.push_str(&text[mid..]);
                 doc.apply_edit(&new_text, edit);
-                std::hint::black_box(doc);
+                black_box(doc);
             },
             BatchSize::PerIteration,
         );
@@ -273,7 +281,7 @@ fn bench_ts_parse_60kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
             IncrementalDoc::new,
             |doc| {
                 doc.parse_full(small);
-                std::hint::black_box(doc);
+                black_box(doc);
             },
             BatchSize::PerIteration,
         );
@@ -288,7 +296,7 @@ fn bench_ts_parse_600kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) 
             IncrementalDoc::new,
             |doc| {
                 doc.parse_full(small);
-                std::hint::black_box(doc);
+                black_box(doc);
             },
             BatchSize::PerIteration,
         );
@@ -323,7 +331,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
         let state = DocState::new(text.clone());
         b.iter(|| {
             let snap = state.snapshot();
-            std::hint::black_box(snap);
+            black_box(snap);
         });
     });
 
@@ -339,13 +347,13 @@ fn bench_concurrent_reads(c: &mut Criterion) {
         let writer = thread::spawn(move || {
             let mut i = 0usize;
             while !writer_stop.load(Ordering::Relaxed) {
-                let _ = writer_state.apply_changes(&[LocalTextEdit::new(i..i, " ".to_owned())]);
+                _ = writer_state.apply_changes(&[LocalTextEdit::new(i..i, " ".to_owned())]);
                 i += 2; // Skip ahead each round to avoid edits stacking on each other
             }
         });
         b.iter(|| {
             let snap = state.snapshot();
-            std::hint::black_box(snap);
+            black_box(snap);
         });
         stop.store(true, Ordering::Relaxed);
         writer.join().expect("writer thread joined");

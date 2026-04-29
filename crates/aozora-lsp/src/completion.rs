@@ -30,7 +30,7 @@ use tower_lsp::lsp_types::{
     MarkupContent, MarkupKind, Position, Range, TextEdit,
 };
 
-use crate::position::byte_offset_to_position;
+use crate::position::{byte_offset_to_position, position_to_byte_offset};
 
 // We deliberately fire the catalogue from the very first byte of body
 // — the editor's own fuzzy-match layer narrows from there. No minimum
@@ -96,7 +96,7 @@ impl SlugCtx {
 /// tree-sitter tree as a parameter.
 #[must_use]
 pub fn completion_at(source: &str, position: Position) -> Vec<CompletionItem> {
-    let Some(byte_offset) = crate::position::position_to_byte_offset(source, position) else {
+    let Some(byte_offset) = position_to_byte_offset(source, position) else {
         return Vec::new();
     };
     let Some(ctx) = resolve_slug_context(source, byte_offset) else {
@@ -220,14 +220,10 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
     // `TextEdit.range` semantics are explicit in the LSP spec
     // (start inclusive, end exclusive); we must aim end at the
     // START of `］`, not its END.
-    let existing_full_close_start: Option<usize> = if !ctx.half_width()
+    let existing_full_close_start: Option<usize> = (!ctx.half_width()
         && ctx.close_end > ctx.body_start
-        && source[ctx.body_start..ctx.close_end].ends_with('］')
-    {
-        Some(ctx.close_end - '］'.len_utf8())
-    } else {
-        None
-    };
+        && source[ctx.body_start..ctx.close_end].ends_with('］'))
+    .then(|| ctx.close_end - '］'.len_utf8());
 
     // Splice into the document. For half-width openers, rewrite the
     // entire `[#...]` (or mixed variant) to the canonical full-width
@@ -250,10 +246,7 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
     } else {
         ctx.body_start
     };
-    let edit_end = match existing_full_close_start {
-        Some(close_start) => close_start,
-        None => ctx.close_end.max(edit_start),
-    };
+    let edit_end = existing_full_close_start.unwrap_or_else(|| ctx.close_end.max(edit_start));
     let range = Range::new(
         byte_offset_to_position(source, edit_start),
         byte_offset_to_position(source, edit_end),
@@ -316,7 +309,7 @@ fn forward_already_has(source: &str, cursor: usize, partner: &str) -> bool {
     source[cursor..].contains(partner)
 }
 
-pub(crate) fn family_to_kind(family: SlugFamily) -> CompletionItemKind {
+pub(crate) const fn family_to_kind(family: SlugFamily) -> CompletionItemKind {
     match family {
         SlugFamily::PageBreak | SlugFamily::Section => CompletionItemKind::EVENT,
         SlugFamily::BlockContainerOpen | SlugFamily::BlockContainerClose => {

@@ -24,6 +24,7 @@
 //! warnings are surfaced but don't block.
 
 use std::fs;
+use std::path::Path;
 
 const PERF_PARANOID_PATH: &str = "/proc/sys/kernel/perf_event_paranoid";
 const PERF_PARANOID_MAX: i32 = 1;
@@ -40,7 +41,7 @@ enum Check {
 
 /// Run every pre-flight check in order. Hard-failures are returned
 /// as `Err`; warnings are printed but don't block.
-pub fn run_preflight(rate_hz: u32) -> Result<(), String> {
+pub(crate) fn run_preflight(rate_hz: u32) -> Result<(), String> {
     eprintln!(">>> samply preflight (rate={rate_hz} Hz)");
     let checks = [
         ("perf_event_paranoid", check_perf_paranoid()),
@@ -59,10 +60,7 @@ pub fn run_preflight(rate_hz: u32) -> Result<(), String> {
             }
         }
     }
-    match hard {
-        Some(msg) => Err(format!("preflight aborted: {msg}")),
-        None => Ok(()),
-    }
+    hard.map_or(Ok(()), |msg| Err(format!("preflight aborted: {msg}")))
 }
 
 fn check_perf_paranoid() -> Check {
@@ -190,11 +188,11 @@ fn parse_cpu_online_list(raw: &str) -> usize {
 /// Print a brief reminder of the post-capture workflow at the end
 /// of a successful samply run. Centralised so the wording stays
 /// identical across every `samply record` target.
-pub fn print_post_run_help(out: &std::path::Path, rate_hz: u32) {
+pub(crate) fn print_post_run_help(out: &Path, rate_hz: u32) {
     let _ = rate_hz; // reserved for future "samples expected" estimate
     eprintln!();
     eprintln!(">>> samply trace captured");
-    if let Ok(meta) = std::fs::metadata(out) {
+    if let Ok(meta) = fs::metadata(out) {
         eprintln!("    file: {} ({} bytes)", out.display(), meta.len());
     }
     eprintln!();

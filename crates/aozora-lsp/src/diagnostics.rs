@@ -30,7 +30,7 @@ use crate::line_index::LineIndex;
 /// re-classifying the offending span.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
-pub enum DiagnosticPayload {
+pub(crate) enum DiagnosticPayload {
     /// `UnclosedBracket` — the open delimiter is here; the missing
     /// close is one of the chars in `expected_close`.
     UnclosedBracket {
@@ -51,7 +51,7 @@ pub enum DiagnosticPayload {
 /// Stringified [`PairKind`] for `serde_json` round-tripping.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-pub enum SerializablePairKind {
+pub(crate) enum SerializablePairKind {
     Bracket,
     Ruby,
     DoubleRuby,
@@ -82,7 +82,7 @@ impl SerializablePairKind {
     /// Human-readable open delimiter literal (`［`, `《`, `《《`,
     /// `〔`, `「`).
     #[must_use]
-    pub fn open_str(self) -> &'static str {
+    pub(crate) const fn open_str(self) -> &'static str {
         match self {
             Self::Bracket => "［",
             Self::Ruby => "《",
@@ -94,7 +94,7 @@ impl SerializablePairKind {
 
     /// Human-readable close delimiter literal.
     #[must_use]
-    pub fn close_str(self) -> &'static str {
+    pub(crate) const fn close_str(self) -> &'static str {
         match self {
             Self::Bracket => "］",
             Self::Ruby => "》",
