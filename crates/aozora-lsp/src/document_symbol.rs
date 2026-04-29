@@ -130,18 +130,37 @@ fn build_symbol(
     } else {
         title
     };
+    // The single remaining `#[allow]` in this crate, kept against
+    // a fully-audited upstream constraint:
+    //
     // `lsp_types::DocumentSymbol` retains the `deprecated:
-    // Option<bool>` field marked `#[deprecated(note = "Use tags
-    // instead")]` for spec backward-compat (LSP 3.15 superseded it
-    // with `tags`). The struct has no `Default` impl and every
-    // field is `pub`, so Rust forces us to name it explicitly at
-    // construction; setting it to `None` is the supported
-    // migration path. `tags: None` is set for the same reason. The
-    // upstream warning cannot be avoided without giving up the
-    // typed struct (e.g. via `serde_json::from_value`), which
-    // would cost us compile-time field validation for no
-    // diagnostic improvement.
-    #[allow(deprecated, reason = "lsp-types still keeps the field")]
+    // Option<bool>` field annotated `#[deprecated(note = "Use tags
+    // instead")]`. LSP 3.15 (2020-01) superseded this field with
+    // `tags`, but the spec keeps it for backward-compat with
+    // pre-3.15 clients, so the typed Rust binding has to keep it
+    // too. `lsp_types` derives no `Default` impl and every field
+    // is `pub`, so the only way to construct `DocumentSymbol` from
+    // typed code is to name `deprecated` explicitly. `None` is the
+    // supported migration value (we send `tags` instead).
+    //
+    // Alternatives we considered and rejected:
+    //
+    //   - struct-update via a helper template (`..empty_doc_symbol()`):
+    //     just relocates the allow, does not remove it.
+    //   - `serde_json::from_value`: removes the allow but trades
+    //     compile-time field validation for a silent runtime error
+    //     if `lsp_types` ever renames a field. We rely on the
+    //     compile-time check.
+    //   - forking `lsp-types`: open-ended maintenance cost for one
+    //     line of code, with the upstream field returning every time
+    //     we rebase.
+    //
+    // The allow is therefore the smallest, most localised, and most
+    // honest workaround for an upstream constraint we cannot fix.
+    #[allow(
+        deprecated,
+        reason = "lsp_types::DocumentSymbol::deprecated retained upstream for LSP <3.15 backward-compat"
+    )]
     DocumentSymbol {
         name,
         detail: Some(level.as_str().to_owned()),

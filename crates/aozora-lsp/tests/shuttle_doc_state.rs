@@ -39,14 +39,6 @@
 //! `cargo test` doesn't pull in the shuttle dep.
 
 #![cfg(feature = "shuttle-tests")]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::doc_markdown,
-    clippy::similar_names,
-    clippy::inconsistent_struct_constructor,
-    reason = "test harness: bounded inputs + descriptive prose docs"
-)]
 
 use std::collections::HashMap;
 use std::env;
@@ -91,8 +83,8 @@ impl ShuttleDoc {
     fn new(text: String) -> Self {
         let parsed_normalized_len = parsed_state_proxy(&text);
         Self {
-            parsed_normalized_len,
             text,
+            parsed_normalized_len,
         }
     }
     fn apply(&mut self, edits: &[LocalTextEdit]) {
@@ -107,11 +99,11 @@ impl ShuttleDoc {
     }
 }
 
-/// Document map modelled with a single shuttle Mutex over a HashMap.
-/// Trades DashMap's bucket-level concurrency for shuttle-observable
-/// scheduling. The contract we're verifying — "operations on a
-/// shared map don't violate the per-doc invariant under any
-/// interleaving" — survives this substitution.
+/// Document map modelled with a single shuttle `Mutex` over a
+/// `HashMap`. Trades `DashMap`'s bucket-level concurrency for
+/// shuttle-observable scheduling. The contract we're verifying —
+/// "operations on a shared map don't violate the per-doc invariant
+/// under any interleaving" — survives this substitution.
 type DocMap = Arc<ShuttleMutex<HashMap<Url, Arc<ShuttleMutex<ShuttleDoc>>>>>;
 
 fn doc_map_get(m: &DocMap, uri: &Url) -> Option<Arc<ShuttleMutex<ShuttleDoc>>> {
@@ -129,9 +121,22 @@ fn doc_map_remove(m: &DocMap, uri: &Url) {
     guard.remove(uri);
 }
 
+/// Bundle of clones each spawned thread captures.
+///
+/// Hoisting the three `Arc` clones into a struct lets the thread
+/// closure shadow them back to local `docs` / `uri_a` / `uri_b`
+/// names. The previous shape (`uri_a_t1` / `uri_b_t1` / `uri_a_t2`
+/// / `uri_b_t2` in the outer scope) tripped `clippy::similar_names`
+/// on the single-character `a`/`b` and `1`/`2` diffs.
+struct ThreadInputs {
+    docs: DocMap,
+    uri_a: Url,
+    uri_b: Url,
+}
+
 /// One scheduling iteration: 2 threads do a fixed sequence of ops
 /// on a shared `Arc<Mutex<HashMap<Url, Arc<Mutex<ShuttleDoc>>>>>`.
-/// The double-Arc<Mutex> shape mirrors what DashMap gives us in
+/// The double-`Arc<Mutex>` shape mirrors what `DashMap` gives us in
 /// production (bucket lock outside, per-value lock inside) at a
 /// fidelity shuttle can preempt at every step.
 fn lifecycle_iteration() {
@@ -150,39 +155,50 @@ fn lifecycle_iteration() {
         ShuttleDoc::new("doc b init\n\n".to_owned()),
     );
 
-    let docs_t1 = docs.clone();
-    let uri_a_t1 = uri_a.clone();
-    let uri_b_t1 = uri_b.clone();
+    // Bundle each thread's three Arc clones into a `ThreadInputs`
+    // (defined at module scope) so the move-into-thread captures
+    // one binding and the body can shadow back to local `uri_a` /
+    // `uri_b` names without `clippy::similar_names` flagging the
+    // outer-scope bindings.
+    let writer_inputs = ThreadInputs {
+        docs: docs.clone(),
+        uri_a: uri_a.clone(),
+        uri_b: uri_b.clone(),
+    };
     let t1 = thread::spawn(move || {
-        if let Some(doc) = doc_map_get(&docs_t1, &uri_a_t1) {
+        let ThreadInputs { docs, uri_a, uri_b } = writer_inputs;
+        if let Some(doc) = doc_map_get(&docs, &uri_a) {
             doc.lock()
                 .unwrap()
                 .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
         }
-        if let Some(doc) = doc_map_get(&docs_t1, &uri_b_t1) {
+        if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
                 .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
         }
-        if let Some(doc) = doc_map_get(&docs_t1, &uri_a_t1) {
+        if let Some(doc) = doc_map_get(&docs, &uri_a) {
             doc.lock()
                 .unwrap()
                 .replace("rewritten by T1\n\n".to_owned());
         }
     });
 
-    let docs_t2 = docs.clone();
-    let uri_a_t2 = uri_a.clone();
-    let uri_b_t2 = uri_b.clone();
+    let mutator_inputs = ThreadInputs {
+        docs: docs.clone(),
+        uri_a: uri_a.clone(),
+        uri_b: uri_b.clone(),
+    };
     let t2 = thread::spawn(move || {
-        if let Some(doc) = doc_map_get(&docs_t2, &uri_b_t2) {
+        let ThreadInputs { docs, uri_a, uri_b } = mutator_inputs;
+        if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
                 .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
         }
         // T2 may close A at any time relative to T1's writes.
-        doc_map_remove(&docs_t2, &uri_a_t2);
-        if let Some(doc) = doc_map_get(&docs_t2, &uri_b_t2) {
+        doc_map_remove(&docs, &uri_a);
+        if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
                 .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
@@ -220,7 +236,7 @@ fn iters_to_run() -> usize {
 /// Invariant: the `DocState` lifecycle stays consistent under any
 /// interleaving of 2 threads' op sequences (open/change/close).
 /// Reproduces: preventive — primary refactor safety net for any
-/// future change to backend.rs that touches DashMap or `DocState`
+/// future change to backend.rs that touches `DashMap` or `DocState`
 /// access patterns.
 #[test]
 fn shuttle_doc_state_lifecycle_consistent_under_random_schedules() {

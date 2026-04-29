@@ -28,7 +28,8 @@ use aozora_lsp::{
     DocState, GaijiSpan, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits, inlay_hints,
     input_edit,
 };
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+use criterion::measurement::WallTime;
+use criterion::{BatchSize, BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use tower_lsp::lsp_types::{Position, Range};
 
 fn load_fixture(name: &str) -> String {
@@ -132,117 +133,141 @@ fn bench_inlay(c: &mut Criterion) {
     g.finish();
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "one cohesive criterion bench group; splitting per-bench helpers spreads the same loop pattern across multiple fns without clarifying anything"
-)]
+/// Top-level dispatcher. Each individual bench is its own helper
+/// below — splitting them out keeps `bench_subcomponents` short
+/// enough to drop the previous `#[allow(clippy::too_many_lines)]`
+/// and makes each bench discoverable as a named function in
+/// stack traces / `cargo bench --bench burst -- <name>`.
 fn bench_subcomponents(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let mut g = c.benchmark_group("subcomponents");
     g.sample_size(20);
 
+    bench_line_index_build(&mut g, &text);
+    bench_gaiji_span_extract(&mut g, &text);
+    bench_ts_parse_full(&mut g, &text);
+    bench_apply_edits_insert(&mut g, &text);
+    bench_ts_apply_edit_offset_0(&mut g, &text);
+    bench_ts_apply_edit_mid_doc(&mut g, &text);
+    bench_ts_parse_60kb_slice(&mut g, &text);
+    bench_ts_parse_600kb_slice(&mut g, &text);
+
+    g.finish();
+}
+
+fn bench_line_index_build(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("line_index_build_bouten_6mb", |b| {
         b.iter(|| {
-            let idx = LineIndex::new(&text);
+            let idx = LineIndex::new(text);
             std::hint::black_box(idx);
         });
     });
+}
 
+fn bench_gaiji_span_extract(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("gaiji_span_extract_bouten_6mb", |b| {
         b.iter_batched(
             || {
                 let doc = IncrementalDoc::new();
-                doc.parse_full(&text);
+                doc.parse_full(text);
                 doc
             },
             |doc| {
                 let spans = doc
-                    .with_tree(|tree| aozora_lsp::extract_gaiji_spans_for_bench(tree, &text))
+                    .with_tree(|tree| aozora_lsp::extract_gaiji_spans_for_bench(tree, text))
                     .unwrap_or_else(|| Arc::from(Vec::new()));
                 std::hint::black_box(spans);
             },
             BatchSize::PerIteration,
         );
     });
+}
 
+fn bench_ts_parse_full(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_parse_full_bouten_6mb", |b| {
         b.iter_batched(
             IncrementalDoc::new,
             |doc| {
-                doc.parse_full(&text);
+                doc.parse_full(text);
                 std::hint::black_box(doc);
             },
             BatchSize::PerIteration,
         );
     });
+}
 
-    // Isolate the pure string splice — `apply_changes` flow does this
-    // first, and we suspect it's the dominant cost on a 6 MB buffer
-    // because `apply_edits` allocates a fresh `String::with_capacity`
-    // and `push_str`s the entire prefix + tail every edit.
+/// Isolate the pure string splice — `apply_changes` flow does this
+/// first, and we suspect it's the dominant cost on a 6 MB buffer
+/// because `apply_edits` allocates a fresh `String::with_capacity`
+/// and `push_str`s the entire prefix + tail every edit.
+fn bench_apply_edits_insert(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("apply_edits_insert_one_char_bouten_6mb", |b| {
         let edit = vec![LocalTextEdit::new(0..0, " ".to_owned())];
         b.iter(|| {
-            let new_text = apply_edits(&text, &edit).expect("valid edit");
+            let new_text = apply_edits(text, &edit).expect("valid edit");
             std::hint::black_box(new_text);
         });
     });
+}
 
-    // Isolate the tree-sitter incremental edit at OFFSET 0 — the
-    // worst case for incremental reuse because every byte after the
-    // edit shifts. tree-sitter must invalidate (almost) every node.
+/// Isolate the tree-sitter incremental edit at OFFSET 0 — the
+/// worst case for incremental reuse because every byte after the
+/// edit shifts. tree-sitter must invalidate (almost) every node.
+fn bench_ts_apply_edit_offset_0(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_apply_edit_offset_0_bouten_6mb", |b| {
         b.iter_batched(
             || {
                 let doc = IncrementalDoc::new();
-                doc.parse_full(&text);
+                doc.parse_full(text);
                 doc
             },
             |doc| {
                 let edit = input_edit(0, 0, 1);
                 let mut new_text = String::with_capacity(text.len() + 1);
                 new_text.push(' ');
-                new_text.push_str(&text);
+                new_text.push_str(text);
                 doc.apply_edit(&new_text, edit);
                 std::hint::black_box(doc);
             },
             BatchSize::PerIteration,
         );
     });
+}
 
-    // Same benchmark but the edit is in the middle of the document.
-    // Tree-sitter's incremental reparse should reuse most subtrees;
-    // the cost should drop from ~200 ms (offset-0 worst case) down to
-    // a fraction. Exact ratio is the whole point of the measurement.
+/// Same benchmark but the edit is in the middle of the document.
+/// Tree-sitter's incremental reparse should reuse most subtrees;
+/// the cost should drop from ~200 ms (offset-0 worst case) down to
+/// a fraction. Exact ratio is the whole point of the measurement.
+fn bench_ts_apply_edit_mid_doc(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_apply_edit_mid_doc_bouten_6mb", |b| {
-        let mid = nearest_char_boundary(&text, text.len() / 2);
-        let text_for_setup = text.clone();
-        let text_for_run = text.clone();
+        let mid = nearest_char_boundary(text, text.len() / 2);
         b.iter_batched(
-            move || {
+            || {
                 let doc = IncrementalDoc::new();
-                doc.parse_full(&text_for_setup);
+                doc.parse_full(text);
                 doc
             },
             |doc| {
                 let edit = input_edit(mid, mid, mid + 1);
-                let mut new_text = String::with_capacity(text_for_run.len() + 1);
-                new_text.push_str(&text_for_run[..mid]);
+                let mut new_text = String::with_capacity(text.len() + 1);
+                new_text.push_str(&text[..mid]);
                 new_text.push(' ');
-                new_text.push_str(&text_for_run[mid..]);
+                new_text.push_str(&text[mid..]);
                 doc.apply_edit(&new_text, edit);
                 std::hint::black_box(doc);
             },
             BatchSize::PerIteration,
         );
     });
+}
 
-    // Cold parse on a small sub-slice of the doc — this is the
-    // measurement that motivates per-paragraph segmentation. If a
-    // 60 KB paragraph parses in ~3 ms, then a per-paragraph design
-    // turns the per-edit TS cost from 220 ms into 3 ms.
+/// Cold parse on a small sub-slice of the doc — this is the
+/// measurement that motivates per-paragraph segmentation. If a
+/// 60 KB paragraph parses in ~3 ms, then a per-paragraph design
+/// turns the per-edit TS cost from 220 ms into 3 ms.
+fn bench_ts_parse_60kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_parse_full_60kb_slice_bouten", |b| {
-        let slice_end = nearest_char_boundary(&text, 60 * 1024);
+        let slice_end = nearest_char_boundary(text, 60 * 1024);
         let small = &text[..slice_end];
         b.iter_batched(
             IncrementalDoc::new,
@@ -253,20 +278,21 @@ fn bench_subcomponents(c: &mut Criterion) {
             BatchSize::PerIteration,
         );
     });
-    g.bench_function("ts_parse_full_600kb_slice_bouten", |b| {
-        let slice_end = nearest_char_boundary(&text, 600 * 1024);
-        let small = &text[..slice_end];
-        b.iter_batched(
-            IncrementalDoc::new,
-            |doc| {
-                doc.parse_full(small);
-                std::hint::black_box(doc);
-            },
-            BatchSize::PerIteration,
-        );
-    });
+}
 
-    g.finish();
+fn bench_ts_parse_600kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
+    g.bench_function("ts_parse_full_600kb_slice_bouten", |b| {
+        let slice_end = nearest_char_boundary(text, 600 * 1024);
+        let small = &text[..slice_end];
+        b.iter_batched(
+            IncrementalDoc::new,
+            |doc| {
+                doc.parse_full(small);
+                std::hint::black_box(doc);
+            },
+            BatchSize::PerIteration,
+        );
+    });
 }
 
 /// Quantify the wait-free read property of the `ArcSwap`-backed
