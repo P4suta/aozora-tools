@@ -28,12 +28,19 @@ jobs:
   build:
     name: build site
     runs-on: ubuntu-latest
+    # `cargo doc` rustc-links a thin shim per crate; on a 282-crate
+    # workspace that link cost is non-trivial. Mirror ci.yml's mold
+    # setup so we get the same ~30 % link-time savings here.
+    env:
+      RUSTDOCFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.95.0
+
+      - uses: rui314/setup-mold@v1
 
       - uses: Swatinem/rust-cache@v2
         with:

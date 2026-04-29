@@ -3,14 +3,18 @@
   "displayName": "aozora — aozora-flavored markdown",
   "description": "Formatter, diagnostics, and gaiji hover for aozora-flavored-markdown documents, powered by aozora-lsp.",
   "version": "0.1.0",
-  "publisher": "local",
-  "private": true,
+  "publisher": "yasunobu-sakashita",
   "license": "Apache-2.0",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/P4suta/aozora-tools.git",
     "directory": "editors/vscode"
   },
+  "bugs": {
+    "url": "https://github.com/P4suta/aozora-tools/issues"
+  },
+  "homepage": "https://github.com/P4suta/aozora-tools/tree/main/editors/vscode#readme",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -19,13 +23,19 @@
     "Formatters",
     "Linters"
   ],
+  "galleryBanner": {
+    "color": "#E8F1F5",
+    "theme": "light"
+  },
   "keywords": [
     "aozora",
+    "aozora-bunko",
     "japanese",
     "markdown",
     "ruby",
     "bouten",
-    "lsp"
+    "lsp",
+    "青空文庫"
   ],
   "activationEvents": [
     "onLanguage:aozora",
@@ -246,7 +256,8 @@
           "other": "on",
           "comments": "off",
           "strings": "off"
-        }
+        },
+        "editor.autoClosingDelete": "always"
       },
       "editor.semanticTokenColorCustomizations": {
         "rules": {
@@ -313,8 +324,11 @@
     ]
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "node esbuild.mjs --production",
+    "bundle": "node esbuild.mjs --production",
+    "bundle:dev": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p ./ --noEmit",
     "build": "bun run compile",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
@@ -330,6 +344,7 @@
     "@biomejs/biome": "^2.4.13",
     "@types/node": "^25.6.0",
     "@types/vscode": "^1.80.0",
+    "esbuild": "^0.28.0",
     "typescript": "^6.0.3"
   }
 }

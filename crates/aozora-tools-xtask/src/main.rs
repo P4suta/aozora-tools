@@ -31,6 +31,7 @@ use clap::{Args, Parser, Subcommand};
 
 mod analyze;
 mod preflight;
+mod vsix;
 
 const SAMPLY_RATE_HZ: u32 = 4000;
 const DEFAULT_LSP_BURST_SECONDS: u32 = 30;
@@ -46,6 +47,33 @@ struct Cli {
 enum Cmd {
     /// Sample-profile a target via `samply`.
     Samply(SamplyArgs),
+    /// Build the bundled-LSP VS Code extension `.vsix` for every
+    /// platform target VS Code Marketplace recognises (linux/alpine/
+    /// darwin/win32 × x64/arm64). Builds run in parallel under a
+    /// bounded thread pool; packaging is serial to avoid races on
+    /// `editors/vscode/server/`. Outputs land in
+    /// `editors/vscode/dist-vsix/`.
+    VsixAll(VsixAllArgs),
+}
+
+#[derive(Args)]
+struct VsixAllArgs {
+    /// Maximum number of build jobs to run concurrently. Default 1
+    /// (serial) is empirically the fastest setting on WSL2 — measured
+    /// `--jobs 2` at 597 s vs serial 605 s (within noise) and
+    /// `--jobs 4` actively regresses (Docker daemon contention plus
+    /// IO bandwidth on the shared registry/git-cache routinely trips
+    /// cross's container with exit 101). Raise on a true Linux host
+    /// with ≥16 GiB free RAM and a dedicated Docker daemon while
+    /// watching `docker stats`; values below 1 are clamped.
+    #[arg(long, default_value_t = 1)]
+    jobs: usize,
+
+    /// Build only the named vsce target (e.g. `linux-x64`). Useful
+    /// while iterating locally on the platform you actually run.
+    /// Without this flag, all 8 targets are built.
+    #[arg(long)]
+    target: Option<String>,
 }
 
 #[derive(Args)]
@@ -91,6 +119,7 @@ fn main() {
             SamplyTarget::LspBurst { seconds } => samply_lsp_burst(seconds),
             SamplyTarget::Analyze { trace } => analyze::analyze(&trace),
         },
+        Cmd::VsixAll(args) => vsix::run_vsix_all(args.jobs, args.target.as_deref()),
     };
     if let Err(err) = result {
         eprintln!("xtask: {err}");
