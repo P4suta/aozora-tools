@@ -60,23 +60,20 @@ pub enum SerializablePairKind {
 }
 
 impl From<PairKind> for SerializablePairKind {
-    // `PairKind` is `#[non_exhaustive]`; the wildcard arm catches
-    // any future-added variant and falls back to `Bracket`. Same
-    // body as the `Bracket` arm by intent — clippy's
-    // `match_same_arms` doesn't know that, so suppress.
-    #[allow(
-        clippy::match_same_arms,
-        reason = "non_exhaustive PairKind requires a wildcard arm; \
-                  conservative fallback intentionally mirrors Bracket"
-    )]
     fn from(k: PairKind) -> Self {
+        // `PairKind` is `#[non_exhaustive]`, so we have to handle
+        // future-added variants. Merging `Bracket` with the wildcard
+        // (`PairKind::Bracket | _`) makes the fallback explicit
+        // without giving clippy two arms with identical bodies — the
+        // pre-merge shape (`PairKind::Bracket => Self::Bracket` as a
+        // distinct arm plus a separate `_ => Self::Bracket`) tripped
+        // `clippy::match_same_arms` on the duplicate body.
         match k {
-            PairKind::Bracket => Self::Bracket,
             PairKind::Ruby => Self::Ruby,
             PairKind::DoubleRuby => Self::DoubleRuby,
             PairKind::Tortoise => Self::Tortoise,
             PairKind::Quote => Self::Quote,
-            _ => Self::Bracket,
+            PairKind::Bracket | _ => Self::Bracket,
         }
     }
 }
@@ -166,139 +163,173 @@ struct Described {
     payload: Option<DiagnosticPayload>,
 }
 
-#[allow(
-    clippy::too_many_lines,
-    reason = "single dispatch over Diagnostic variants — splitting per \
-              variant would scatter the message catalogue across many \
-              functions without improving readability"
-)]
+/// Top-level dispatcher. Unpacks the diagnostic variant and delegates
+/// to a per-variant helper below — splitting them out keeps this
+/// function short enough to drop the previous
+/// `#[allow(clippy::too_many_lines)]` and makes each catalogue entry
+/// independently navigable.
 fn describe(d: &AozoraDiagnostic) -> Described {
     match d {
         AozoraDiagnostic::SourceContainsPua {
             span, codepoint, ..
-        } => Described {
-            span: *span,
-            message: format!(
-                "私用領域文字 `U+{cp:04X}` がソースに紛れ込んでいます。\n\n\
-                 この文字 (`{ch}`) は青空文庫の通常テキストには現れない予約コードポイントで、aozora-lex の内部マーカー (U+E001..U+E004) と衝突します。\n\
-                 通常はテキストエディタの非表示文字設定や、コピペ時の不可視サニタイズで混入します。\n\n\
-                 直し方: 該当の 1 文字を削除してください。",
-                cp = *codepoint as u32,
-                ch = codepoint,
-            ),
-            code: "aozora::source-contains-pua",
-            severity: DiagnosticSeverity::WARNING,
-            tags: Some(vec![DiagnosticTag::UNNECESSARY]),
-            payload: Some(DiagnosticPayload::SourceContainsPua {
-                codepoint: *codepoint as u32,
-            }),
-        },
+        } => describe_source_contains_pua(*span, *codepoint),
         AozoraDiagnostic::UnclosedBracket { span, kind, .. } => {
-            let pk: SerializablePairKind = (*kind).into();
-            let open = pk.open_str();
-            let close = pk.close_str();
-            let example = example_for(pk);
-            Described {
-                span: *span,
-                message: format!(
-                    "閉じられていない `{open}` があります。\n\n\
-                     どこかに対応する `{close}` を必ず置いてください。aozora 記法では一行内で閉じるのが基本です。\n\n\
-                     例: `{example}`",
-                ),
-                code: "aozora::unclosed-bracket",
-                severity: DiagnosticSeverity::ERROR,
-                tags: None,
-                payload: Some(DiagnosticPayload::UnclosedBracket {
-                    pair_kind: pk,
-                    expected_close: close.to_owned(),
-                }),
-            }
+            describe_unclosed_bracket(*span, *kind)
         }
         AozoraDiagnostic::UnmatchedClose { span, kind, .. } => {
-            let pk: SerializablePairKind = (*kind).into();
-            let open = pk.open_str();
-            let close = pk.close_str();
-            Described {
-                span: *span,
-                message: format!(
-                    "対応する `{open}` のない `{close}` です。\n\n\
-                     考えられる原因:\n\
-                     1. 余分な `{close}` を打ってしまった → 削除する\n\
-                     2. 前にあるはずの `{open}` が欠けている → 適切な位置に追加する\n\
-                     3. その間に別の `{close}` があり、ペアが一段ずれた → 該当箇所のペアを見直す\n\n\
-                     右クリックの Quick Fix から「`{close}` を削除する」を選べます。",
-                ),
-                code: "aozora::unmatched-close",
-                severity: DiagnosticSeverity::ERROR,
-                tags: None,
-                payload: Some(DiagnosticPayload::UnmatchedClose { pair_kind: pk }),
-            }
+            describe_unmatched_close(*span, *kind)
         }
-        AozoraDiagnostic::ResidualAnnotationMarker { span, .. } => Described {
-            span: *span,
-            message: "未分類の `［＃...］` 注記です。\n\n\
-                     注記辞典 (`gaiji_chuki.pdf`) のキーワードに合致しなかったか、誤字の可能性があります。\n\n\
-                     確認手順:\n\
-                     1. ［＃ の中身が `改ページ` / `中央揃え` などの登録済みキーワードと一致するか確認\n\
-                     2. `第3水準1-...` のような JIS X 0213 mencode を付け忘れていないか確認\n\
-                     3. それでも不明な場合は description-only 形式 (`※［＃「説明」］`) でひとまず通せます"
-                .to_owned(),
-            code: "aozora::residual-annotation-marker",
-            severity: DiagnosticSeverity::WARNING,
-            tags: None,
-            payload: Some(DiagnosticPayload::ResidualAnnotationMarker),
-        },
+        AozoraDiagnostic::ResidualAnnotationMarker { span, .. } => {
+            describe_residual_annotation_marker(*span)
+        }
         AozoraDiagnostic::UnregisteredSentinel {
             span, codepoint, ..
-        } => Described {
-            span: *span,
-            message: format!(
-                "未登録の私用領域 sentinel `U+{cp:04X}` が検出されました (lexer 内部の整合性エラー)。\n\n\
-                 これは aozora-lex のバグの可能性が高いです。再現手順を添えて issue で報告してください。",
-                cp = *codepoint as u32,
-            ),
-            code: "aozora::unregistered-sentinel",
-            severity: DiagnosticSeverity::ERROR,
-            tags: None,
-            payload: None,
-        },
-        AozoraDiagnostic::RegistryOutOfOrder { span, .. } => Described {
-            span: *span,
-            message:
-                "プレースホルダーレジストリの順序が崩れています (lexer 内部の整合性エラー)。\n\n\
-                 aozora-lex のバグの可能性があります。"
-                    .to_owned(),
-            code: "aozora::registry-out-of-order",
-            severity: DiagnosticSeverity::ERROR,
-            tags: None,
-            payload: None,
-        },
-        AozoraDiagnostic::RegistryPositionMismatch { span, expected, .. } => Described {
-            span: *span,
-            message: format!(
-                "プレースホルダーレジストリは `U+{cp:04X}` を期待していたのに別の字が置かれていました (lexer 内部の整合性エラー)。\n\n\
-                 aozora-lex のバグの可能性があります。",
-                cp = *expected as u32,
-            ),
-            code: "aozora::registry-position-mismatch",
-            severity: DiagnosticSeverity::ERROR,
-            tags: None,
-            payload: None,
-        },
+        } => describe_unregistered_sentinel(*span, *codepoint),
+        AozoraDiagnostic::RegistryOutOfOrder { span, .. } => describe_registry_out_of_order(*span),
+        AozoraDiagnostic::RegistryPositionMismatch { span, expected, .. } => {
+            describe_registry_position_mismatch(*span, *expected)
+        }
         // aozora::Diagnostic は `#[non_exhaustive]` なので、将来の追加 variant
         // は generic な warning として一旦通し、LSP クライアントには原文
         // メッセージを届ける。
-        other => Described {
-            span: Span::new(0, 0),
-            message: format!(
-                "未対応の aozora 診断です: {other:?}\n\n\
-                 aozora-lsp と aozora-lex のバージョンが揃っていない可能性があります。"
-            ),
-            code: "aozora::unknown-diagnostic",
-            severity: DiagnosticSeverity::WARNING,
-            tags: None,
-            payload: None,
-        },
+        other => describe_unknown(other),
+    }
+}
+
+fn describe_source_contains_pua(span: Span, codepoint: char) -> Described {
+    Described {
+        span,
+        message: format!(
+            "私用領域文字 `U+{cp:04X}` がソースに紛れ込んでいます。\n\n\
+             この文字 (`{ch}`) は青空文庫の通常テキストには現れない予約コードポイントで、aozora-lex の内部マーカー (U+E001..U+E004) と衝突します。\n\
+             通常はテキストエディタの非表示文字設定や、コピペ時の不可視サニタイズで混入します。\n\n\
+             直し方: 該当の 1 文字を削除してください。",
+            cp = codepoint as u32,
+            ch = codepoint,
+        ),
+        code: "aozora::source-contains-pua",
+        severity: DiagnosticSeverity::WARNING,
+        tags: Some(vec![DiagnosticTag::UNNECESSARY]),
+        payload: Some(DiagnosticPayload::SourceContainsPua {
+            codepoint: codepoint as u32,
+        }),
+    }
+}
+
+fn describe_unclosed_bracket(span: Span, kind: PairKind) -> Described {
+    let pk: SerializablePairKind = kind.into();
+    let open = pk.open_str();
+    let close = pk.close_str();
+    let example = example_for(pk);
+    Described {
+        span,
+        message: format!(
+            "閉じられていない `{open}` があります。\n\n\
+             どこかに対応する `{close}` を必ず置いてください。aozora 記法では一行内で閉じるのが基本です。\n\n\
+             例: `{example}`",
+        ),
+        code: "aozora::unclosed-bracket",
+        severity: DiagnosticSeverity::ERROR,
+        tags: None,
+        payload: Some(DiagnosticPayload::UnclosedBracket {
+            pair_kind: pk,
+            expected_close: close.to_owned(),
+        }),
+    }
+}
+
+fn describe_unmatched_close(span: Span, kind: PairKind) -> Described {
+    let pk: SerializablePairKind = kind.into();
+    let open = pk.open_str();
+    let close = pk.close_str();
+    Described {
+        span,
+        message: format!(
+            "対応する `{open}` のない `{close}` です。\n\n\
+             考えられる原因:\n\
+             1. 余分な `{close}` を打ってしまった → 削除する\n\
+             2. 前にあるはずの `{open}` が欠けている → 適切な位置に追加する\n\
+             3. その間に別の `{close}` があり、ペアが一段ずれた → 該当箇所のペアを見直す\n\n\
+             右クリックの Quick Fix から「`{close}` を削除する」を選べます。",
+        ),
+        code: "aozora::unmatched-close",
+        severity: DiagnosticSeverity::ERROR,
+        tags: None,
+        payload: Some(DiagnosticPayload::UnmatchedClose { pair_kind: pk }),
+    }
+}
+
+fn describe_residual_annotation_marker(span: Span) -> Described {
+    Described {
+        span,
+        message: "未分類の `［＃...］` 注記です。\n\n\
+                 注記辞典 (`gaiji_chuki.pdf`) のキーワードに合致しなかったか、誤字の可能性があります。\n\n\
+                 確認手順:\n\
+                 1. ［＃ の中身が `改ページ` / `中央揃え` などの登録済みキーワードと一致するか確認\n\
+                 2. `第3水準1-...` のような JIS X 0213 mencode を付け忘れていないか確認\n\
+                 3. それでも不明な場合は description-only 形式 (`※［＃「説明」］`) でひとまず通せます"
+            .to_owned(),
+        code: "aozora::residual-annotation-marker",
+        severity: DiagnosticSeverity::WARNING,
+        tags: None,
+        payload: Some(DiagnosticPayload::ResidualAnnotationMarker),
+    }
+}
+
+fn describe_unregistered_sentinel(span: Span, codepoint: char) -> Described {
+    Described {
+        span,
+        message: format!(
+            "未登録の私用領域 sentinel `U+{cp:04X}` が検出されました (lexer 内部の整合性エラー)。\n\n\
+             これは aozora-lex のバグの可能性が高いです。再現手順を添えて issue で報告してください。",
+            cp = codepoint as u32,
+        ),
+        code: "aozora::unregistered-sentinel",
+        severity: DiagnosticSeverity::ERROR,
+        tags: None,
+        payload: None,
+    }
+}
+
+fn describe_registry_out_of_order(span: Span) -> Described {
+    Described {
+        span,
+        message: "プレースホルダーレジストリの順序が崩れています (lexer 内部の整合性エラー)。\n\n\
+             aozora-lex のバグの可能性があります。"
+            .to_owned(),
+        code: "aozora::registry-out-of-order",
+        severity: DiagnosticSeverity::ERROR,
+        tags: None,
+        payload: None,
+    }
+}
+
+fn describe_registry_position_mismatch(span: Span, expected: char) -> Described {
+    Described {
+        span,
+        message: format!(
+            "プレースホルダーレジストリは `U+{cp:04X}` を期待していたのに別の字が置かれていました (lexer 内部の整合性エラー)。\n\n\
+             aozora-lex のバグの可能性があります。",
+            cp = expected as u32,
+        ),
+        code: "aozora::registry-position-mismatch",
+        severity: DiagnosticSeverity::ERROR,
+        tags: None,
+        payload: None,
+    }
+}
+
+fn describe_unknown(other: &AozoraDiagnostic) -> Described {
+    Described {
+        span: Span::new(0, 0),
+        message: format!(
+            "未対応の aozora 診断です: {other:?}\n\n\
+             aozora-lsp と aozora-lex のバージョンが揃っていない可能性があります。"
+        ),
+        code: "aozora::unknown-diagnostic",
+        severity: DiagnosticSeverity::WARNING,
+        tags: None,
+        payload: None,
     }
 }
 
