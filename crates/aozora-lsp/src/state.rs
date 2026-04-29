@@ -613,10 +613,14 @@ impl DocState {
 
     /// Apply a batch of edits and ratchet the snapshot.
     pub fn apply_changes(self: &Arc<Self>, edits: &[LocalTextEdit]) -> Option<u64> {
-        {
-            let mut buffer = self.buffer.lock();
-            buffer.apply_edits(edits)?;
-        }
+        // Hold the buffer mutex only across the actual edit; drop it
+        // explicitly before the metrics + version + snapshot-rebuild
+        // tail so concurrent readers don't queue behind this writer
+        // for any longer than the edit itself takes
+        // (`clippy::significant_drop_tightening` enforces this).
+        let mut buffer = self.buffer.lock();
+        buffer.apply_edits(edits)?;
+        drop(buffer);
         self.metrics.record_edit();
         let new_version = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
         self.spawn_snapshot_rebuild(new_version);
@@ -625,10 +629,9 @@ impl DocState {
 
     /// Replace the buffer wholesale.
     pub fn replace_text(self: &Arc<Self>, new_text: String) -> u64 {
-        {
-            let mut buffer = self.buffer.lock();
-            buffer.replace(new_text);
-        }
+        let mut buffer = self.buffer.lock();
+        buffer.replace(new_text);
+        drop(buffer);
         self.metrics.record_edit();
         let new_version = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
         self.spawn_snapshot_rebuild(new_version);

@@ -159,7 +159,10 @@ missing_assert_message     = "warn"
 
 # Restriction group — hand-picked. The full restriction group is
 # deliberately NOT enabled (it contains mutually contradictory lints);
-# each entry below is a considered decision.
+# each entry below is a considered decision. Mirrors the canonical
+# `aozora` lib's superset so a workspace-wide `cargo clippy` produces
+# the same warnings whether you run it inside `aozora` or
+# `aozora-tools`.
 str_to_string                   = "warn"  # prefer `.into()` / `String::from`
 absolute_paths                  = "warn"  # prefer `use`-imported names
 allow_attributes_without_reason = "warn"  # belt-and-braces; every allow must justify itself
@@ -168,6 +171,24 @@ if_then_some_else_none          = "warn"  # prefer `.then_some` / `.then`
 let_underscore_must_use         = "warn"  # ignoring `#[must_use]` via `let _ =`
 mixed_read_write_in_expression  = "warn"
 rest_pat_in_fully_bound_structs = "warn"
+same_name_method                = "warn"  # avoid trait/method-name shadowing
+semicolon_outside_block         = "warn"  # `{ … };` over `{ … ; }`
+try_err                         = "warn"  # prefer `?` over `Err(e)?`
+unneeded_field_pattern          = "warn"  # `Foo { a, .. }` over `Foo { a, b: _, c: _ }`
+verbose_file_reads              = "warn"  # prefer `fs::read_to_string` / `fs::read`
+format_push_string              = "warn"  # prefer `write!(s, ...)` over `s.push_str(&format!(...))`
+unnecessary_self_imports        = "warn"  # `use foo;` over `use foo::{self};` when alone
+assertions_on_result_states     = "warn"  # banned: `assert!(r.is_ok())` — use `unwrap()`
+filetype_is_file                = "warn"  # `Path::is_file()` doesn't follow symlinks
+rc_buffer                       = "warn"  # avoid `Rc<String>` / `Rc<Vec<T>>`
+rc_mutex                        = "warn"  # avoid `Rc<Mutex<T>>` (use `Arc`)
+lossy_float_literal             = "warn"  # f32 / f64 literals losing precision
+suspicious_xor_used_as_pow      = "warn"  # `2 ^ 8` is xor, not power
+
+# Pedantic-group carve-outs that don't make sense for our codebase
+# shape. Each one mirrors aozora's call.
+module_name_repetitions = "allow"  # noisy when the module name is the domain term (e.g. `paragraph::ParagraphSnapshot`)
+missing_const_for_fn    = "allow"  # forces `const fn` discipline on hot paths where the const-eligibility is incidental
 
 [profile.release]
 lto           = "thin"

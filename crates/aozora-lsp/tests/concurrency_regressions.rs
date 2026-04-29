@@ -44,14 +44,10 @@ fn shared_cache_under_lock_handles_burst_reparse_load() {
 #[test]
 fn last_reparse_wins_under_serialised_access() {
     let cache = Arc::new(Mutex::new(SegmentCache::default()));
-    {
-        let mut guard = cache.lock().expect("lock");
-        drop(guard.reparse("first"));
-    }
-    {
-        let mut guard = cache.lock().expect("lock");
-        drop(guard.reparse("｜青梅《おうめ》"));
-    }
+    let mut guard = cache.lock().expect("lock");
+    drop(guard.reparse("first"));
+    drop(guard.reparse("｜青梅《おうめ》"));
+    drop(guard);
     let inline = {
         let guard = cache.lock().expect("lock");
         guard
