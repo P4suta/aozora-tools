@@ -158,7 +158,7 @@
     },
     "ruby_base_implicit": {
       "type": "PATTERN",
-      "value": "[一-鿿㐀-䶿豈-﫿々ヵヶ]+"
+      "value": "[\\u4E00-\\u9FFF\\u3400-\\u4DBF\\uF900-\\uFAFF\\u3005\\u30F5\\u30F6]+"
     },
     "ruby_reading": {
       "type": "IMMEDIATE_TOKEN",

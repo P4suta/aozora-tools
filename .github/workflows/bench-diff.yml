@@ -42,6 +42,11 @@ env:
   # each job's `Read Rust toolchain version` step so this workflow
   # tracks the same channel as `ci.yml` automatically.
 
+# Default to least-privilege; jobs needing more (e.g. `compare-pr`
+# posting PR comments) override `permissions` block-locally.
+permissions:
+  contents: read
+
 jobs:
   # =========================================================
   # Save baseline on main pushes.
@@ -112,6 +117,9 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
+      # Job-level `permissions` replaces (not merges) the top-level
+      # block, so re-declare `contents: read` for checkout/cache.
+      contents: read
       pull-requests: write
     steps:
       - name: Checkout aozora-tools

@@ -104,8 +104,17 @@ module.exports = grammar({
     )),
 
     // CJK kanji + iteration marks + small Katakana that count as
-    // kanji in the aozora implicit-ruby scanner.
-    ruby_base_implicit: $ => /[一-鿿㐀-䶿豈-﫿々ヵヶ]+/,
+    // kanji in the aozora implicit-ruby scanner. Ranges spelled
+    // with explicit \uXXXX escapes so static analyzers can verify
+    // the bounds without misreading a literal CJK char as a stray
+    // unicode point — the CodeQL `js/overly-large-range` check
+    // false-positives on the literal-char form here:
+    //   一-鿿     U+4E00..U+9FFF  CJK Unified Ideographs
+    //   㐀-䶿     U+3400..U+4DBF  CJK Unified Ideographs Ext A
+    //   豈-﫿    U+F900..U+FAFF  CJK Compatibility Ideographs
+    //   々       U+3005          ideographic iteration mark
+    //   ヵ ヶ    U+30F5, U+30F6  small katakana counted as kanji
+    ruby_base_implicit: $ => /[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3005\u30F5\u30F6]+/,
 
     ruby_reading: $ => token.immediate(/[^》\n]+/),
 
