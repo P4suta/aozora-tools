@@ -15,14 +15,20 @@ editor (Neovim, Helix, Emacs, Zed, …).
 | `textDocument/publishDiagnostics`| Every `aozora::Diagnostic` mapped to LSP `Diagnostic` (UTF-16 column-aware). |
 | `textDocument/formatting`        | `parse ∘ serialize` (via `aozora_fmt::format_source`); single document-replace `TextEdit`. |
 | `textDocument/hover`             | Cursor inside `※［＃…］` resolves the gaiji glyph + description via `aozora_encoding::gaiji`. |
-| `textDocument/inlayHint`         | Resolved gaiji glyph rendered next to the source span. |
 | `textDocument/linkedEditingRange`| Paired delimiters auto-rename together: `［` ↔ `］`, `《` ↔ `》`, `「` ↔ `」`, … |
 | `textDocument/completion`        | Slug catalogue from `aozora::SLUGS`, parametric snippets, paired-container partner auto-insert. |
 | `textDocument/foldingRange`      | Section / paragraph folding. |
 | `textDocument/documentSymbol`    | Heading outline. |
 | `textDocument/semanticTokens`    | Syntax-aware highlighting derived from the tree-sitter tree. |
-| `workspace/executeCommand`       | `aozora.canonicalizeSlug` — canonicalise the slug under the cursor. |
+| `workspace/executeCommand`       | `aozora.canonicalizeSlug` — canonicalise the slug at a given range. |
 | `aozora/renderHtml` *(custom)*   | Returns HTML for the active document. Drives the VS Code preview pane. |
+| `aozora/gaijiSpans` *(custom)*   | Every resolvable gaiji in the document with `range` + resolved glyph; the VS Code extension uses it for inline-fold decorations. Plain-LSP clients can call `aozora_lsp::inlay_hints` from a library context for the same data. |
+
+`textDocument/inlayHint` is intentionally **not** advertised — the VS
+Code extension already renders the resolved-gaiji glyph through
+`aozora/gaijiSpans`-driven decorations, and adding an LSP inlay layer
+duplicated the visual. Editors that want the same data over standard
+LSP can call `aozora_lsp::inlay_hints` from a library context.
 
 ## Architecture (one-liner)
 

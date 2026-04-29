@@ -39,8 +39,8 @@ regenerate.
 # Regenerate parser.c from grammar.js (writes src/parser.c)
 npx tree-sitter generate
 
-# Test the grammar against the corpus
-npx tree-sitter test
+# Test the grammar (Rust integration tests in bindings/rust/lib.rs)
+cargo test -p tree-sitter-aozora
 ```
 
 ## Rust binding

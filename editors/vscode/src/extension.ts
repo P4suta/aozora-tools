@@ -20,6 +20,7 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+import { registerCanonicalizeAtCursorCommand } from "./canonicalize";
 import { registerDeletePair } from "./deletePair";
 import { registerGaijiFold } from "./gaijiFold";
 import { registerNotationGuideCommand } from "./notationGuide";
@@ -155,6 +156,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // robust against the editor-focus quirks that broke the prior
   // built-in proxy.
   registerShowOutlineCommand(context);
+
+  // `Aozora: Canonicalize slug at cursor` — bridges the LSP's
+  // `aozora.canonicalizeSlug` workspace command into the palette so
+  // users can normalise `［＃ぼうてん］` → `［＃傍点］` without
+  // hunting for the lightbulb.
+  registerCanonicalizeAtCursorCommand(context, client);
 
   try {
     await client.start();

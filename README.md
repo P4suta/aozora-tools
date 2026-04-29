@@ -30,7 +30,7 @@ this repo iterates.
 | Crate | Purpose |
 |---|---|
 | [`crates/aozora-fmt`](./crates/aozora-fmt) | `aozora-fmt` CLI — idempotent formatter built on `Document::parse ∘ AozoraTree::serialize`. |
-| [`crates/aozora-lsp`](./crates/aozora-lsp) | `aozora-lsp` — Language Server Protocol implementation (tower-lsp). Publishes diagnostics, formatting, hover (gaiji), inlay hints (gaiji glyph), `linkedEditingRange` (paired delimiters), completion (slug catalogue), `aozora.canonicalizeSlug` code action, and the `aozora/renderHtml` custom request that powers the VS Code preview pane. |
+| [`crates/aozora-lsp`](./crates/aozora-lsp) | `aozora-lsp` — Language Server Protocol implementation (tower-lsp). Publishes diagnostics, formatting, hover (gaiji), `linkedEditingRange` (paired delimiters), completion (slug catalogue), folding ranges, document symbols, semantic tokens, `aozora.canonicalizeSlug` workspace command, plus the `aozora/renderHtml` and `aozora/gaijiSpans` custom requests the VS Code extension consumes. |
 | [`crates/tree-sitter-aozora`](./crates/tree-sitter-aozora) | Tree-sitter grammar for incremental parsing inside `aozora-lsp`; usable from any tree-sitter host. |
 | [`crates/aozora-tools-xtask`](./crates/aozora-tools-xtask) | Repo automation (sanitizers harness, CPU-online introspection for bench scheduling). |
 
@@ -52,12 +52,19 @@ editors get every other capability through the standard LSP surface.
 - `textDocument/publishDiagnostics`
 - `textDocument/formatting`
 - `textDocument/hover` (gaiji resolution)
-- `textDocument/inlayHint` (resolved gaiji glyph next to `※［＃…］`)
-- `textDocument/linkedEditingRange` (`［` ↔ `]`, `《` ↔ `》`, `「` ↔ `」`, …)
+- `textDocument/linkedEditingRange` (`［` ↔ `］`, `《` ↔ `》`, `「` ↔ `」`, …)
 - `textDocument/completion` (slug catalogue from `aozora::SLUGS`,
   parametric snippets, paired-container partner auto-insert)
+- `textDocument/foldingRange`, `textDocument/documentSymbol`,
+  `textDocument/semanticTokens`
 - `workspace/executeCommand` → `aozora.canonicalizeSlug`
-- Custom: `aozora/renderHtml` — VS Code preview WebView consumes this.
+- Custom requests:
+  - `aozora/renderHtml` — VS Code preview WebView consumes this.
+  - `aozora/gaijiSpans` — every resolvable gaiji span in the
+    document; the VS Code extension uses it to drive inline-fold
+    decorations (resolved glyph next to `※［＃…］`). Generic LSP
+    clients can opt into the same data via the
+    `aozora_lsp::inlay_hints` library entry instead.
 
 See [`docs/adr/0002-lsp-feature-roadmap.md`](./docs/adr/0002-lsp-feature-roadmap.md)
 for the roadmap and
