@@ -74,11 +74,18 @@ bun run compile  # esbuild → out/extension.js
 
 ## Releasing
 
-- Bump `version` in `Cargo.toml [workspace.package]` + the
-  VS Code extension's `editors/vscode/package.json`.
-- Update `CHANGELOG.md` (Keep a Changelog format).
-- Tag `vX.Y.Z` on `main` after CI is green; the GitHub Pages site
-  redeploys on every push to `main`.
+Workspace crates and the VS Code extension cut releases independently.
+
+- **Workspace** (`aozora-fmt` / `aozora-lsp`): bump `version` in
+  `Cargo.toml [workspace.package]`, update `CHANGELOG.md`, tag `vX.Y.Z`
+  on `main`. `release.yml` builds binaries for Linux x86_64 / macOS
+  arm64 / Windows x86_64 and attaches them to the GitHub Release.
+- **VS Code extension**: bump `version` in `editors/vscode/package.json`
+  and tag `vscode-vX.Y.Z` on `main`. `release-vscode.yml` packages a
+  platform-specific `.vsix` per supported target and publishes to the
+  Marketplace (Open VSX is opportunistic).
+- The GitHub Pages rustdoc site redeploys on every push to `main` —
+  no separate tag step.
 
 ## Code of conduct
 

@@ -130,33 +130,10 @@ fn build_symbol(
     } else {
         title
     };
-    // The single remaining `#[allow]` in this crate, kept against
-    // a fully-audited upstream constraint:
-    //
-    // `lsp_types::DocumentSymbol` retains the `deprecated:
-    // Option<bool>` field annotated `#[deprecated(note = "Use tags
-    // instead")]`. LSP 3.15 (2020-01) superseded this field with
-    // `tags`, but the spec keeps it for backward-compat with
-    // pre-3.15 clients, so the typed Rust binding has to keep it
-    // too. `lsp_types` derives no `Default` impl and every field
-    // is `pub`, so the only way to construct `DocumentSymbol` from
-    // typed code is to name `deprecated` explicitly. `None` is the
-    // supported migration value (we send `tags` instead).
-    //
-    // Alternatives we considered and rejected:
-    //
-    //   - struct-update via a helper template (`..empty_doc_symbol()`):
-    //     just relocates the allow, does not remove it.
-    //   - `serde_json::from_value`: removes the allow but trades
-    //     compile-time field validation for a silent runtime error
-    //     if `lsp_types` ever renames a field. We rely on the
-    //     compile-time check.
-    //   - forking `lsp-types`: open-ended maintenance cost for one
-    //     line of code, with the upstream field returning every time
-    //     we rebase.
-    //
-    // The allow is therefore the smallest, most localised, and most
-    // honest workaround for an upstream constraint we cannot fix.
+    // `lsp_types::DocumentSymbol` keeps the deprecated
+    // `deprecated: Option<bool>` field for LSP <3.15 wire-format
+    // compat; every constructor must name it. We pass `None` and use
+    // the modern `tags` field instead.
     #[allow(
         deprecated,
         reason = "lsp_types::DocumentSymbol::deprecated retained upstream for LSP <3.15 backward-compat"

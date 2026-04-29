@@ -78,11 +78,18 @@ jobs:
             cross: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: ${{ steps.toolchain.outputs.version }}
           targets: ${{ matrix.cargo_target }}
 
       - uses: Swatinem/rust-cache@v2
@@ -140,7 +147,7 @@ jobs:
         working-directory: editors/vscode
         run: bunx @vscode/vsce package --target ${{ matrix.vsce_target }} --no-yarn
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix-${{ matrix.vsce_target }}
           path: editors/vscode/*.vsix
@@ -153,9 +160,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: vsix-*
           merge-multiple: true

@@ -34,11 +34,18 @@ jobs:
     env:
       RUSTDOCFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: ${{ steps.toolchain.outputs.version }}
 
       - uses: rui314/setup-mold@v1
 

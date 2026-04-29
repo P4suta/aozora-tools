@@ -38,11 +38,18 @@ jobs:
             runner: windows-latest
             archive: zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: ${{ steps.toolchain.outputs.version }}
 
       # Explicit `rustup target add` is more reliable than the action's
       # `targets:` input across stable channel updates — `rustup target
@@ -104,7 +111,7 @@ jobs:
           echo "name=${name}" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artefacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.archive.outputs.name }}
           path: |
@@ -120,9 +127,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: aozora-tools-*
           merge-multiple: true

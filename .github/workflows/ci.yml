@@ -61,10 +61,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: ${{ steps.toolchain.outputs.version }}
           components: rustfmt, clippy
 
       # mold: Linux x86_64 link speed-up (~5-10× over GNU ld). The

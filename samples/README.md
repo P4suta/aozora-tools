@@ -11,7 +11,11 @@ fixture for `aozora-lsp/benches/burst.rs`.
 | `gaiji.afm`               | JIS X 0213 mencode gaiji + `U+XXXX` form, smallest case |
 | `gaiji-full.afm`          | Every JIS X 0213 plane × row × cell mencode the encoder resolves |
 | `headings-and-breaks.afm` | Heading hints, ruby inside body text, page break |
-| `tsumi-to-batsu-x100.afm` | 200 MB synthetic corpus (Tsumi to Batsu × 100). Used to stress incremental-parse memory + worst-case full-document workloads |
+
+`samples/tsumi-to-batsu-x100.afm` is a dev-only ~200 MB stress
+fixture (Tsumi to Batsu × 100), gitignored and built locally from
+the public Aozora Bunko text. ADR-0006 (`docs/adr/0006-rope-buffer.md`)
+discusses the worst-case workloads it exists to exercise.
 
 ## Try
 

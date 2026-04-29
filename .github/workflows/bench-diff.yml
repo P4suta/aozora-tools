@@ -38,9 +38,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Pin the toolchain to match `ci.yml`. Diverging here would mean
-  # baselines are incomparable across rust versions.
-  RUST_TOOLCHAIN: 1.95.0
+  # The toolchain is read from `aozora-tools/rust-toolchain.toml` in
+  # each job's `Read Rust toolchain version` step so this workflow
+  # tracks the same channel as `ci.yml` automatically.
 
 jobs:
   # =========================================================
@@ -62,9 +62,17 @@ jobs:
           path: aozora
           ref: main
 
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        working-directory: aozora-tools
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ steps.toolchain.outputs.version }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -118,9 +126,17 @@ jobs:
           path: aozora
           ref: main
 
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        working-directory: aozora-tools
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          toolchain: ${{ steps.toolchain.outputs.version }}
 
       - uses: Swatinem/rust-cache@v2
         with:
