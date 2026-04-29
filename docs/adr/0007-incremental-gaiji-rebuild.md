@@ -1,6 +1,6 @@
 # ADR-0007 — Incremental gaiji-span rebuild via `Tree::changed_ranges` + `Arc<GaijiSpan>` boxing
 
-- Status: accepted (landed in `ysvppsuy feat(state, gaiji)` 2026-04-28 + `tozklwlq perf(gaiji_spans)` same day)
+- Status: accepted (2026-04-28)
 - Crate: `aozora-lsp`
 
 ## Context

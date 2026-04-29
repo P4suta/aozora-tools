@@ -8,12 +8,9 @@ under `editors/vscode/`.
 
 ## Ground rules
 
-1. **Host toolchain, not Docker.** Unlike the sibling `aozora` repo,
-   aozora-tools runs `cargo`, `bun`, `typos`, etc. directly. Toolchain
-   versions are pinned by [mise](https://mise.jdx.dev/) — see
-   `~/.config/mise/config.toml` if you also use mise; otherwise the
-   pinned `rust-toolchain.toml` (`1.95.0`) is what `rustup` /
-   `dtolnay/rust-toolchain` will pick up.
+1. **Host toolchain, not Docker.** `cargo`, `bun`, `typos` etc. run
+   directly. `rust-toolchain.toml` pins Rust 1.95.0 — `rustup` or
+   `dtolnay/rust-toolchain` picks it up automatically.
 2. **No warning suppressions.** `#[allow(...)]` / `continue-on-error`
    / `#[cfg_attr(..., allow(...))]` are rejected by review. The
    `dead_code = "deny"` workspace lint is intentional — fix the real
@@ -23,15 +20,15 @@ under `editors/vscode/`.
    repo. Do **not** point them at `main` or a branch in a PR; tag
    pinning is what gives us reproducible builds.
 4. **TDD with C1 100 % branch coverage as the goal.** Failing test
-   first, fix after. The proptest sweep + the `金庫番` guardrail suite
-   (`crates/aozora-lsp/tests/guardrail.rs`) cover panic-resistance,
+   first, fix after. The proptest sweep + the `金庫番` guardian suite
+   (`crates/aozora-lsp/tests/guardian.rs`) cover panic-resistance,
    idempotence, and concurrency invariants you should not regress.
 
 ## First-time setup
 
 ```sh
-# Install the toolchains. mise will read .mise.toml / rust-toolchain.toml.
-mise install
+# Rust toolchain + cargo (rustup will read rust-toolchain.toml).
+rustup show
 
 # Install lefthook git hooks (pre-commit fmt+clippy+typos,
 # commit-msg Conventional Commits, pre-push fmt-check+clippy+test+
@@ -60,7 +57,7 @@ cargo bench --workspace --no-run                       # bench compile check
 # VS Code extension:
 cd editors/vscode
 bun run check    # biome (lint + format check) + tsc --noEmit
-bun run compile  # tsc → out/
+bun run compile  # esbuild → out/extension.js
 ```
 
 ## Commit and PR style

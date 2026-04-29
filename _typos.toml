@@ -23,7 +23,7 @@ kome    = "kome"         # ※ — gaiji marker name
 oozato  = "oozato"       # おおざと radical
 ouroboros = "ouroboros"  # mentioned in ADRs / discussions
 
-# Names appearing in NOTICE / handoffs / commit messages.
+# Names appearing in NOTICE / commit messages.
 Yasunobu = "Yasunobu"
 
 # Tree-sitter / LSP / dep names that could trip the dictionary.
@@ -51,5 +51,4 @@ extend-exclude = [
     "editors/vscode/out/",
     "editors/vscode/bun.lock",
     "editors/vscode/bun.lockb",
-    "docs/handoff-*.md",          # narrative handoff docs — proper-noun heavy
 ]

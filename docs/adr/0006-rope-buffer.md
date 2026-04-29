@@ -1,6 +1,6 @@
 # ADR-0006 — `ropey::Rope` for the document buffer + tree-sitter chunked input
 
-- Status: accepted (landed in `sxyxtyup perf(state, incremental)`, 2026-04-28)
+- Status: accepted (2026-04-28)
 - Crate: `aozora-lsp`
 
 ## Context

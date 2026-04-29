@@ -1,8 +1,6 @@
 # ADR-0008 — Paragraph-first document model
 
-- Status: accepted (landed in `skxxpqzp feat(segmented_doc)` 2026-04-28 →
-  rearchitected into `state.rs` proper, then cleaned up in
-  `poxoluzl refactor(state, paragraph)` 2026-04-29)
+- Status: accepted (2026-04-29)
 - Crate: `aozora-lsp`
 - Supersedes the whole-document `IncrementalDoc` of ADR-0006 for
   the writer-side state shape; ADR-0006's Rope + chunked-input

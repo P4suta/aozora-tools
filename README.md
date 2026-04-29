@@ -18,9 +18,12 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
 
 The parser / AST / lexer / encoding crates live in the sibling
 [`aozora`](https://github.com/P4suta/aozora) repository; this
-repository hosts the editor-surface tooling that consumes them — see
-[`aozora` ADR-0009](https://github.com/P4suta/aozora/blob/main/docs/adr/0009-authoring-tools-live-in-sibling-repositories.md)
-for the split rationale.
+repository hosts the editor-surface tooling that consumes them.
+The parser is a long-lived correctness artefact released on a
+strict cadence with corpus sweeps; the editor surface here moves
+faster (LSP capabilities, VS Code UX, preview WebView, tree-sitter
+grammar). Splitting the repos keeps the parser tag stable while
+this repo iterates.
 
 ## Crates
 
@@ -56,9 +59,9 @@ editors get every other capability through the standard LSP surface.
 - `workspace/executeCommand` → `aozora.canonicalizeSlug`
 - Custom: `aozora/renderHtml` — VS Code preview WebView consumes this.
 
-See [`docs/adr/0001-lsp-feature-roadmap.md`](./docs/adr/0001-lsp-feature-roadmap.md)
-for the full roadmap and
-[`docs/adr/0003-preview-sync-protocol.md`](./docs/adr/0003-preview-sync-protocol.md)
+See [`docs/adr/0002-lsp-feature-roadmap.md`](./docs/adr/0002-lsp-feature-roadmap.md)
+for the roadmap and
+[`docs/adr/0004-preview-sync-protocol.md`](./docs/adr/0004-preview-sync-protocol.md)
 for the preview wire format.
 
 ## Build and run
@@ -87,15 +90,6 @@ The pre-push hook (`lefthook install`) runs `fmt --check`, clippy
 (`-D warnings`), `typos`, and `bun run check` for the VS Code extension
 before any push lands.
 
-## Why a separate repo from `aozora`?
-
-The parser is a long-lived correctness artefact; the editor surface
-moves much faster (LSP capabilities, VS Code extension UI, preview
-WebView markup, tree-sitter grammar tweaks). Splitting them lets the
-parser keep a strict release cadence with bench gates and corpus
-sweeps, while the tools repo iterates on the developer-experience
-surface without dragging the parser tag forward.
-
 ## Install
 
 Pre-built `aozora-fmt` + `aozora-lsp` binaries for **Linux x86_64**,
@@ -118,8 +112,9 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked
 - `aozora` parser pin is updated as a deliberate workspace bump, never
   silently — it shows up in `Cargo.toml` as a one-line `tag = "..."`
   diff plus the corresponding `CHANGELOG.md` entry.
-- VS Code extension version (`editors/vscode/package.json`) tracks
-  the workspace version.
+- The VS Code extension (`editors/vscode/package.json`) is versioned
+  independently on its Marketplace cadence; it bundles whatever
+  `aozora-lsp` build is current at release time.
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for what shipped when.
 

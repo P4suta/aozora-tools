@@ -47,10 +47,3 @@ component on first run. Nothing else is global state.
 - **TSan**: needs `panic = "abort"` on some targets; the script
   forces `-Z build-std` which compensates.
 - **ASan**: doesn't catch races, only memory issues. Pair with TSan.
-
-## `corpus_sweep.sh` (planned)
-
-Reserved name for an opt-in 17 K aozora-corpus sweep that takes
-2–5 min. Not yet implemented; see `aozora-parser/tests/corpus_sweep.rs`
-for the existing in-band test that runs when `AOZORA_CORPUS_ROOT` is
-set.

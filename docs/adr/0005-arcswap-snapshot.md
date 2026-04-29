@@ -1,6 +1,6 @@
 # ADR-0005 — `ArcSwap` snapshot for wait-free LSP reads
 
-- Status: accepted (landed in `kstkovtx refactor(state)`, 2026-04-27)
+- Status: accepted (2026-04-27)
 - Crate: `aozora-lsp`
 
 ## Context
