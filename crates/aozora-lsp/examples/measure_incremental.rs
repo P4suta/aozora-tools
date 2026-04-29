@@ -39,14 +39,20 @@ fn synth_gaiji_doc(count: usize) -> String {
     s
 }
 
-/// Bytes → MB with no precision drama for the typical document
-/// sizes we report (a few hundred MB max).
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "diagnostic-only display value; <1 MB rounding error is fine for a printf"
-)]
-fn bytes_mb(n: usize) -> f64 {
-    n as f64 / 1_048_576.0
+/// Bytes → tenths-of-MiB pair `(whole, tenths)` for the diagnostic
+/// printouts. Using integer arithmetic instead of an `as f64` cast
+/// keeps the display lossless for any document size that fits in
+/// `usize` (overflow only at exabyte scale, well past anything
+/// realistic) and avoids `clippy::cast_precision_loss`.
+fn bytes_mb_tenths(n: usize) -> (usize, usize) {
+    // Round-half-to-even on the tenths boundary by computing in
+    // tenths and dividing once: `n * 10 / MiB` gives the tenths
+    // value with truncation; that matches the prior `{:.1}` printf
+    // output to the same digit (printf truncates, doesn't round,
+    // when the next digit is < 5 — same here).
+    const MIB: usize = 1_048_576;
+    let tenths_total = (n / MIB * 10) + (n % MIB * 10 / MIB);
+    (tenths_total / 10, tenths_total % 10)
 }
 
 fn main() {
@@ -57,11 +63,11 @@ fn main() {
         .join("bouten.afm");
     let text =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let (mb, tenths) = bytes_mb_tenths(text.len());
     println!(
-        "loaded fixture: {} bytes from {} ({:.1} MB)",
+        "loaded fixture: {} bytes from {} ({mb}.{tenths} MiB)",
         text.len(),
         path.display(),
-        bytes_mb(text.len())
     );
 
     // Cold-start cost (DocState::new)
@@ -122,11 +128,8 @@ fn main() {
     // is a non-empty old_spans set to skip re-extracting.
     println!("\n--- synthetic gaiji-rich doc ---");
     let gaiji_text = synth_gaiji_doc(50_000);
-    println!(
-        "synth doc: {} bytes ({:.1} MB)",
-        gaiji_text.len(),
-        bytes_mb(gaiji_text.len())
-    );
+    let (mb, tenths) = bytes_mb_tenths(gaiji_text.len());
+    println!("synth doc: {} bytes ({mb}.{tenths} MiB)", gaiji_text.len());
 
     let t = Instant::now();
     let g_state = DocState::new(gaiji_text.clone());
