@@ -76,19 +76,98 @@ shuttle = "0.9"
 hdrhistogram = { version = "7.5", default-features = false }
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
-dead_code   = "deny"
+# Hard bans — the compiler rejects these rather than warning.
+unsafe_code      = "forbid"
+# Identifier hygiene: all 日本語 appears as string literals, never as idents.
+non_ascii_idents = "deny"
+
+# Strong signals that tend to mask real bugs.
+missing_debug_implementations = "warn"
+missing_copy_implementations  = "warn"
+trivial_casts                 = "warn"
+trivial_numeric_casts         = "warn"
+unused_import_braces          = "warn"
+unused_lifetimes              = "warn"
+unused_qualifications         = "warn"
+
+# Lifetime / path hygiene — catches over-broad `pub`, implicit lifetimes
+# in paths, and `'a: 'b` bounds the compiler could infer.
+unreachable_pub                = "warn"
+single_use_lifetimes           = "warn"
+elided_lifetimes_in_paths      = "warn"
+redundant_lifetimes            = "warn"
+explicit_outlives_requirements = "warn"
+
+# Misc quality gates.
+let_underscore_drop         = "warn"  # `let _ = ...` silently drops Drop types
+keyword_idents_2024         = "warn"  # 2024-edition reserved keywords as idents
+variant_size_differences    = "warn"  # large enum variants — push to `Box`
+ambiguous_negative_literals = "warn"  # `-1.pow(2)` precedence traps
+
+# Dead-code policy: the compiler `warn`s by default; CI's
+# `-D warnings` already promotes that to error. Spell `deny` here so a
+# local `cargo build` (which doesn't pass `-D warnings`) still
+# hard-fails on unreferenced items.
+dead_code = "deny"
+
+# Catch idioms deprecated by the next edition early.
+rust_2024_compatibility = { level = "warn", priority = -1 }
+
+[workspace.lints.rustdoc]
+# Docs are a shipped surface: broken intra-doc links are a defect.
+broken_intra_doc_links       = "deny"
+private_intra_doc_links      = "warn"
+invalid_codeblock_attributes = "warn"
+invalid_html_tags            = "warn"
+invalid_rust_codeblocks      = "warn"
+bare_urls                    = "warn"
+redundant_explicit_links     = "warn"
+unescaped_backticks          = "warn"
 
 [workspace.lints.clippy]
+# Opt in to the three lint groups mainstream Rust libraries ship with.
+# `priority = -1` lets specific carve-outs below override individual
+# lints inside these groups.
 pedantic = { level = "warn", priority = -1 }
+nursery  = { level = "warn", priority = -1 }
+cargo    = { level = "warn", priority = -1 }
 
-# Restriction lints that catch unambiguous WIP markers. `panic!` is
-# excluded because tests use `panic!("expected …")` idiomatically;
-# `print_stdout` / `print_stderr` are excluded because xtask binaries
-# legitimately write to stdout/stderr.
-dbg_macro     = "deny"
-todo          = "deny"
-unimplemented = "deny"
+# Carve-outs from the cargo group: `multiple_crate_versions` fires on
+# transitive dep version mismatches (e.g. unicode-width 0.1 vs 0.2
+# pulled in by different deps) — those collisions are not our problem
+# to fix locally. Match afm's policy.
+multiple_crate_versions = "allow"
+
+# `unreachable_pub` (rustc) and `redundant_pub_crate` (clippy::nursery)
+# directly contradict each other: the former wants `pub` items inside
+# private modules narrowed to `pub(crate)`, the latter then complains
+# the `pub(crate)` is "redundant" inside a private module. We pick
+# `unreachable_pub` since narrow visibility is the more useful signal,
+# so the nursery half has to step aside.
+redundant_pub_crate = "allow"
+
+# Specific high-value promotions — bugs that routinely slip past default
+# clippy. Tests are exempted from unwrap/expect/panic via `clippy.toml`
+# so these only bite production code paths.
+dbg_macro                  = "warn"  # ban forgotten `dbg!` drops
+todo                       = "warn"
+unimplemented              = "warn"
+clone_on_ref_ptr           = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc     = "warn"
+missing_assert_message     = "warn"
+
+# Restriction group — hand-picked. The full restriction group is
+# deliberately NOT enabled (it contains mutually contradictory lints);
+# each entry below is a considered decision.
+str_to_string                   = "warn"  # prefer `.into()` / `String::from`
+absolute_paths                  = "warn"  # prefer `use`-imported names
+allow_attributes_without_reason = "warn"  # belt-and-braces; every allow must justify itself
+empty_structs_with_brackets     = "warn"
+if_then_some_else_none          = "warn"  # prefer `.then_some` / `.then`
+let_underscore_must_use         = "warn"  # ignoring `#[must_use]` via `let _ =`
+mixed_read_write_in_expression  = "warn"
+rest_pat_in_fully_bound_structs = "warn"
 
 [profile.release]
 lto           = "thin"

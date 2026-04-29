@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# doc_markdown — domain terms that shouldn't need backticks in docs.
+# https://rust-lang.github.io/rust-clippy/master/index.html#doc_markdown
+# ---------------------------------------------------------------------------
+doc-valid-idents = [
+    "..",
+    "Aozora",
+    "DashMap",
+    "GitHub",
+    "JIS",
+    "JSON-RPC",
+    "Marketplace",
+    "Open VSX",
+    "Shift_JIS",
+    "TextDocument",
+    "TextEdit",
+    "UTF-8",
+    "UTF-16",
+    "VSCodium",
+    "vscode-languageclient",
+]
+
+# ---------------------------------------------------------------------------
+# Complexity thresholds — tighter than clippy's defaults so creeping
+# complexity is caught at the gate, not in review.
+# ---------------------------------------------------------------------------
+
+# clippy default: 7 arguments. Our project rule: ≤4 for production fns.
+# When a function genuinely needs more, wrap the group into a struct — the
+# struct becomes a self-documenting parameter object.
+too-many-arguments-threshold = 4
+
+# clippy default: 100 lines. We aim for single-screen functions; anything
+# beyond 80 lines is probably hiding multiple responsibilities.
+too-many-lines-threshold = 80
+
+# clippy default: 25. A lower cap forces extract-method refactors earlier.
+cognitive-complexity-threshold = 18
+
+# Our LSP types have wide generic surfaces (tower-lsp / lsp-types
+# wrappers); leave the type complexity threshold at clippy's default.
+type-complexity-threshold = 250
+
+# Boolean-flag functions become hard to read at the call site. Reject
+# two or more bool params in a row — pass a dedicated enum instead.
+max-fn-params-bools = 1
+
+# Enum variants that share a common prefix (e.g. `RubyExplicit` /
+# `RubyImplicit`) are clearer factored into a sub-type.
+enum-variant-name-threshold = 2
+enum-variant-size-threshold = 256
+
+# ---------------------------------------------------------------------------
+# Industry-standard baselines — echoes the tight defaults used by mature
+# Rust projects (tokio, serde, rust-analyzer) adapted for our constraints.
+# ---------------------------------------------------------------------------
+
+# MSRV — let clippy know our floor so it doesn't flag idioms we can't
+# use yet. Matches rust-toolchain.toml.
+msrv = "1.95.0"
+
+# Tests are allowed to be expressive about failure: unwrap / expect /
+# panic are diagnostic shortcuts, not bugs. Production code remains
+# strict.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+
+# Don't hold our own API hostage to "avoid breaking exports" while the
+# crates are pre-1.0.
+avoid-breaking-exported-api = false
+
+# Large owned types silently copied by value are a common perf surprise.
+# Default is 200 bytes; tighten to 128 so moves-by-value of fat structs
+# surface during development.
+pass-by-value-size-limit = 128
+
+# ---------------------------------------------------------------------------
+# disallowed-methods — banned standard-library calls that are bug-sources
+# or wrong layer. Add new entries (with a reason) when patterns emerge.
+# ---------------------------------------------------------------------------
+disallowed-methods = [
+    { path = "std::mem::forget", reason = "leaks destructors; use `ManuallyDrop` or explicit drop" },
+    { path = "std::env::set_var", reason = "races with other threads; wire via Options instead" },
+    { path = "std::env::remove_var", reason = "see std::env::set_var" },
+    { path = "std::process::exit", reason = "bypasses destructors; use `ExitCode` / return from main" },
+]
+
+# ---------------------------------------------------------------------------
+# disallowed-types — banned type usages with rationale.
+# ---------------------------------------------------------------------------
+disallowed-types = [
+    { path = "std::sync::RwLock", reason = "tokio / parking_lot preferred where available; raise an ADR to opt in" },
+]

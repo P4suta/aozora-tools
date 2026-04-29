@@ -7,6 +7,8 @@
 
 #![forbid(unsafe_code)]
 
+use std::io;
+use tokio::io::{stdin, stdout};
 use tower_lsp::{LspService, Server};
 use tracing_subscriber::EnvFilter;
 
@@ -16,11 +18,11 @@ async fn main() {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
         )
-        .with_writer(std::io::stderr)
+        .with_writer(io::stderr)
         .init();
 
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
+    let stdin = stdin();
+    let stdout = stdout();
     // Custom request `aozora/renderHtml` powers the VSCode preview
     // pane (Phase 3.1). Wired here at LspService build-time because
     // tower-lsp's `LanguageServer` trait only covers spec-defined

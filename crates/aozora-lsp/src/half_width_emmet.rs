@@ -33,8 +33,8 @@
 //!   bracket-only emmet item.
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionTextEdit, InsertTextFormat, MarkupContent,
-    MarkupKind, Position, Range, TextEdit,
+    CompletionItem, CompletionItemKind, CompletionTextEdit, Documentation, InsertTextFormat,
+    MarkupContent, MarkupKind, Position, Range, TextEdit,
 };
 
 use crate::position::{byte_offset_to_position, position_to_byte_offset};
@@ -171,11 +171,7 @@ pub fn emmet_completions(source: &str, position: Position) -> Vec<CompletionItem
                 return None;
             }
             let candidate = &source[start..cursor];
-            if candidate == rule.prefix {
-                Some(build_item(source, cursor, rule))
-            } else {
-                None
-            }
+            (candidate == rule.prefix).then(|| build_item(source, cursor, rule))
         })
         .map(|item| vec![item])
         .unwrap_or_default()
@@ -244,12 +240,10 @@ fn build_item(source: &str, cursor: usize, rule: &EmmetRule) -> CompletionItem {
         filter_text: Some(rule.prefix.to_owned()),
         kind: Some(kind),
         detail: Some(rule.detail.to_owned()),
-        documentation: Some(tower_lsp::lsp_types::Documentation::MarkupContent(
-            MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("半角 `{}` → `{}`", rule.prefix, rule.label),
-            },
-        )),
+        documentation: Some(Documentation::MarkupContent(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: format!("半角 `{}` → `{}`", rule.prefix, rule.label),
+        })),
         text_edit: Some(CompletionTextEdit::Edit(TextEdit {
             range,
             new_text: rule.snippet.to_owned(),

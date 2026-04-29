@@ -49,10 +49,11 @@
 //!
 //! - <https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md>
 
+use std::cmp::Reverse;
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{self, Path, PathBuf};
 
 use flate2::read::GzDecoder;
 use serde::Deserialize;
@@ -66,7 +67,7 @@ const TOP_STACKS: usize = 10;
 
 /// Entry point: load `path`, parse, resolve symbols, and emit the
 /// full multi-view report on stdout.
-pub fn analyze(path: &Path) -> Result<(), String> {
+pub(crate) fn analyze(path: &Path) -> Result<(), String> {
     let raw = read_gz(path)?;
     let mut profile: Profile = serde_json::from_slice(&raw)
         .map_err(|e| format!("parse {} as Firefox Profiler JSON: {e}", path.display()))?;
@@ -157,7 +158,7 @@ fn print_by_owner(leaves: &[(String, usize)], thread_samples: usize) {
         *by_owner.entry(classify_owner(name)).or_insert(0) += count;
     }
     let mut sorted: Vec<(&'static str, usize)> = by_owner.into_iter().collect();
-    sorted.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+    sorted.sort_by_key(|(_, c)| Reverse(*c));
     println!();
     println!("## time by owner (rolled up)");
     let rows: Vec<(&'static str, usize)> = sorted.into_iter().take(TOP_OWNERS).collect();
@@ -216,13 +217,7 @@ fn print_hot_stacks(thread: &Thread, thread_samples: usize) {
         let parent_stack = thread.stack_table.prefix[stack_idx];
         let leaf_name = function_name_for_frame(thread, leaf_frame).unwrap_or("?");
         let parent_name = parent_stack
-            .and_then(|i| {
-                if i < thread.stack_table.length {
-                    Some(thread.stack_table.frame[i])
-                } else {
-                    None
-                }
-            })
+            .and_then(|i| (i < thread.stack_table.length).then(|| thread.stack_table.frame[i]))
             .and_then(|f| function_name_for_frame(thread, f))
             .unwrap_or("(root)");
         *counts
@@ -230,7 +225,7 @@ fn print_hot_stacks(thread: &Thread, thread_samples: usize) {
             .or_insert(0) += 1;
     }
     let mut sorted: Vec<((String, String), usize)> = counts.into_iter().collect();
-    sorted.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+    sorted.sort_by_key(|(_, c)| Reverse(*c));
     println!();
     println!("## hot stack signatures — top {TOP_STACKS} (leaf ← parent)");
     println!("  {:>8}  {:>5}  leaf ← parent", "samples", "%");
@@ -301,7 +296,7 @@ fn aggregate_leaves(thread: &Thread) -> Vec<(String, usize)> {
         .into_iter()
         .map(|(name, count)| (name.to_owned(), count))
         .collect();
-    out.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+    out.sort_by_key(|(_, c)| Reverse(*c));
     out
 }
 
@@ -417,8 +412,8 @@ impl SymbolDb {
                 by_debug_name: HashMap::new(),
             });
         }
-        let raw = std::fs::read_to_string(&sidecar)
-            .map_err(|e| format!("read {}: {e}", sidecar.display()))?;
+        let raw =
+            fs::read_to_string(&sidecar).map_err(|e| format!("read {}: {e}", sidecar.display()))?;
         let parsed: SymsFile = serde_json::from_str(&raw)
             .map_err(|e| format!("parse {} as samply syms.json: {e}", sidecar.display()))?;
         let mut by_debug_name: HashMap<String, BinarySymbols> = HashMap::new();
@@ -444,7 +439,7 @@ impl SymbolDb {
         !self.by_debug_name.is_empty()
     }
 
-    fn sidecar_path(&self) -> std::path::Display<'_> {
+    fn sidecar_path(&self) -> path::Display<'_> {
         self.sidecar_path.display()
     }
 
@@ -519,11 +514,7 @@ fn lookup_symbol(syms: &BinarySymbols, rva: u32) -> Option<String> {
     // — saturate so the check still returns the correct bool without
     // panicking in debug builds.
     let end = start.saturating_add(size);
-    if rva >= start && rva < end {
-        Some(name.clone())
-    } else {
-        None
-    }
+    (rva >= start && rva < end).then(|| name.clone())
 }
 
 // --- minimal slice of the Firefox Profiler "processed profile" format ---

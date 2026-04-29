@@ -22,22 +22,29 @@
 //! `tokio::task::spawn_blocking` so concurrent hover / inlay /
 //! codeAction requests on the async runtime never stall.
 
+use std::slice;
 use std::sync::Arc;
 use std::time::Duration;
 
 use dashmap::DashMap;
+use tokio::task::{spawn_blocking, yield_now};
+use tokio::time::sleep;
 
 use crate::code_actions::{quick_fix_actions, wrap_selection_actions};
 use crate::commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 use crate::completion::completion_at;
+use crate::half_width_emmet::emmet_completions;
 use crate::linked_editing::linked_editing_at;
+use crate::metrics::ParseSample;
+use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
 use crate::state::DocState;
+use crate::structured_snippets::snippet_completions;
 use crate::text_edit::LocalTextEdit;
 use crate::{compute_diagnostics_from_parsed, format_edits, hover_at};
 use tower_lsp::jsonrpc::{Error as JsonRpcError, Result};
 use tower_lsp::lsp_types::{
-    CodeActionOptions, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
-    CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
+    CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     DocumentFormattingParams, DocumentOnTypeFormattingOptions, DocumentOnTypeFormattingParams,
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, ExecuteCommandOptions,
@@ -52,11 +59,12 @@ use tower_lsp::lsp_types::{
 };
 use tower_lsp::{Client, LanguageServer};
 
+use aozora_encoding::gaiji;
+
 use crate::document_symbol::document_symbols;
 use crate::folding_range::folding_ranges;
-use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
-
 use crate::position::position_to_byte_offset;
+use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
 
 /// LSP backend for aozora documents.
 ///
@@ -112,7 +120,7 @@ impl Backend {
         let target_version = state.edit_version();
         let backend = self.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(PUBLISH_DEBOUNCE_MS)).await;
+            sleep(Duration::from_millis(PUBLISH_DEBOUNCE_MS)).await;
             backend
                 .reparse_and_publish_if_current(uri, target_version)
                 .await;
@@ -142,7 +150,7 @@ impl Backend {
         // we pass an owned String materialised from the Arc<str>.
         let text_owned = text.to_string();
         let bytes_estimate = u64::try_from(text_owned.len()).unwrap_or(u64::MAX);
-        let parse_result = tokio::task::spawn_blocking(move || {
+        let parse_result = spawn_blocking(move || {
             let document = aozora::Document::new(text_owned);
             document.parse().diagnostics().to_vec()
         })
@@ -158,7 +166,13 @@ impl Backend {
             return;
         }
         state.install_diagnostics(diagnostics);
-        state.metrics.record_parse(0, 0, 1, 1, bytes_estimate);
+        state.metrics.record_parse(ParseSample {
+            latency_us: 0,
+            cache_hits: 0,
+            cache_misses: 1,
+            cache_entries: 1,
+            cache_bytes_estimate: bytes_estimate,
+        });
         let snap = state.snapshot();
         let publish_diags = state.with_segment_cache(|cache| {
             compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
@@ -198,7 +212,7 @@ impl Backend {
             .lookup(&params.uri)
             .ok_or_else(|| JsonRpcError::invalid_params("no document at uri"))?;
         let text = state.snapshot().doc_text().to_string();
-        let html = tokio::task::spawn_blocking(move || {
+        let html = spawn_blocking(move || {
             let document = aozora::Document::new(text);
             document.parse().to_html()
         })
@@ -236,20 +250,19 @@ impl Backend {
         // a well-behaved LSP request handler should do anyway (lets
         // higher-priority tasks like `did_change` not starve when
         // many `gaiji_spans` requests pile up after a paste).
-        tokio::task::yield_now().await;
+        yield_now().await;
         let state = self
             .lookup(&params.uri)
             .ok_or_else(|| JsonRpcError::invalid_params("no document at uri"))?;
         let snap = state.snapshot();
         let mut views = Vec::with_capacity(snap.doc_gaiji_spans().len());
         for span in snap.doc_gaiji_spans().values() {
-            let Some(resolved) =
-                aozora_encoding::gaiji::lookup(None, span.mencode.as_deref(), &span.description)
+            let Some(resolved) = gaiji::lookup(None, span.mencode.as_deref(), &span.description)
             else {
                 continue;
             };
             let mut buf = String::with_capacity(8);
-            let _ = resolved.write_to(&mut buf);
+            _ = resolved.write_to(&mut buf);
             let start = snap
                 .doc_line_index()
                 .position(snap.doc_text(), span.start_byte as usize);
@@ -320,7 +333,7 @@ pub struct GaijiSpansResult {
 #[derive(serde::Deserialize)]
 struct CanonicalizeArgs {
     uri: Url,
-    range: tower_lsp::lsp_types::Range,
+    range: Range,
     body: String,
 }
 
@@ -407,9 +420,9 @@ impl LanguageServer for Backend {
                 // VS Code extension sets that as a default for the
                 // `aozora` language.
                 document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
-                    first_trigger_character: crate::on_type_formatting::TRIGGERS[0].to_owned(),
+                    first_trigger_character: ON_TYPE_TRIGGERS[0].to_owned(),
                     more_trigger_character: Some(
-                        crate::on_type_formatting::TRIGGERS[1..]
+                        ON_TYPE_TRIGGERS[1..]
                             .iter()
                             .map(|&s| s.to_owned())
                             .collect(),
@@ -428,9 +441,7 @@ impl LanguageServer for Backend {
                         // edit; resolve_provider stays None until a
                         // future heavier action (e.g. "rename slug
                         // across document") needs lazy loading.
-                        code_action_kinds: Some(vec![
-                            tower_lsp::lsp_types::CodeActionKind::REFACTOR_REWRITE,
-                        ]),
+                        code_action_kinds: Some(vec![CodeActionKind::REFACTOR_REWRITE]),
                         ..CodeActionOptions::default()
                     },
                 )),
@@ -506,7 +517,7 @@ impl LanguageServer for Backend {
             // by `range == None`.
             match lsp_change_to_edit(snap.doc_text(), change) {
                 Some(edit) => {
-                    let _ = state.apply_changes(std::slice::from_ref(&edit));
+                    _ = state.apply_changes(slice::from_ref(&edit));
                 }
                 None if change.range.is_none() => {
                     state.replace_text(change.text.clone());
@@ -568,10 +579,10 @@ impl LanguageServer for Backend {
         // blocking pool so concurrent hover/codeAction requests on the
         // async runtime don't stall.
         let text = state.snapshot().doc_text().to_string();
-        let edits = tokio::task::spawn_blocking(move || format_edits(&text))
+        let edits = spawn_blocking(move || format_edits(&text))
             .await
             .map_err(|join_err| {
-                let mut err = tower_lsp::jsonrpc::Error::internal_error();
+                let mut err = JsonRpcError::internal_error();
                 err.message = format!("formatting panicked: {join_err}").into();
                 err
             })?;
@@ -595,7 +606,7 @@ impl LanguageServer for Backend {
             return Ok(None);
         };
         let snap = state.snapshot();
-        let edits = crate::on_type_formatting::format_on_type(snap.doc_text(), position, &p.ch);
+        let edits = format_on_type(snap.doc_text(), position, &p.ch);
         if edits.is_empty() {
             Ok(None)
         } else {
@@ -690,20 +701,14 @@ impl LanguageServer for Backend {
         // pure prefix scan), so we don't pay for a `with_tree` call
         // and the slug catalogue + emmet items merge into one
         // response — VS Code's own ranker decides ordering.
-        items.extend(crate::half_width_emmet::emmet_completions(
-            snap.doc_text(),
-            position,
-        ));
+        items.extend(emmet_completions(snap.doc_text(), position));
         // Plus the structured-snippet items that fire after the
         // user just typed `#` / `｜` / `《` / `※`. Each item carries
         // a snippet body with `${…}` Tab-stops so accepting expands
         // into a fully-structured form (`［＃改ページ］` etc) and
         // leaves the cursor in the next placeholder for IDE-style
         // Tab navigation (the user-asked feature, 2026-04-29).
-        items.extend(crate::structured_snippets::snippet_completions(
-            snap.doc_text(),
-            position,
-        ));
+        items.extend(snippet_completions(snap.doc_text(), position));
         if items.is_empty() {
             Ok(None)
         } else {
@@ -866,7 +871,7 @@ mod tests {
             let snap = state.snapshot();
             match lsp_change_to_edit(snap.doc_text(), change) {
                 Some(edit) => {
-                    let _ = state.apply_changes(std::slice::from_ref(&edit));
+                    _ = state.apply_changes(slice::from_ref(&edit));
                 }
                 None if change.range.is_none() => {
                     state.replace_text(change.text.clone());
@@ -1082,7 +1087,7 @@ mod tests {
             let snap = state.snapshot();
             match lsp_change_to_edit(snap.doc_text(), change) {
                 Some(edit) => {
-                    let _ = state.apply_changes(std::slice::from_ref(&edit));
+                    _ = state.apply_changes(slice::from_ref(&edit));
                 }
                 None if change.range.is_none() => {
                     state.replace_text(change.text.clone());

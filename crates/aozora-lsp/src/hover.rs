@@ -14,6 +14,8 @@
 //! window is ignored — we'd rather show nothing than a wrong
 //! resolution.
 
+use std::ops::Range as ByteRange;
+
 use aozora_encoding::gaiji;
 use tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position, Range};
 
@@ -72,7 +74,7 @@ pub fn hover_at(source: &str, position: Position) -> Option<Hover> {
 /// `O(window_size)` in the worst case, which is constant.
 const MAX_GAIJI_SPAN_LEN: usize = 512;
 
-fn find_gaiji_span(source: &str, byte_offset: usize) -> Option<std::ops::Range<usize>> {
+fn find_gaiji_span(source: &str, byte_offset: usize) -> Option<ByteRange<usize>> {
     if source.is_empty() {
         return None;
     }
@@ -100,14 +102,14 @@ fn find_gaiji_span(source: &str, byte_offset: usize) -> Option<std::ops::Range<u
     None
 }
 
-fn snap_to_char_boundary_left(s: &str, mut idx: usize) -> usize {
+const fn snap_to_char_boundary_left(s: &str, mut idx: usize) -> usize {
     while idx > 0 && !s.is_char_boundary(idx) {
         idx -= 1;
     }
     idx
 }
 
-fn snap_to_char_boundary_right(s: &str, mut idx: usize) -> usize {
+const fn snap_to_char_boundary_right(s: &str, mut idx: usize) -> usize {
     let len = s.len();
     while idx < len && !s.is_char_boundary(idx) {
         idx += 1;
@@ -158,7 +160,7 @@ fn render_markdown(
             // `write!` into the existing buffer avoids the intermediate
             // `format!() -> String` allocation that the workspace
             // `format_push_string` lint flags.
-            let _ = writeln!(md, "- 解決: `{ch}` (U+{:04X})", ch as u32);
+            _ = writeln!(md, "- 解決: `{ch}` (U+{:04X})", ch as u32);
         }
         Some(gaiji::Resolved::Multi(s)) => {
             // Multi-codepoint cells render their full sequence plus
@@ -166,7 +168,7 @@ fn render_markdown(
             // can see the composition (`か゚` = U+304B + U+309A).
             let codepoints: Vec<String> =
                 s.chars().map(|c| format!("U+{:04X}", c as u32)).collect();
-            let _ = writeln!(
+            _ = writeln!(
                 md,
                 "- 解決: `{s}` (合成シーケンス: {})",
                 codepoints.join(" + ")
@@ -176,9 +178,9 @@ fn render_markdown(
             md.push_str("- 解決: (辞書にマッチせず — 記述で代替表示)\n");
         }
     }
-    let _ = writeln!(md, "- 記述: `{description}`");
+    _ = writeln!(md, "- 記述: `{description}`");
     if let Some(m) = mencode {
-        let _ = writeln!(md, "- mencode: `{m}`");
+        _ = writeln!(md, "- mencode: `{m}`");
     }
     md
 }
@@ -287,7 +289,7 @@ mod tests {
         // long tail. The cursor's window is [cursor - MAX, cursor + MAX],
         // so spans before that window must NOT resolve.
         let span = "※［＃「desc」、第3水準1-85-54］";
-        let tail: String = "x".repeat(super::MAX_GAIJI_SPAN_LEN * 2 + 50);
+        let tail: String = "x".repeat(MAX_GAIJI_SPAN_LEN * 2 + 50);
         let src = format!("{span}{tail}");
         let cursor_byte = src.len();
         let pos = byte_offset_to_position(&src, cursor_byte);

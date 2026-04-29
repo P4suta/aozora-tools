@@ -95,33 +95,41 @@ impl Default for Metrics {
     }
 }
 
+/// One parse sample handed to [`Metrics::record_parse`].
+///
+/// Bundling these five fields keeps the call signature under the
+/// workspace `too-many-arguments-threshold` and gives every call
+/// site a self-documenting `ParseSample { … }` literal.
+#[derive(Debug, Copy, Clone)]
+pub struct ParseSample {
+    pub latency_us: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+    pub cache_entries: u64,
+    pub cache_bytes_estimate: u64,
+}
+
 impl Metrics {
     /// Record one parse: bump counters, record histogram, update
     /// last-edit timestamp.
-    pub fn record_parse(
-        &self,
-        latency_us: u64,
-        cache_hits: u64,
-        cache_misses: u64,
-        cache_entries: u64,
-        cache_bytes_estimate: u64,
-    ) {
+    pub fn record_parse(&self, sample: ParseSample) {
         self.parse_count.fetch_add(1, Ordering::Relaxed);
         self.cache_hit_total
-            .fetch_add(cache_hits, Ordering::Relaxed);
+            .fetch_add(sample.cache_hits, Ordering::Relaxed);
         self.cache_miss_total
-            .fetch_add(cache_misses, Ordering::Relaxed);
-        self.cache_entries.store(cache_entries, Ordering::Relaxed);
+            .fetch_add(sample.cache_misses, Ordering::Relaxed);
+        self.cache_entries
+            .store(sample.cache_entries, Ordering::Relaxed);
         self.cache_bytes_estimate
-            .store(cache_bytes_estimate, Ordering::Relaxed);
+            .store(sample.cache_bytes_estimate, Ordering::Relaxed);
         // Histogram::record can fail only if the value is out of
         // bounds; we clamp instead of dropping data so the
         // observability path never silently loses samples.
-        let clamped = latency_us.clamp(HIST_MIN, HIST_MAX);
+        let clamped = sample.latency_us.clamp(HIST_MIN, HIST_MAX);
         if let Ok(mut h) = self.parse_latency_us.lock() {
             // record_correct(latency, expected_interval) is for
             // sampling latency; here latency is observed directly.
-            let _ = h.record(clamped);
+            _ = h.record(clamped);
         }
     }
 
@@ -197,11 +205,12 @@ impl Metrics {
     }
 }
 
-/// Materialised view of [`Metrics`]. Designed to be `Serialize` so
-/// the LSP can dump it into a `tracing::info!` event at `did_close`
-/// and a third party parsing the log can reconstruct the document's
-/// session-long behaviour.
-#[derive(Debug, Clone, Serialize)]
+/// Materialised view of [`Metrics`].
+///
+/// Designed to be `Serialize` so the LSP can dump it into a
+/// `tracing::info!` event at `did_close` and a third party parsing
+/// the log can reconstruct the document's session-long behaviour.
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MetricsSnapshot {
     pub edit_count: u64,
@@ -216,7 +225,7 @@ pub struct MetricsSnapshot {
 }
 
 /// Latency histogram percentiles in microseconds.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct LatencyPercentiles {
     pub samples: u64,
@@ -253,8 +262,20 @@ mod tests {
     #[test]
     fn record_parse_accumulates_exactly() {
         let m = Metrics::default();
-        m.record_parse(100, 5, 2, 3, 1024);
-        m.record_parse(200, 10, 1, 4, 2048);
+        m.record_parse(ParseSample {
+            latency_us: 100,
+            cache_hits: 5,
+            cache_misses: 2,
+            cache_entries: 3,
+            cache_bytes_estimate: 1024,
+        });
+        m.record_parse(ParseSample {
+            latency_us: 200,
+            cache_hits: 10,
+            cache_misses: 1,
+            cache_entries: 4,
+            cache_bytes_estimate: 2048,
+        });
         let s = m.snapshot();
         assert_eq!(s.parse_count, 2);
         assert_eq!(s.cache_hit_total, 15);
@@ -283,7 +304,13 @@ mod tests {
     #[test]
     fn snapshot_serialises_to_json() {
         let m = Metrics::default();
-        m.record_parse(50, 1, 0, 1, 100);
+        m.record_parse(ParseSample {
+            latency_us: 50,
+            cache_hits: 1,
+            cache_misses: 0,
+            cache_entries: 1,
+            cache_bytes_estimate: 100,
+        });
         let s = m.snapshot();
         let json = serde_json::to_string(&s).expect("snapshot must serialise");
         assert!(json.contains("parse_latency_us"));
@@ -299,7 +326,13 @@ mod tests {
     #[test]
     fn record_parse_clamps_huge_latency() {
         let m = Metrics::default();
-        m.record_parse(u64::MAX, 0, 0, 0, 0);
+        m.record_parse(ParseSample {
+            latency_us: u64::MAX,
+            cache_hits: 0,
+            cache_misses: 0,
+            cache_entries: 0,
+            cache_bytes_estimate: 0,
+        });
         let s = m.snapshot();
         assert_eq!(s.parse_latency_us.samples, 1);
         // `HDRHistogram` bucket rounds up; `max` may be slightly >
@@ -327,7 +360,13 @@ mod tests {
     #[test]
     fn snapshot_hit_rate_arithmetic() {
         let m = Metrics::default();
-        m.record_parse(10, 1, 4, 0, 0);
+        m.record_parse(ParseSample {
+            latency_us: 10,
+            cache_hits: 1,
+            cache_misses: 4,
+            cache_entries: 0,
+            cache_bytes_estimate: 0,
+        });
         let s = m.snapshot();
         assert!((s.cache_hit_rate - 0.20).abs() < 1e-9);
     }
@@ -347,7 +386,13 @@ mod tests {
             let m = Arc::clone(&m);
             handles.push(thread::spawn(move || {
                 for _ in 0..per_thread {
-                    m.record_parse(42, 1, 0, 0, 0);
+                    m.record_parse(ParseSample {
+                        latency_us: 42,
+                        cache_hits: 1,
+                        cache_misses: 0,
+                        cache_entries: 0,
+                        cache_bytes_estimate: 0,
+                    });
                 }
             }));
         }

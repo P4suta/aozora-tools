@@ -27,6 +27,7 @@
 //! invisible against the build wall (~70–90 s/target).
 
 use std::{
+    fs,
     io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -38,7 +39,7 @@ use std::{
 use crate::workspace_root;
 
 #[derive(Clone, Copy, Debug)]
-pub struct TargetSpec {
+pub(crate) struct TargetSpec {
     /// VS Code Marketplace target identifier (`vsce package --target`).
     pub vsce: &'static str,
     /// Rust target triple (`cargo build --target`).
@@ -49,7 +50,7 @@ pub struct TargetSpec {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum BuildTool {
+pub(crate) enum BuildTool {
     /// Native `cargo build`. Only safe for the host's own
     /// architecture/libc combination.
     Cargo,
@@ -64,16 +65,16 @@ pub enum BuildTool {
 }
 
 impl BuildTool {
-    fn label(self) -> &'static str {
+    const fn label(self) -> &'static str {
         match self {
-            BuildTool::Cargo => "cargo",
-            BuildTool::Cross => "cross",
-            BuildTool::Zigbuild => "cargo zigbuild",
+            Self::Cargo => "cargo",
+            Self::Cross => "cross",
+            Self::Zigbuild => "cargo zigbuild",
         }
     }
 }
 
-pub const TARGETS: &[TargetSpec] = &[
+pub(crate) const TARGETS: &[TargetSpec] = &[
     TargetSpec {
         vsce: "linux-x64",
         rust: "x86_64-unknown-linux-gnu",
@@ -143,17 +144,17 @@ struct BuildOutcome {
     result: Result<f64, String>,
 }
 
-pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
+pub(crate) fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
     let root = workspace_root()?;
     let server_dir = root.join("editors/vscode/server");
     let dist_dir = root.join("editors/vscode/dist-vsix");
-    std::fs::create_dir_all(&dist_dir)
+    fs::create_dir_all(&dist_dir)
         .map_err(|e| format!("create_dir_all {}: {e}", dist_dir.display()))?;
 
-    let selected: Vec<TargetSpec> = match only {
-        Some(name) => TARGETS.iter().copied().filter(|s| s.vsce == name).collect(),
-        None => TARGETS.to_vec(),
-    };
+    let selected: Vec<TargetSpec> = only.map_or_else(
+        || TARGETS.to_vec(),
+        |name| TARGETS.iter().copied().filter(|s| s.vsce == name).collect(),
+    );
     if selected.is_empty() {
         return Err(format!(
             "no targets matched {:?}; valid: {}",
@@ -190,13 +191,42 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
     bundle_extension_js(&root)?;
 
     let build_results = run_parallel_builds(actual_jobs, &selected, &root);
+    let layout = StageLayout {
+        root: &root,
+        server_dir: &server_dir,
+        dist_dir: &dist_dir,
+    };
+    let rows = stage_and_package_each(&selected, &build_results, &layout);
 
-    // Serialise the package phase: each target stages its binary into
-    // `editors/vscode/server/` then immediately runs vsce package.
+    print_summary(&rows, total_start.elapsed().as_secs_f64());
+
+    if rows.iter().any(|r| r.error.is_some()) {
+        Err("one or more targets failed; see table above".into())
+    } else {
+        Ok(())
+    }
+}
+
+/// Filesystem layout passed through the per-target package step.
+/// Bundles the three `&Path` references that
+/// [`stage_and_package_each`] forwards to [`run_package`].
+struct StageLayout<'a> {
+    root: &'a Path,
+    server_dir: &'a Path,
+    dist_dir: &'a Path,
+}
+
+/// Serialise the package phase: each target stages its binary into
+/// `editors/vscode/server/` then immediately runs vsce package.
+/// Iterates `selected` in order so the summary table reads
+/// top-to-bottom in the same order as the constant.
+fn stage_and_package_each(
+    selected: &[TargetSpec],
+    build_results: &[BuildOutcome],
+    layout: &StageLayout<'_>,
+) -> Vec<Row> {
     let mut rows: Vec<Row> = Vec::with_capacity(selected.len());
-    // Iterate in the original target order so the summary table reads
-    // top-to-bottom in the same order as the constant.
-    for spec in &selected {
+    for spec in selected {
         let build_res = build_results
             .iter()
             .find(|o| o.spec.vsce == spec.vsce)
@@ -221,7 +251,7 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
             }
         }
         let pack_start = Instant::now();
-        match run_package(spec, &root, &server_dir, &dist_dir) {
+        match run_package(spec, layout.root, layout.server_dir, layout.dist_dir) {
             Ok((path, size)) => {
                 row.package_secs = pack_start.elapsed().as_secs_f64();
                 row.vsix_size_bytes = size;
@@ -238,14 +268,7 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
         }
         rows.push(row);
     }
-
-    print_summary(&rows, total_start.elapsed().as_secs_f64());
-
-    if rows.iter().any(|r| r.error.is_some()) {
-        Err("one or more targets failed; see table above".into())
-    } else {
-        Ok(())
-    }
+    rows
 }
 
 fn run_parallel_builds(jobs: usize, selected: &[TargetSpec], root: &Path) -> Vec<BuildOutcome> {
@@ -305,7 +328,7 @@ fn run_parallel_builds(jobs: usize, selected: &[TargetSpec], root: &Path) -> Vec
         .collect();
 
     for w in workers {
-        let _ = w.join();
+        drop(w.join());
     }
     Arc::try_unwrap(results)
         .ok()
@@ -356,12 +379,12 @@ fn run_build(spec: &TargetSpec, root: &Path) -> Result<(), String> {
     let stderr = child.stderr.take().expect("piped stderr");
     let prefix = format!("[{}]", spec.vsce);
     let p_out = prefix.clone();
-    let p_err = prefix.clone();
+    let p_err = prefix;
     let h_out = thread::spawn(move || stream_with_prefix(stdout, &p_out, false));
     let h_err = thread::spawn(move || stream_with_prefix(stderr, &p_err, true));
     let status = child.wait().map_err(|e| format!("wait: {e}"))?;
-    let _ = h_out.join();
-    let _ = h_err.join();
+    drop(h_out.join());
+    drop(h_err.join());
     if status.success() {
         Ok(())
     } else {
@@ -405,14 +428,14 @@ fn bundle_extension_js(root: &Path) -> Result<(), String> {
 /// package phase ensures only one target uses `server_dir` at a time.
 fn stage_server_binary(spec: &TargetSpec, root: &Path, server_dir: &Path) -> Result<(), String> {
     if server_dir.exists() {
-        for entry in std::fs::read_dir(server_dir)
+        for entry in fs::read_dir(server_dir)
             .map_err(|e| format!("read_dir {}: {e}", server_dir.display()))?
         {
             let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
-            let _ = std::fs::remove_file(entry.path());
+            drop(fs::remove_file(entry.path()));
         }
     } else {
-        std::fs::create_dir_all(server_dir)
+        fs::create_dir_all(server_dir)
             .map_err(|e| format!("create_dir_all {}: {e}", server_dir.display()))?;
     }
     let exe = if spec.windows {
@@ -422,8 +445,7 @@ fn stage_server_binary(spec: &TargetSpec, root: &Path, server_dir: &Path) -> Res
     };
     let src = root.join("target").join(spec.rust).join("dist").join(exe);
     let dst = server_dir.join(exe);
-    std::fs::copy(&src, &dst)
-        .map_err(|e| format!("copy {} → {}: {e}", src.display(), dst.display()))?;
+    fs::copy(&src, &dst).map_err(|e| format!("copy {} → {}: {e}", src.display(), dst.display()))?;
     if !spec.windows {
         // Stamp the executable bit explicitly. vsce's zip path happens
         // to preserve Unix mode bits today, but this documents intent
@@ -431,10 +453,10 @@ fn stage_server_binary(spec: &TargetSpec, root: &Path, server_dir: &Path) -> Res
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            if let Ok(meta) = std::fs::metadata(&dst) {
+            if let Ok(meta) = fs::metadata(&dst) {
                 let mut perms = meta.permissions();
                 perms.set_mode(0o755);
-                let _ = std::fs::set_permissions(&dst, perms);
+                drop(fs::set_permissions(&dst, perms));
             }
         }
     }
@@ -475,7 +497,7 @@ fn run_package(
     // and move it into dist-vsix/ so the working tree stays clean.
     let mut latest: Option<(SystemTime, PathBuf)> = None;
     for entry in
-        std::fs::read_dir(&ext_dir).map_err(|e| format!("read_dir {}: {e}", ext_dir.display()))?
+        fs::read_dir(&ext_dir).map_err(|e| format!("read_dir {}: {e}", ext_dir.display()))?
     {
         let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
         let path = entry.path();
@@ -509,11 +531,11 @@ fn run_package(
         .1;
     let final_dest = dist_dir.join(
         vsix.file_name()
-            .ok_or_else(|| "vsix path has no file name".to_string())?,
+            .ok_or_else(|| "vsix path has no file name".to_owned())?,
     );
-    std::fs::rename(&vsix, &final_dest)
+    fs::rename(&vsix, &final_dest)
         .map_err(|e| format!("rename {} → {}: {e}", vsix.display(), final_dest.display()))?;
-    let size = std::fs::metadata(&final_dest)
+    let size = fs::metadata(&final_dest)
         .map_err(|e| format!("stat {}: {e}", final_dest.display()))?
         .len();
     Ok((final_dest, size))
@@ -538,10 +560,10 @@ fn print_summary(rows: &[Row], total_secs: f64) {
     );
     for row in rows {
         let size_kib = bytes_to_kib(row.vsix_size_bytes);
-        let status = match &row.error {
-            None => "OK".to_string(),
-            Some(e) => format!("FAIL: {e}"),
-        };
+        let status = row
+            .error
+            .as_ref()
+            .map_or_else(|| "OK".to_owned(), |e| format!("FAIL: {e}"));
         eprintln!(
             "  {:<14}  {:>8.1}s  {:>8.1}s  {:>7}KiB  {}",
             row.spec.vsce, row.build_secs, row.package_secs, size_kib, status
@@ -555,6 +577,6 @@ fn print_summary(rows: &[Row], total_secs: f64) {
 /// `clippy::cast_precision_loss` warning that an `as f64` cast
 /// would produce, and is exact for any vsix size we'll ever see
 /// (KiB headroom in u64 is 16 EiB).
-fn bytes_to_kib(bytes: u64) -> u64 {
+const fn bytes_to_kib(bytes: u64) -> u64 {
     bytes.div_ceil(1024)
 }

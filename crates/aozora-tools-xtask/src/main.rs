@@ -30,6 +30,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{self, Command, ExitCode},
+    time::SystemTime,
 };
 
 use clap::{Args, Parser, Subcommand};
@@ -202,7 +203,7 @@ fn bench_binary_path(_package: &str, bench: &str) -> Result<PathBuf, String> {
         .join("release")
         .join("deps");
     let prefix = format!("{bench}-");
-    let mut newest: Option<(std::time::SystemTime, PathBuf)> = None;
+    let mut newest: Option<(SystemTime, PathBuf)> = None;
     for entry in fs::read_dir(&deps).map_err(|e| format!("read_dir {}: {e}", deps.display()))? {
         let entry = entry.map_err(|e| format!("dir entry: {e}"))?;
         let name = entry.file_name();

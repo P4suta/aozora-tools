@@ -27,7 +27,9 @@
 use aozora_lsp::{
     LineIndex, LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset,
 };
+use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
+use proptest::sample::select;
 
 /// Generate a string biased toward content the LSP actually sees:
 /// kanji/hiragana, latin, newlines, and aozora notation triggers.
@@ -55,8 +57,7 @@ fn realistic_text_strategy() -> impl Strategy<Value = String> {
         "X\nY",
     ];
     let frag_count = 0usize..16usize;
-    proptest::collection::vec(proptest::sample::select(fragments), frag_count)
-        .prop_map(|frags| frags.concat())
+    proptest_vec(select(fragments), frag_count).prop_map(|frags| frags.concat())
 }
 
 proptest! {

@@ -186,8 +186,8 @@ fn lifecycle_iteration() {
 
     let mutator_inputs = ThreadInputs {
         docs: docs.clone(),
-        uri_a: uri_a.clone(),
-        uri_b: uri_b.clone(),
+        uri_a,
+        uri_b,
     };
     let t2 = thread::spawn(move || {
         let ThreadInputs { docs, uri_a, uri_b } = mutator_inputs;

@@ -51,6 +51,10 @@
 //! Arc-bumps)` rather than `O(doc)`.
 
 use std::collections::BTreeMap;
+use std::env;
+use std::fmt;
+use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -58,12 +62,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
 use ropey::Rope;
+use tokio::runtime::Handle;
+use tokio::task::spawn_blocking;
 use tree_sitter::Parser;
 
 use crate::gaiji_spans::GaijiSpan;
 use crate::incremental::input_edit;
 use crate::line_index::LineIndex;
-use crate::metrics::Metrics;
+use crate::metrics::{Metrics, ParseSample};
 use crate::paragraph::{
     MAX_PARAGRAPH_BYTES, MutParagraph, ParagraphSnapshot, build_paragraph_snapshot,
     paragraph_byte_ranges,
@@ -80,7 +86,7 @@ use crate::text_edit::{EditError, LocalTextEdit};
 /// place.
 fn paragraph_from_rope_slice(
     source: &Rope,
-    range: std::ops::Range<usize>,
+    range: Range<usize>,
     parser: &mut Parser,
 ) -> MutParagraph {
     let slice = source.byte_slice(range);
@@ -116,8 +122,8 @@ pub struct BufferState {
     pub segment_cache: SegmentCache,
 }
 
-impl std::fmt::Debug for BufferState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for BufferState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BufferState")
             .field("paragraphs", &self.paragraphs.len())
             .finish_non_exhaustive()
@@ -263,42 +269,30 @@ impl BufferState {
     }
 
     fn apply_one_edit(&mut self, edit: &LocalTextEdit) {
-        let (start_para, start_local) = self.locate_byte(edit.range.start);
-        let (end_para, end_local) = self.locate_byte(edit.range.end);
-        if start_para == end_para {
-            self.apply_within_paragraph(start_para, start_local, end_local, &edit.new_text);
+        let start = self.locate_byte(edit.range.start);
+        let end = self.locate_byte(edit.range.end);
+        if start.0 == end.0 {
+            self.apply_within_paragraph(start.0, start.1..end.1, &edit.new_text);
         } else {
-            self.apply_across_paragraphs(
-                start_para,
-                start_local,
-                end_para,
-                end_local,
-                &edit.new_text,
-            );
+            self.apply_across_paragraphs(start, end, &edit.new_text);
         }
-        self.maybe_resegment_around(start_para);
+        self.maybe_resegment_around(start.0);
     }
 
-    fn apply_within_paragraph(
-        &mut self,
-        idx: usize,
-        start_local: usize,
-        end_local: usize,
-        new_text: &str,
-    ) {
+    fn apply_within_paragraph(&mut self, idx: usize, local: Range<usize>, new_text: &str) {
         let paragraph = &mut self.paragraphs[idx];
-        let start_char = paragraph.text.byte_to_char(start_local);
-        let end_char = paragraph.text.byte_to_char(end_local);
+        let start_char = paragraph.text.byte_to_char(local.start);
+        let end_char = paragraph.text.byte_to_char(local.end);
         if end_char > start_char {
             paragraph.text.remove(start_char..end_char);
         }
         if !new_text.is_empty() {
             paragraph.text.insert(start_char, new_text);
         }
-        let new_end_local = start_local + new_text.len();
+        let new_end_local = local.start + new_text.len();
         // The `InputEdit`'s byte offsets are paragraph-local — that's
         // what `MutParagraph::apply_edit` expects.
-        let ts_edit = input_edit(start_local, end_local, new_end_local);
+        let ts_edit = input_edit(local.start, local.end, new_end_local);
         paragraph.apply_edit(&mut self.parser, ts_edit);
     }
 
@@ -320,12 +314,12 @@ impl BufferState {
     /// boundary-spanning edits is bounded to ~10 KB.
     fn apply_across_paragraphs(
         &mut self,
-        start_para: usize,
-        start_local: usize,
-        end_para: usize,
-        end_local: usize,
+        start: (usize, usize),
+        end: (usize, usize),
         new_text: &str,
     ) {
+        let (start_para, start_local) = start;
+        let (end_para, end_local) = end;
         // Build the merged Rope by zero-copy `append` of slices from
         // the existing paragraphs' Ropes. The middle `new_text`
         // becomes a tiny owned Rope; everything else stays in
@@ -362,7 +356,7 @@ impl BufferState {
         }
         // Re-segment the paragraph's text by paragraph_byte_ranges
         // (will hard-cap at MAX_PARAGRAPH_BYTES).
-        let text_rope = std::mem::replace(&mut self.paragraphs[idx].text, Rope::new());
+        let text_rope = mem::replace(&mut self.paragraphs[idx].text, Rope::new());
         let ranges = paragraph_byte_ranges(&text_rope);
         if ranges.len() <= 1 {
             // Single-segment result — restore and return; the cap
@@ -416,8 +410,8 @@ pub struct Snapshot {
     doc_gaiji_spans: OnceLock<Arc<BTreeMap<u32, Arc<GaijiSpan>>>>,
 }
 
-impl std::fmt::Debug for Snapshot {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for Snapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Snapshot")
             .field("version", &self.version)
             .field("paragraphs", &self.paragraphs.len())
@@ -571,8 +565,8 @@ pub struct DocState {
     pub metrics: Arc<Metrics>,
 }
 
-impl std::fmt::Debug for DocState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for DocState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DocState")
             .field("edit_version", &self.edit_version.load(Ordering::Relaxed))
             .field("snapshot_version", &self.snapshot.load().version)
@@ -619,24 +613,24 @@ impl DocState {
 
     /// Apply a batch of edits and ratchet the snapshot.
     pub fn apply_changes(self: &Arc<Self>, edits: &[LocalTextEdit]) -> Option<u64> {
-        let new_version = {
+        {
             let mut buffer = self.buffer.lock();
             buffer.apply_edits(edits)?;
-            self.metrics.record_edit();
-            self.edit_version.fetch_add(1, Ordering::SeqCst) + 1
-        };
+        }
+        self.metrics.record_edit();
+        let new_version = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
         self.spawn_snapshot_rebuild(new_version);
         Some(new_version)
     }
 
     /// Replace the buffer wholesale.
     pub fn replace_text(self: &Arc<Self>, new_text: String) -> u64 {
-        let new_version = {
+        {
             let mut buffer = self.buffer.lock();
             buffer.replace(new_text);
-            self.metrics.record_edit();
-            self.edit_version.fetch_add(1, Ordering::SeqCst) + 1
-        };
+        }
+        self.metrics.record_edit();
+        let new_version = self.edit_version.fetch_add(1, Ordering::SeqCst) + 1;
         self.spawn_snapshot_rebuild(new_version);
         new_version
     }
@@ -672,8 +666,8 @@ impl DocState {
 
     fn spawn_snapshot_rebuild(self: &Arc<Self>, target_version: u64) {
         let this = Arc::clone(self);
-        if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::spawn_blocking(move || {
+        if Handle::try_current().is_ok() {
+            spawn_blocking(move || {
                 if this.snapshot.load().version >= target_version {
                     return;
                 }
@@ -694,13 +688,13 @@ impl DocState {
             let (_diags, stats) = buffer.segment_cache.reparse(&text);
             stats
         };
-        self.metrics.record_parse(
-            stats.latency_us,
-            stats.cache_hits,
-            stats.cache_misses,
-            stats.cache_entries_after,
-            stats.cache_bytes_estimate,
-        );
+        self.metrics.record_parse(ParseSample {
+            latency_us: stats.latency_us,
+            cache_hits: stats.cache_hits,
+            cache_misses: stats.cache_misses,
+            cache_entries: stats.cache_entries_after,
+            cache_bytes_estimate: stats.cache_bytes_estimate,
+        });
         let threshold = slow_parse_threshold_us();
         if stats.latency_us > threshold {
             tracing::warn!(
@@ -724,7 +718,7 @@ impl DocState {
 }
 
 fn slow_parse_threshold_us() -> u64 {
-    std::env::var("AOZORA_LSP_SLOW_PARSE_US")
+    env::var("AOZORA_LSP_SLOW_PARSE_US")
         .ok()
         .and_then(|s| s.trim().parse::<u64>().ok())
         .unwrap_or(100_000)

@@ -23,6 +23,7 @@
 //! editor feel responsive even on 100 KB+ documents — the win the
 //! 8:45 PM trace asked for.
 
+use std::fmt;
 use std::sync::Mutex;
 
 use ropey::Rope;
@@ -44,8 +45,8 @@ struct Inner {
     tree: Option<Tree>,
 }
 
-impl std::fmt::Debug for IncrementalDoc {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for IncrementalDoc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("IncrementalDoc").finish_non_exhaustive()
     }
 }
@@ -187,10 +188,12 @@ fn chunk_callback<'r>(rope: &'r Rope) -> impl FnMut(usize, Point) -> &'r [u8] {
 }
 
 /// Translate an LSP-style "old text → new text" edit into a
-/// tree-sitter [`InputEdit`]. The caller supplies byte offsets;
-/// the `Point` fields are left at zero because the LSP backend's
-/// tree consumers never query row/column positions on the TS tree
-/// (everything is byte-driven via `crate::position`, private).
+/// tree-sitter [`InputEdit`].
+///
+/// The caller supplies byte offsets; the `Point` fields are left at
+/// zero because the LSP backend's tree consumers never query row /
+/// column positions on the TS tree (everything is byte-driven via
+/// `crate::position`, private).
 #[must_use]
 pub fn input_edit(start_byte: usize, old_end_byte: usize, new_end_byte: usize) -> InputEdit {
     InputEdit {

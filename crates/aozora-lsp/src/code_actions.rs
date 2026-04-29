@@ -25,6 +25,7 @@ use tower_lsp::lsp_types::{
 
 use crate::diagnostics::{DiagnosticPayload, SerializablePairKind};
 use crate::line_index::LineIndex;
+use std::collections::HashMap;
 
 /// Compute every wrap-selection [`CodeAction`] applicable to
 /// `selection` in `source`. Returns an empty vec when the selection
@@ -55,35 +56,65 @@ pub fn wrap_selection_actions(
         ruby_wrap(uri, selection, "《》", "ルビをふる ｜SEL《》"),
         ruby_wrap(uri, selection, "《《》》", "二重ルビをふる ｜SEL《《》》"),
         // 文字列を囲むだけの 3 種。
-        wrap_pair(uri, selection, "「", "」", "「」 で囲む"),
-        wrap_pair(uri, selection, "〔", "〕", "〔〕 で囲む (アクセント分解)"),
-        wrap_pair(uri, selection, "［＃", "］", "［＃...］ 注記にする"),
+        wrap_pair(
+            uri,
+            selection,
+            &WrapDecoration {
+                open: "「",
+                close: "」",
+                title: "「」 で囲む",
+            },
+        ),
+        wrap_pair(
+            uri,
+            selection,
+            &WrapDecoration {
+                open: "〔",
+                close: "〕",
+                title: "〔〕 で囲む (アクセント分解)",
+            },
+        ),
+        wrap_pair(
+            uri,
+            selection,
+            &WrapDecoration {
+                open: "［＃",
+                close: "］",
+                title: "［＃...］ 注記にする",
+            },
+        ),
         // 傍点: 選択文字はそのまま、注記が後ろに付く。
         forward_bouten_action(uri, selection, selected),
     ]);
     actions
 }
 
+/// Open / close decoration shipped to [`wrap_pair`].
+///
+/// Bundling these three together keeps `wrap_pair` under the
+/// workspace `too-many-arguments-threshold`; callers also document
+/// themselves better with named fields than with a row of bare
+/// `&str` arguments.
+struct WrapDecoration<'a> {
+    open: &'a str,
+    close: &'a str,
+    title: &'a str,
+}
+
 /// Build a single open/close wrap [`CodeAction`]. Selection ends
 /// up *inside* the open / close pair.
-fn wrap_pair(
-    uri: &Url,
-    selection: Range,
-    open: &str,
-    close: &str,
-    title: &str,
-) -> CodeActionOrCommand {
+fn wrap_pair(uri: &Url, selection: Range, deco: &WrapDecoration<'_>) -> CodeActionOrCommand {
     let edits = vec![
         TextEdit {
             range: Range::new(selection.start, selection.start),
-            new_text: open.to_owned(),
+            new_text: deco.open.to_owned(),
         },
         TextEdit {
             range: Range::new(selection.end, selection.end),
-            new_text: close.to_owned(),
+            new_text: deco.close.to_owned(),
         },
     ];
-    build_action(uri, edits, title)
+    build_action(uri, edits, deco.title)
 }
 
 /// Build a "ルビをふる" wrap [`CodeAction`]. Selection becomes the
@@ -112,7 +143,7 @@ fn ruby_wrap(
 }
 
 fn build_action(uri: &Url, edits: Vec<TextEdit>, title: &str) -> CodeActionOrCommand {
-    let mut changes = std::collections::HashMap::new();
+    let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: title.to_owned(),
@@ -135,7 +166,7 @@ fn build_action(uri: &Url, edits: Vec<TextEdit>, title: &str) -> CodeActionOrCom
 /// Returns an empty `Vec` when no diagnostic in the request range
 /// has a known fix shape.
 #[must_use]
-pub fn quick_fix_actions(uri: &Url, diagnostics: &[Diagnostic]) -> Vec<CodeActionOrCommand> {
+pub(crate) fn quick_fix_actions(uri: &Url, diagnostics: &[Diagnostic]) -> Vec<CodeActionOrCommand> {
     diagnostics
         .iter()
         .filter_map(|diag| {
@@ -185,7 +216,7 @@ fn insert_close_action(
         range: Range::new(diag.range.end, diag.range.end),
         new_text: close.to_owned(),
     }];
-    let mut changes = std::collections::HashMap::new();
+    let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: format!("`{close}` を補って閉じる ({} ペア)", pair_kind.open_str()),
@@ -212,7 +243,7 @@ fn delete_unmatched_close_action(
         range: diag.range,
         new_text: String::new(),
     }];
-    let mut changes = std::collections::HashMap::new();
+    let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: format!("対応のない `{close}` を削除する"),
@@ -233,7 +264,7 @@ fn delete_pua_action(uri: &Url, diag: &Diagnostic, codepoint: u32) -> CodeAction
         range: diag.range,
         new_text: String::new(),
     }];
-    let mut changes = std::collections::HashMap::new();
+    let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: format!("私用領域文字 U+{codepoint:04X} を削除する"),
@@ -258,7 +289,7 @@ fn forward_bouten_action(uri: &Url, selection: Range, selected: &str) -> CodeAct
         range: Range::new(selection.end, selection.end),
         new_text,
     }];
-    let mut changes = std::collections::HashMap::new();
+    let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     CodeActionOrCommand::CodeAction(CodeAction {
         title: "傍点を付ける ［＃「SEL」に傍点］".to_owned(),

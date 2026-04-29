@@ -57,10 +57,11 @@ pub struct GaijiSpan {
     pub mencode: Option<Arc<str>>,
 }
 
-/// Walk `tree` once and extract every gaiji span. Returned spans
-/// have **byte offsets relative to `text`** (the tree's coordinate
-/// frame). Output is sorted by `start_byte` because the tree visit
-/// is in source order.
+/// Walk `tree` once and extract every gaiji span.
+///
+/// Returned spans have **byte offsets relative to `text`** (the tree's
+/// coordinate frame). Output is sorted by `start_byte` because the
+/// tree visit is in source order.
 #[must_use]
 pub fn extract_gaiji_spans_from_tree(tree: &Tree, text: &str) -> Arc<[Arc<GaijiSpan>]> {
     let mut spans: Vec<Arc<GaijiSpan>> = Vec::new();
@@ -122,7 +123,7 @@ fn parse_body(body: &str) -> (Arc<str>, Option<Arc<str>>) {
 /// `start_byte` field so the per-request cost stays
 /// `O(log spans + matches)`.
 #[must_use]
-pub fn spans_in_byte_range(
+pub(crate) fn spans_in_byte_range(
     spans: &[Arc<GaijiSpan>],
     start_byte: usize,
     end_byte: usize,
