@@ -26,11 +26,6 @@
 //! reads it; the package step is fast (~2 s) so serialising it is
 //! invisible against the build wall (~70–90 s/target).
 
-#![allow(
-    clippy::cast_precision_loss,
-    reason = "vsix sizes (bytes) and elapsed seconds are converted to f64 only for human-readable summary printing — well under f64 mantissa headroom in practice."
-)]
-
 use std::{
     io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
@@ -138,6 +133,16 @@ struct Row {
     error: Option<String>,
 }
 
+/// Outcome of building a single target — the per-target spec
+/// rebroadcast back to the caller (so the package phase doesn't
+/// have to look it up by `vsce` name) plus either the build wall
+/// time on success or a diagnostic string on failure.
+#[derive(Debug)]
+struct BuildOutcome {
+    spec: TargetSpec,
+    result: Result<f64, String>,
+}
+
 pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
     let root = workspace_root()?;
     let server_dir = root.join("editors/vscode/server");
@@ -194,10 +199,10 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
     for spec in &selected {
         let build_res = build_results
             .iter()
-            .find(|(s, _)| s.vsce == spec.vsce)
+            .find(|o| o.spec.vsce == spec.vsce)
             .map_or_else(
                 || Err("internal: missing build result".into()),
-                |(_, r)| r.clone(),
+                |o| o.result.clone(),
             );
 
         let mut row = Row {
@@ -221,10 +226,10 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
                 row.package_secs = pack_start.elapsed().as_secs_f64();
                 row.vsix_size_bytes = size;
                 eprintln!(
-                    "[{}] packaged → {} ({:.0} KiB)",
+                    "[{}] packaged → {} ({} KiB)",
                     spec.vsce,
                     path.file_name().and_then(|s| s.to_str()).unwrap_or("?"),
-                    (size as f64) / 1024.0,
+                    bytes_to_kib(size),
                 );
             }
             Err(e) => {
@@ -243,19 +248,14 @@ pub fn run_vsix_all(jobs: usize, only: Option<&str>) -> Result<(), String> {
     }
 }
 
-#[allow(clippy::type_complexity)]
-fn run_parallel_builds(
-    jobs: usize,
-    selected: &[TargetSpec],
-    root: &Path,
-) -> Vec<(TargetSpec, Result<f64, String>)> {
+fn run_parallel_builds(jobs: usize, selected: &[TargetSpec], root: &Path) -> Vec<BuildOutcome> {
     // Pop-from-back work queue so workers serve targets one at a time
     // until empty. This is a simple work-stealing approximation —
     // because the per-target compile time is roughly uniform (~70–90 s
     // each), strict load balancing buys little; the queue model is
     // chosen for code simplicity.
     let queue: Arc<Mutex<Vec<TargetSpec>>> = Arc::new(Mutex::new(selected.to_vec()));
-    let results: Arc<Mutex<Vec<(TargetSpec, Result<f64, String>)>>> =
+    let results: Arc<Mutex<Vec<BuildOutcome>>> =
         Arc::new(Mutex::new(Vec::with_capacity(selected.len())));
 
     let workers: Vec<_> = (0..jobs)
@@ -287,16 +287,16 @@ fn run_parallel_builds(
                         // path so the summary table doesn't show 0.0 s
                         // for a build that actually ran to completion
                         // and then errored at link / vsce time.
-                        let res = match raw_res {
+                        let result = match raw_res {
                             Ok(()) => Ok(elapsed),
                             Err(e) => Err(format!("after {elapsed:.1}s: {e}")),
                         };
-                        match &res {
+                        match &result {
                             Ok(s) => eprintln!("[{}] build OK    {s:.1}s", spec.vsce),
                             Err(e) => eprintln!("[{}] build FAIL  {e}", spec.vsce),
                         }
                         if let Ok(mut r) = results.lock() {
-                            r.push((spec, res));
+                            r.push(BuildOutcome { spec, result });
                         }
                     }
                 })
@@ -537,15 +537,24 @@ fn print_summary(rows: &[Row], total_secs: f64) {
         "------", "------", "------", "------"
     );
     for row in rows {
-        let size_kib = (row.vsix_size_bytes as f64) / 1024.0;
+        let size_kib = bytes_to_kib(row.vsix_size_bytes);
         let status = match &row.error {
             None => "OK".to_string(),
             Some(e) => format!("FAIL: {e}"),
         };
         eprintln!(
-            "  {:<14}  {:>8.1}s  {:>8.1}s  {:>7.0}KiB  {}",
+            "  {:<14}  {:>8.1}s  {:>8.1}s  {:>7}KiB  {}",
             row.spec.vsce, row.build_secs, row.package_secs, size_kib, status
         );
     }
     eprintln!();
+}
+
+/// Convert a byte count to a KiB count via integer arithmetic.
+/// Round-half-to-even at the .0 KiB boundary; this avoids the
+/// `clippy::cast_precision_loss` warning that an `as f64` cast
+/// would produce, and is exact for any vsix size we'll ever see
+/// (KiB headroom in u64 is 16 EiB).
+fn bytes_to_kib(bytes: u64) -> u64 {
+    bytes.div_ceil(1024)
 }

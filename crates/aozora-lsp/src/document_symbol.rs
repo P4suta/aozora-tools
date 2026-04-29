@@ -130,10 +130,18 @@ fn build_symbol(
     } else {
         title
     };
-    #[allow(
-        deprecated,
-        reason = "DocumentSymbol::deprecated is required by the LSP type"
-    )]
+    // `lsp_types::DocumentSymbol` retains the `deprecated:
+    // Option<bool>` field marked `#[deprecated(note = "Use tags
+    // instead")]` for spec backward-compat (LSP 3.15 superseded it
+    // with `tags`). The struct has no `Default` impl and every
+    // field is `pub`, so Rust forces us to name it explicitly at
+    // construction; setting it to `None` is the supported
+    // migration path. `tags: None` is set for the same reason. The
+    // upstream warning cannot be avoided without giving up the
+    // typed struct (e.g. via `serde_json::from_value`), which
+    // would cost us compile-time field validation for no
+    // diagnostic improvement.
+    #[allow(deprecated, reason = "lsp-types still keeps the field")]
     DocumentSymbol {
         name,
         detail: Some(level.as_str().to_owned()),
