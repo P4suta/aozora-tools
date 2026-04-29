@@ -232,11 +232,16 @@ function mdToHtml(md: string): string {
       continue;
     }
 
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    // Match only the prefix so the regex stays unambiguous —
+    // `\s+(.*)` flags as polynomial-redos because `.` overlaps `\s`,
+    // forcing quadratic backtracking on long all-whitespace tails.
+    // Body comes from a plain slice + trimStart instead.
+    const heading = /^(#{1,6})\s/.exec(line);
     if (heading) {
       flushParagraph(paraBuf);
       const level = heading[1]?.length ?? 1;
-      out.push(`<h${level}>${inline(heading[2] ?? "")}</h${level}>`);
+      const body = line.slice(heading[0].length).trimStart();
+      out.push(`<h${level}>${inline(body)}</h${level}>`);
       i++;
       continue;
     }
