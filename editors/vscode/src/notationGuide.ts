@@ -147,10 +147,27 @@ function inline(text: string): string {
     return `${PhOpen}${segments.length - 1}${PhClose}`;
   };
 
-  // 1. Inline code (`...`) — process FIRST so escaping inside the
-  //    backticks is preserved as-is and any `**` / `[` / `<` inside
-  //    code never gets re-interpreted.
-  const withCode = text.replace(/`([^`]+)`/g, (_, body) =>
+  // 1. Inline code — process FIRST so escaping inside the backticks
+  //    is preserved as-is and any `**` / `[` / `<` inside code never
+  //    gets re-interpreted.
+  //
+  //    Two delimiter forms, in priority order:
+  //
+  //      (a) Doubled-backtick `` `` `…` `` `` — the GitHub trick for
+  //          embedding a literal single ` inside a code span (used
+  //          by `media/notation-guide.md`'s "アクセント分解" table
+  //          for the `` `グレーブ` `` row). The body is trimmed of
+  //          one leading/trailing space if present, mirroring
+  //          CommonMark.
+  //      (b) Single-backtick `…` — the ordinary case.
+  //
+  //    Doubled MUST run first, otherwise the single-backtick regex
+  //    eats `` `` `` as an empty code span and leaves the inner
+  //    backtick orphaned.
+  const withDoubleCode = text.replace(/``\s?([^`]+?)\s?``/g, (_, body) =>
+    stash(`<code>${escapeHtml(body)}</code>`),
+  );
+  const withCode = withDoubleCode.replace(/`([^`]+)`/g, (_, body) =>
     stash(`<code>${escapeHtml(body)}</code>`),
   );
   // 2. Markdown links [text](url) → stash as <a> tag.
@@ -280,10 +297,18 @@ function mdToHtml(md: string): string {
 }
 
 function parseTableRow(line: string): string[] {
+  // GFM table cells can contain a literal pipe by escaping it as
+  // `\|`. The naive `split("|")` would treat the escaped pipe as a
+  // column boundary, so substitute a Unicode PUA sentinel during the
+  // split and restore the literal `|` in each cell afterwards. The
+  // sentinel sits in the BMP private-use area — never produced by
+  // any markdown content we accept — so the round-trip is reliable.
+  const PipeSentinel = "\u{F8FF}";
   return line
+    .replace(/\\\|/g, PipeSentinel)
     .replace(/^\||\|\s*$/g, "")
     .split("|")
-    .map((c) => c.trim());
+    .map((c) => c.trim().replaceAll(PipeSentinel, "|"));
 }
 
 function renderTable(header: string[], rows: string[][]): string {

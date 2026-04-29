@@ -1,57 +1,95 @@
-# aozora — VS Code extension
+# aozora — VS Code extension for aozora-flavored markdown
 
-Client for [aozora-lsp](../../crates/aozora-lsp).
+青空文庫記法 (`.afm` / `.aozora` / `.aozora.txt`) を VS Code で書くための
+拡張機能。フォーマッタ、診断、外字ホバー、ルビ／傍点ラッパー、
+プレビューが入っている。LSP サーバ
+[`aozora-lsp`](https://github.com/P4suta/aozora-tools/tree/main/crates/aozora-lsp)
+のクライアント。
 
-## What you get
+## できること
 
-- **Syntax errors** — mismatched brackets, unclosed ruby, unknown
-  `［＃…］` annotations surface as diagnostics in the Problems panel.
-- **Formatter** — `Format Document` (Shift+Alt+F) rewrites the buffer
-  into its canonical aozora form (`parse ∘ serialize`).
-- **Gaiji hover** — hovering a `※［＃「...」、mencode］` reference
-  shows the resolved Unicode character and the description.
+- **構文エラー診断** — 括弧不一致、閉じてないルビ、未知の `［＃…］`
+  注記が Problems パネルに出る
+- **フォーマッタ** — `Format Document` (Shift+Alt+F) でバッファを
+  正規化された青空文庫記法に書き直す (`parse ∘ serialize`)
+- **外字ホバー** — `※［＃「...」、mencode］` にカーソルを当てると
+  解決された Unicode 文字と説明が出る
+- **外字折りたたみ** — `※[#…]` 注記を解決字 1 文字に
+  視覚的に折りたたむ(カーソルが上に来ると元の表記に戻る)
+- **ルビ／傍点ラッパー** — テキスト選択 → 右クリ →
+  「Aozora: 選択を括弧で囲む」 でルビ・二重ルビ・傍点・鉤括弧・
+  亀甲・注記の 7 種類でラップ可能
+  - `Ctrl+Alt+R` でルビ、`Ctrl+Alt+B` で傍点 のキーバインドあり
+- **半角キーで全角入力** — `[#` → `［＃canonical］`、`<<` → `《》`、
+  `|` → `｜` のスニペット展開(slug カタログ補完つき)
+- **HTML プレビュー** — `Aozora: Open Preview` で横にプレビューを
+  開き、編集にリアルタイム追従
+- **アウトライン** — 見出しの一覧を Quick Pick で表示してジャンプ
+- **記法ガイド** — `Aozora: 記法ガイドを開く` で完全リファレンスを
+  ブラウザで開く
 
-## Setup
+## インストール
 
-1. Build the LSP server once:
+VS Code Marketplace から `aozora` で検索 → Install。**LSP サーバ
+バイナリ (`aozora-lsp`) は同梱されている**ので、Rust toolchain も
+別途インストールも不要、入れた瞬間から動く。
 
-   ```bash
-   cd ../..   # aozora-tools workspace root
-   cargo build --release -p aozora-lsp
-   ```
+対応プラットフォーム(プラットフォーム別 `.vsix` を Marketplace が
+自動で配信):
 
-2. Point the extension at the binary. In VS Code settings:
+- Linux x64 / arm64 (glibc / musl)
+- macOS x64 / arm64
+- Windows x64 / arm64
 
-   ```jsonc
-   "aozora.lsp.path": "/absolute/path/to/aozora-tools/target/release/aozora-lsp"
-   ```
+### 自分でビルドした `aozora-lsp` を使いたい場合
 
-   Or drop the binary into somewhere on `PATH` and leave the default
-   (`aozora-lsp`).
+開発中に同梱バイナリを上書きしたいときは、`aozora.lsp.path` 設定で
+パスを指定する:
 
-3. Build and install the extension locally:
+```jsonc
+{
+  "aozora.lsp.path": "/absolute/path/to/your/aozora-lsp"
+}
+```
 
-   ```bash
-   bun install
-   bun run compile
-   # Press F5 from VS Code with this folder open to launch an
-   # Extension Development Host for debugging, or
-   # `bunx @vscode/vsce package` to build a .vsix for sideloading.
-   ```
+設定が空または `"aozora-lsp"`(デフォルト)のときは同梱バイナリ →
+PATH 上の `aozora-lsp` の順で解決される。
 
-## Document association
+## ファイルの関連付け
 
-Files with these extensions are treated as aozora:
+以下の拡張子は自動的に aozora 言語モードになる:
 
 - `.afm`
 - `.aozora`
 - `.aozora.txt`
 
-Any other `.txt` file is untouched; set the language mode manually
-(`Ctrl+K M` → "Aozora") to opt in.
+通常の `.txt` は触らないが、ファイル先頭に青空文庫記法の特徴的な
+マーカー(`［＃`、`｜X《`、ヘッダ区切り線)が含まれていれば
+`aozora.autoDetect.plaintext` が自動で aozora モードに切り替える
+(設定で無効化可能)。
 
-## Local-only
+`.txt` で auto-detect がかからないファイルは、
+`Ctrl+K M` → "Aozora" で手動で言語モードを切り替える。
 
-This extension is not published to the Marketplace. It's a reference
-client for `aozora-lsp`; any LSP-capable editor (Neovim, Helix, Emacs,
-Zed) can drive the same server directly.
+## 設定
+
+| キー | デフォルト | 説明 |
+|---|---|---|
+| `aozora.lsp.path` | `aozora-lsp` | `aozora-lsp` 実行ファイルへのパス。`PATH` 上にあればこのままで OK |
+| `aozora.trace.server` | `off` | LSP メッセージのトレース (`off` / `messages` / `verbose`) |
+| `aozora.autoDetect.plaintext` | `true` | `.txt` ファイルを開くとき青空文庫記法を検出して自動でモード切替 |
+| `aozora.gaijiFold.enabled` | `true` | `※［＃…］` 外字注記を解決字 1 文字に視覚折りたたみ |
+
+## はじめての方へ
+
+`Aozora — はじめての青空文庫記法` ウォークスルーを用意してある。
+コマンドパレットから `Welcome: Open Walkthrough` → `Aozora` を
+選ぶとガイド付きでひと通りの機能を試せる。
+
+## ライセンス
+
+Apache-2.0 OR MIT.
+
+## ソース・バグ報告
+
+[github.com/P4suta/aozora-tools](https://github.com/P4suta/aozora-tools) — issues / PR 歓迎。

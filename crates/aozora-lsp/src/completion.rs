@@ -210,21 +210,34 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
         (entry.canonical.to_owned(), InsertTextFormat::PLAIN_TEXT)
     };
 
-    // Splice into the document. For half-width openers, also rewrite
-    // the prefix to its full-width form so the source ends up
-    // canonical regardless of which bracket the user typed first.
-    let new_text = if ctx.half_width() {
-        // Replace `[#...maybe ]` (or any mixed variant) with the
-        // full canonical `［＃<canonical>］` so the source lands
-        // fully full-width regardless of which brackets the user
-        // typed first.
-        format!("［＃{body_text}］")
-    } else if ctx.close_end > ctx.body_start
+    // Detect the "full-width opener already has a full-width close"
+    // case once, before deriving the replacement text and range from
+    // it. The branch matters in both places because we have to keep
+    // the existing close out of the replaced range — earlier code
+    // built `new_text = body_text` (no close) but used `edit_end =
+    // close_end` (covers the close), so accepting a completion in
+    // `［＃｜］` collapsed the existing `］`. The half-open
+    // `TextEdit.range` semantics are explicit in the LSP spec
+    // (start inclusive, end exclusive); we must aim end at the
+    // START of `］`, not its END.
+    let existing_full_close_start: Option<usize> = if !ctx.half_width()
+        && ctx.close_end > ctx.body_start
         && source[ctx.body_start..ctx.close_end].ends_with('］')
     {
-        // Full-width opener with a full-width close already typed.
-        // Replace just the body (between opener and close) with the
-        // canonical form; leave the brackets in place.
+        Some(ctx.close_end - '］'.len_utf8())
+    } else {
+        None
+    };
+
+    // Splice into the document. For half-width openers, rewrite the
+    // entire `[#...]` (or mixed variant) to the canonical full-width
+    // form. For full-width openers, decide based on whether the
+    // close has been typed yet.
+    let new_text = if ctx.half_width() {
+        format!("［＃{body_text}］")
+    } else if existing_full_close_start.is_some() {
+        // Body-only — the close is already in place and we'll stop
+        // the replacement range just before it.
         body_text
     } else {
         // Full-width opener but no close yet — emit the body and the
@@ -237,7 +250,10 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
     } else {
         ctx.body_start
     };
-    let edit_end = ctx.close_end.max(edit_start);
+    let edit_end = match existing_full_close_start {
+        Some(close_start) => close_start,
+        None => ctx.close_end.max(edit_start),
+    };
     let range = Range::new(
         byte_offset_to_position(source, edit_start),
         byte_offset_to_position(source, edit_end),
@@ -411,8 +427,60 @@ mod tests {
         let CompletionTextEdit::Edit(edit) = entry.text_edit.as_ref().unwrap() else {
             unreachable!()
         };
-        // body text only — no surrounding brackets.
+        // Body text only — no surrounding brackets.
         assert_eq!(edit.new_text, "改ページ");
+        // Regression: the range must NOT cover the existing `］`. An
+        // earlier version aimed `edit.range.end` at `close_end` (the
+        // byte just after `］`), which combined with body-only
+        // new_text silently collapsed the close. The half-open LSP
+        // `TextEdit.range` semantic means end-exclusive; aim end at
+        // the START of `］` to leave the close untouched.
+        let expected_start_byte = "［＃".len();
+        let expected_end_byte = "［＃改".len();
+        assert_eq!(
+            edit.range.start,
+            byte_offset_to_position(src, expected_start_byte),
+        );
+        assert_eq!(
+            edit.range.end,
+            byte_offset_to_position(src, expected_end_byte),
+        );
+    }
+
+    #[test]
+    fn full_width_completion_on_empty_pair_inserts_body_only() {
+        // The exact UX flow the user hits: snippetTrigger expands
+        // `#` to `［＃${0}］` placing the cursor between `＃` and
+        // `］`, the editor fires `triggerSuggest`, and the user
+        // accepts a parametric slug like `N字下げ`. The final text
+        // must read `［＃ここから1字下げ］` — the close MUST survive.
+        let src = "［＃］";
+        let pos = byte_offset_to_position(src, "［＃".len());
+        let items = completion_at(src, pos);
+        let entry = items
+            .iter()
+            .find(|i| i.label == "ここから{N}字下げ")
+            .expect("ここから{N}字下げ in completions");
+        let CompletionTextEdit::Edit(edit) = entry.text_edit.as_ref().unwrap() else {
+            unreachable!()
+        };
+        // Snippet form because the entry is parametric.
+        assert!(
+            edit.new_text.starts_with("ここから${1:"),
+            "expected snippet form, got {:?}",
+            edit.new_text,
+        );
+        assert!(edit.new_text.ends_with("字下げ"));
+        assert!(
+            !edit.new_text.contains('］'),
+            "new_text must be body-only when close already exists, got {:?}",
+            edit.new_text,
+        );
+        // Range MUST be a zero-width insertion at the cursor (right
+        // before `］`); never extend across `］`.
+        let cursor_byte = "［＃".len();
+        assert_eq!(edit.range.start, byte_offset_to_position(src, cursor_byte));
+        assert_eq!(edit.range.end, byte_offset_to_position(src, cursor_byte));
     }
 
     #[test]

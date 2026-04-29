@@ -131,6 +131,14 @@ const WRAPS: readonly WrapRule[] = [
     trigger: "※",
     body: "※［＃「${1:description}」、${2:mencode}］${0}",
   },
+  // 亀甲括弧 — accent decomposition wrapper (e.g. `〔café〕`). The
+  // LSP onType converts `{` to `〔`; we wrap to match the bracket-
+  // pair behaviour `［…］` and `《…》` already provide.
+  {
+    trigger: "〔",
+    body: "〔${0}〕",
+    suppressIfNextIs: "〕",
+  },
 ];
 // biome-ignore-end lint/suspicious/noTemplateCurlyInString: see open comment above
 
@@ -140,7 +148,7 @@ const WRAPS: readonly WrapRule[] = [
  * just synthesised (which would otherwise miss VS Code's built-in
  * `autoClosingPairs` skip-over).
  */
-const SKIP_OVER_CHARS: ReadonlySet<string> = new Set(["］", "》", "」", "』"]);
+const SKIP_OVER_CHARS: ReadonlySet<string> = new Set(["］", "》", "」", "』", "〕"]);
 
 export function registerSnippetTriggers(context: ExtensionContext): void {
   let busy = false;

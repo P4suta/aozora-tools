@@ -13,7 +13,7 @@
 //! place each child under the most recent open heading of strictly
 //! lower level.
 
-use tower_lsp::lsp_types::{DocumentSymbol, Range, SymbolKind};
+use tower_lsp::lsp_types::{DocumentSymbol, Position, Range, SymbolKind};
 
 use crate::line_index::LineIndex;
 
@@ -26,11 +26,8 @@ pub fn document_symbols(source: &str, line_index: &LineIndex) -> Vec<DocumentSym
             continue;
         };
         let line_idx = u32::try_from(line_idx).unwrap_or(u32::MAX);
-        // Compute byte range of this line by re-locating it via
-        // line_index: start = line_index.line_to_byte; end = next
-        // line's byte or source.len().
         let title = extract_title(line, source, line_idx, line_index);
-        let symbol = build_symbol(line_idx, level, title);
+        let symbol = build_symbol(line_idx, line, level, title);
         flat.push((level, symbol));
     }
     nest_by_level(flat)
@@ -55,6 +52,17 @@ fn heading_level_in(line: &str) -> Option<HeadingLevel> {
     }
 }
 
+/// Placeholder used when no usable title can be extracted from a
+/// heading line. Surfaces in the outline picker so the user can
+/// still navigate to the heading even before they've typed its
+/// title.
+///
+/// IMPORTANT: this MUST be non-empty (and non-whitespace) — the LSP
+/// spec for `DocumentSymbol.name` explicitly forbids empty strings,
+/// and VS Code's client-side `DocumentSymbol` constructor throws
+/// "name must not be falsy" the moment we hand it one.
+const UNTITLED: &str = "(無題)";
+
 /// Best-effort title extraction from a heading line.
 ///
 /// Three shapes:
@@ -63,12 +71,21 @@ fn heading_level_in(line: &str) -> Option<HeadingLevel> {
 ///    after the opening slug.
 /// 3. `［＃大見出し］序章` — title is whatever follows the slug on
 ///    the same line, until end-of-line or next slug.
+///
+/// Each shape's result is checked for emptiness; the first shape
+/// that yields a non-empty trimmed string wins. An empty match (e.g.
+/// the user typed `「」は大見出し` with no body yet) falls through to
+/// the next shape rather than returning `""`, which would violate
+/// the LSP `DocumentSymbol.name` non-empty contract.
 fn extract_title(line: &str, _source: &str, _line_idx: u32, _line_index: &LineIndex) -> String {
     // Shape 1: quoted title
     if let Some(quote_start) = line.find('「') {
         let after = &line[quote_start + '「'.len_utf8()..];
         if let Some(quote_end) = after.find('」') {
-            return after[..quote_end].to_owned();
+            let body = after[..quote_end].trim();
+            if !body.is_empty() {
+                return body.to_owned();
+            }
         }
     }
     // Shape 2/3: text after closing ］
@@ -80,20 +97,53 @@ fn extract_title(line: &str, _source: &str, _line_idx: u32, _line_index: &LineIn
             return trimmed.to_owned();
         }
     }
-    "(無題)".to_owned()
+    UNTITLED.to_owned()
 }
 
-fn build_symbol(line_idx: u32, level: HeadingLevel, title: String) -> DocumentSymbol {
+fn build_symbol(
+    line_idx: u32,
+    line_text: &str,
+    level: HeadingLevel,
+    title: String,
+) -> DocumentSymbol {
+    // LSP `Position.character` is the UTF-16 code-unit offset under
+    // the default `PositionEncodingKind::UTF16` (the only encoding
+    // VS Code currently advertises). Emit the *actual* end-of-line
+    // column rather than `u32::MAX`: the spec is permissive on
+    // out-of-range characters ("defaults back to the line length")
+    // but vscode-languageclient's hierarchical → flat symbol
+    // adapter crashes on the sentinel because it tries to slice
+    // the line text by the column and dereferences an undefined.
+    let utf16_len = u32::try_from(line_text.encode_utf16().count()).unwrap_or(u32::MAX);
     let line_range = Range::new(
-        tower_lsp::lsp_types::Position::new(line_idx, 0),
-        tower_lsp::lsp_types::Position::new(line_idx, u32::MAX),
+        Position::new(line_idx, 0),
+        Position::new(line_idx, utf16_len),
     );
-    #[allow(
-        deprecated,
-        reason = "DocumentSymbol::deprecated is required by the LSP type"
-    )]
+    // Defensive: the LSP spec forbids `DocumentSymbol.name` from
+    // being empty or whitespace-only, and VS Code throws "name
+    // must not be falsy" on the very next line. `extract_title`
+    // already enforces this, but layering the guard here means a
+    // future call site that constructs DocumentSymbols some other
+    // way can't reintroduce the bug.
+    let name = if title.trim().is_empty() {
+        UNTITLED.to_owned()
+    } else {
+        title
+    };
+    // `lsp_types::DocumentSymbol` retains the `deprecated:
+    // Option<bool>` field marked `#[deprecated(note = "Use tags
+    // instead")]` for spec backward-compat (LSP 3.15 superseded it
+    // with `tags`). The struct has no `Default` impl and every
+    // field is `pub`, so Rust forces us to name it explicitly at
+    // construction; setting it to `None` is the supported
+    // migration path. `tags: None` is set for the same reason. The
+    // upstream warning cannot be avoided without giving up the
+    // typed struct (e.g. via `serde_json::from_value`), which
+    // would cost us compile-time field validation for no
+    // diagnostic improvement.
+    #[allow(deprecated, reason = "lsp-types still keeps the field")]
     DocumentSymbol {
-        name: title,
+        name,
         detail: Some(level.as_str().to_owned()),
         kind: level.symbol_kind(),
         tags: None,
@@ -244,6 +294,70 @@ mod tests {
         assert_eq!(tree.len(), 2);
         assert_eq!(tree[0].name, "一");
         assert_eq!(tree[1].name, "二");
+    }
+
+    #[test]
+    fn empty_quote_body_falls_back_to_untitled_placeholder() {
+        // Regression: the user types `「」は大見出し` (empty between
+        // 「 and 」, body still being typed), and `extract_title`
+        // returned `""` directly. The LSP DocumentSymbol spec
+        // forbids empty `name`, and VS Code's client-side validator
+        // throws "name must not be falsy" — the entire
+        // documentSymbol response gets dropped, which silently
+        // breaks the outline picker.
+        let src = "「」は大見出し\n本文\n";
+        let s = syms(src);
+        assert_eq!(s.len(), 1);
+        assert!(
+            !s[0].name.is_empty(),
+            "name must never be empty; LSP spec forbids it",
+        );
+        assert!(
+            !s[0].name.trim().is_empty(),
+            "name must not be whitespace-only either",
+        );
+        assert_eq!(s[0].name, UNTITLED);
+    }
+
+    #[test]
+    fn whitespace_only_quote_body_also_falls_back() {
+        // Same contract as above but for `「   」` (whitespace-only).
+        let src = "「   」は大見出し\n";
+        let s = syms(src);
+        assert_eq!(s.len(), 1);
+        assert!(!s[0].name.trim().is_empty());
+        assert_eq!(s[0].name, UNTITLED);
+    }
+
+    #[test]
+    fn range_character_is_actual_line_length_not_u32_max() {
+        // Regression: an earlier version emitted `u32::MAX` as
+        // `range.end.character`, which crashes vscode-languageclient
+        // 9.x's hierarchical → flat symbol adapter on every
+        // documentSymbol response — the client tries to slice the
+        // line text by the column and dereferences an undefined.
+        // The proper value is the line's UTF-16 length.
+        let src = "［＃大見出し］序章\n本文\n";
+        let s = syms(src);
+        assert_eq!(s.len(), 1);
+        let sym = &s[0];
+        // The heading line is `［＃大見出し］序章` — count its UTF-16
+        // code units. Each char in this BMP-only string is exactly
+        // 1 utf-16 code unit, so the count equals `chars().count()`.
+        let expected_utf16 =
+            u32::try_from("［＃大見出し］序章".encode_utf16().count()).expect("fits in u32");
+        assert_eq!(
+            sym.range.end.character, expected_utf16,
+            "range.end.character must equal the actual line UTF-16 length",
+        );
+        assert!(
+            sym.range.end.character < u32::MAX / 2,
+            "range.end.character must not be a sentinel like u32::MAX"
+        );
+        assert_eq!(
+            sym.selection_range.end.character, expected_utf16,
+            "selection_range must mirror range",
+        );
     }
 
     #[test]

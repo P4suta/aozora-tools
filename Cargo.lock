@@ -167,7 +167,6 @@ dependencies = [
 name = "aozora-lsp"
 version = "0.1.3"
 dependencies = [
- "anyhow",
  "aozora",
  "aozora-encoding",
  "aozora-fmt",

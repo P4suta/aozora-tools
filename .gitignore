@@ -19,6 +19,18 @@ samples/tsumi-to-batsu-x100.afm
 editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/*.vsix
+# Per-platform `.vsix` archives produced by `cargo xtask vsix-all`.
+# They're release outputs (1-2 MiB each, ~14 MiB total for 8 targets);
+# the Marketplace serves the canonical copies, so the working tree
+# never tracks them.
+editors/vscode/dist-vsix/
+# Bundled aozora-lsp binary copied in by the release workflow / local
+# `cargo build` for vsix packaging. Per-platform binary, never source.
+editors/vscode/server/
+
+# Stray object files from tree-sitter's `cc` build script (the
+# generator emits them next to the source on some hosts).
+crates/tree-sitter-aozora/*.o
 
 # Editor state
 .idea/

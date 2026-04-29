@@ -41,7 +41,7 @@ use crate::position::{byte_offset_to_position, position_to_byte_offset};
 /// The server capability splits this into `first_trigger_character` +
 /// `more_trigger_character`; this constant keeps the canonical list in
 /// one place so `backend.rs` and tests cannot drift.
-pub const TRIGGERS: &[&str] = &["[", "]", "<", ">", "|", "*"];
+pub const TRIGGERS: &[&str] = &["[", "]", "<", ">", "|", "*", "{", "}"];
 
 /// Per-char substitution rule. Pure data so the table is trivial to
 /// audit. The `replacement` field is what gets spliced over the typed
@@ -75,6 +75,20 @@ const RULES: &[Rule] = &[
     Rule {
         typed: '*',
         replacement: "※",
+    },
+    // `{` / `}` → 亀甲括弧 `〔` / `〕` (kikkou). Used for accent-
+    // decomposition annotations like `〔café〕`. Picking the brace
+    // keys (rather than the round-paren keys) preserves `(` / `)`
+    // for parenthetical asides written in either width — those stay
+    // as-typed because aozora-bunko texts mix half- and full-width
+    // parens depending on context.
+    Rule {
+        typed: '{',
+        replacement: "〔",
+    },
+    Rule {
+        typed: '}',
+        replacement: "〕",
     },
 ];
 
@@ -159,6 +173,8 @@ mod tests {
             (">", "》"),
             ("|", "｜"),
             ("*", "※"),
+            ("{", "〔"),
+            ("}", "〕"),
         ];
         for (typed, expected) in cases {
             let edits = format_on_type(typed, pos(0, 1), typed);

@@ -108,8 +108,13 @@ jobs:
       - name: doc (deny broken intra-doc links)
         run: cargo doc --workspace --no-deps --document-private-items --locked
 
-      - name: bench --no-run
-        run: cargo bench --workspace --no-run --locked
+      # Catch bench-harness compile breakage without paying the linker
+      # cost of building the criterion binaries we'll never run in CI.
+      # `cargo check --benches` type-checks the same code path through
+      # `harness = false` benches in `[[bench]]` declarations and is
+      # noticeably cheaper than `bench --no-run` on a warm cache.
+      - name: check benches (compile-only)
+        run: cargo check --benches --workspace --locked
 
   typos:
     name: typos

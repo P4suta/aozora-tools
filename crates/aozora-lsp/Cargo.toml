@@ -31,7 +31,6 @@ arc-swap           = { workspace = true }
 ropey              = { workspace = true }
 tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
-anyhow             = { workspace = true }
 hdrhistogram       = { workspace = true }
 thiserror          = "2"
 # Optional: enabled via `--features shuttle-tests` to run the

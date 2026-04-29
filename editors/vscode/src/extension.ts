@@ -2,11 +2,14 @@
 // stdio and wires it to .afm / .aozora / .aozora.txt documents, plus
 // any plaintext .txt file whose content looks like an aozora-bunko work.
 
+import { chmodSync, existsSync, constants as fsConstants, statSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import {
   commands,
   type ExtensionContext,
   languages,
   type TextDocument,
+  type WorkspaceConfiguration,
   window,
   workspace,
 } from "vscode";
@@ -17,8 +20,10 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 
+import { registerDeletePair } from "./deletePair";
 import { registerGaijiFold } from "./gaijiFold";
 import { registerNotationGuideCommand } from "./notationGuide";
+import { registerShowOutlineCommand } from "./outline";
 import { registerPreviewCommand } from "./preview";
 import { registerSnippetTriggers } from "./snippetTrigger";
 import { registerWrapCommands } from "./wrap";
@@ -27,7 +32,7 @@ let client: LanguageClient | undefined;
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const config = workspace.getConfiguration("aozora");
-  const lspPath = resolveVars(config.get<string>("lsp.path", "aozora-lsp"));
+  const lspPath = resolveLspBinary(context, config);
 
   const serverOptions: ServerOptions = {
     run: {
@@ -48,7 +53,20 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: "file", language: "aozora" }],
+    // Match aozora language docs across BOTH on-disk files (`file://`)
+    // AND scratch buffers the user hasn't saved yet (`untitled:`).
+    // Without `untitled`, the LSP client never syncs Untitled-N
+    // buffers — `textDocument/didOpen` is gated on the selector — so
+    // every server-side feature (onType conversion, hover, gaiji
+    // spans, renderHtml preview, document symbols, formatting,
+    // semantic tokens) silently no-ops with `-32602 no document at
+    // uri` until the user saves. This is the standard
+    // file + untitled pattern shipped by rust-analyzer,
+    // typescript-language-features, and other major LSP clients.
+    documentSelector: [
+      { scheme: "file", language: "aozora" },
+      { scheme: "untitled", language: "aozora" },
+    ],
     synchronize: {
       configurationSection: "aozora",
     },
@@ -125,15 +143,71 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // non-VS-Code clients.
   registerSnippetTriggers(context);
 
+  // Auto-delete an empty bracket pair when the user empties its
+  // contents (e.g. types `#` to wrap as `［＃］`, then Backspaces the
+  // `＃` and expects `［］` to also vanish). Complements VS Code's
+  // built-in `editor.autoClosingDelete: "always"`, which only
+  // covers the inverse direction (delete-open → close also goes).
+  registerDeletePair(context);
+
+  // Custom outline picker. Renders the LSP's documentSymbol
+  // response (大/中/小 見出し) into a `window.showQuickPick` UI;
+  // robust against the editor-focus quirks that broke the prior
+  // built-in proxy.
+  registerShowOutlineCommand(context);
+
   try {
     await client.start();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     void window.showErrorMessage(
       `aozora-lsp failed to start (${lspPath}): ${message}. ` +
-        `Check \`aozora.lsp.path\` in settings, or build aozora-lsp with \`cargo build --release\` and add it to PATH.`,
+        "Set `aozora.lsp.path` in Settings if you have a custom build, " +
+        "or reinstall the extension to restore the bundled server binary.",
     );
   }
+}
+
+// Binary resolution order:
+//
+//   1. If the user explicitly set `aozora.lsp.path` to a non-default
+//      value, honour that — they want their own build.
+//   2. Otherwise prefer the bundled `server/aozora-lsp(.exe)` shipped
+//      inside this extension's platform-specific .vsix. This is the
+//      zero-config path that hits the moment a fresh user installs.
+//   3. Fall back to looking up `aozora-lsp` on the user's PATH — covers
+//      the case of a platform-neutral .vsix install (no bundled
+//      binary) where the user manually `cargo install`-ed the server.
+//
+// On Unix we also chmod 0755 the bundled binary on first activation:
+// vsce ships .vsix archives via a zip codepath that doesn't preserve
+// the executable bit (rust-analyzer hits the same issue). The chmod
+// is idempotent and cheap.
+function resolveLspBinary(context: ExtensionContext, config: WorkspaceConfiguration): string {
+  const userSetting = config.get<string>("lsp.path", "aozora-lsp").trim();
+  if (userSetting !== "" && userSetting !== "aozora-lsp") {
+    return resolveVars(userSetting);
+  }
+
+  const exe = process.platform === "win32" ? "aozora-lsp.exe" : "aozora-lsp";
+  const bundled = pathJoin(context.extensionPath, "server", exe);
+  if (existsSync(bundled)) {
+    if (process.platform !== "win32") {
+      try {
+        const mode = statSync(bundled).mode;
+        const wantBits = fsConstants.S_IXUSR | fsConstants.S_IXGRP | fsConstants.S_IXOTH;
+        if ((mode & wantBits) !== wantBits) {
+          chmodSync(bundled, mode | wantBits);
+        }
+      } catch {
+        // Non-fatal: if chmod fails the launch will surface its own
+        // error and the user can fix permissions manually.
+      }
+    }
+    return bundled;
+  }
+
+  return "aozora-lsp";
 }
 
 export async function deactivate(): Promise<void> {
@@ -158,7 +232,13 @@ function registerLspFeatureShortcuts(context: ExtensionContext): void {
       }),
     );
   };
-  proxy("aozora.showOutline", "outline.focus");
+  // `aozora.showOutline` is implemented in `outline.ts` against
+  // `vscode.executeDocumentSymbolProvider` — proxying
+  // `workbench.action.gotoSymbol` (or `editor.action.quickOutline`)
+  // here was unreliable: when the command is dispatched from a
+  // non-editor focus (palette / title bar / side bar) the built-in
+  // opens Quick Open with the `@` prefix but no editor context,
+  // and the symbol list silently stays empty.
   proxy("aozora.foldAll", "editor.foldAll");
   proxy("aozora.unfoldAll", "editor.unfoldAll");
 }

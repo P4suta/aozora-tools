@@ -96,6 +96,22 @@ codegen-units = 1
 strip         = "symbols"
 opt-level     = 3
 
+# Distribution profile for binaries shipped to end users — currently
+# `aozora-lsp` bundled inside the VS Code extension `.vsix`. Optimises
+# for *size* over speed (`opt-level = "z"`, `lto = "fat"`,
+# `codegen-units = 1`) because the LSP is mostly request-response over
+# stdio and the steady-state hot path is small; halving the binary on
+# disk + over-network at install time matters more than shaving the
+# already-sub-millisecond per-request CPU. Keeps `panic = "unwind"` so
+# tokio's task isolation still works (a panic in one request doesn't
+# tear down the whole server).
+[profile.dist]
+inherits      = "release"
+opt-level     = "z"
+lto           = "fat"
+codegen-units = 1
+strip         = "symbols"
+
 # Bench profile inherits release optimisation but keeps debug info so
 # `samply record --` against a `cargo bench --no-run` binary can
 # symbolicate stack frames. Lives next to `[profile.release]` because
