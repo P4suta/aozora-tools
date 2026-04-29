@@ -15,16 +15,21 @@
 //! Workflow + pre/post pipeline documented in `docs/profiling.md`.
 
 #![forbid(unsafe_code)]
+// `eprintln!` is the right tool for a CLI dev-tool binary's progress
+// + diagnostic output: piping to a `tracing` subscriber would force
+// callers to filter on a target/level the user never asked for, and
+// `cargo` itself uses stderr the same way for build progress that
+// xtask wraps. `clippy::print_stderr` is a `restriction` lint
+// targeted at libraries; for this binary it's by design.
 #![allow(
     clippy::print_stderr,
-    clippy::exit,
-    reason = "xtask binary uses std::process::exit / eprintln! to wire up the spawned `cargo` and `samply` invocations; both are appropriate here, in the dev-tooling crate, but disallowed elsewhere."
+    reason = "xtask is a CLI binary whose entire output contract is human-readable progress + errors on stderr (matches the cargo / samply tools it wraps)"
 )]
 
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::{self, Command},
+    process::{self, Command, ExitCode},
 };
 
 use clap::{Args, Parser, Subcommand};
@@ -112,7 +117,7 @@ enum SamplyTarget {
     },
 }
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match cli.command {
         Cmd::Samply(args) => match args.target {
@@ -121,9 +126,12 @@ fn main() {
         },
         Cmd::VsixAll(args) => vsix::run_vsix_all(args.jobs, args.target.as_deref()),
     };
-    if let Err(err) = result {
-        eprintln!("xtask: {err}");
-        process::exit(1);
+    match result {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("xtask: {err}");
+            ExitCode::FAILURE
+        }
     }
 }
 
