@@ -11,7 +11,8 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
 </p>
 
 <p align="center">
-  📖 <a href="https://p4suta.github.io/aozora-tools/"><strong>API reference (rustdoc)</strong></a>
+  📖 <a href="https://p4suta.github.io/aozora-tools/"><strong>Handbook</strong></a>
+  · 🦀 <a href="https://p4suta.github.io/aozora-tools/api/"><strong>API reference (rustdoc)</strong></a>
   · 📦 <a href="https://github.com/P4suta/aozora-tools/releases"><strong>Releases &amp; binaries</strong></a>
   · 📝 <a href="./CHANGELOG.md"><strong>Changelog</strong></a>
 </p>
@@ -66,10 +67,10 @@ editors get every other capability through the standard LSP surface.
     clients can opt into the same data via the
     `aozora_lsp::inlay_hints` library entry instead.
 
-See [`docs/adr/0002-lsp-feature-roadmap.md`](./docs/adr/0002-lsp-feature-roadmap.md)
-for the roadmap and
-[`docs/adr/0004-preview-sync-protocol.md`](./docs/adr/0004-preview-sync-protocol.md)
-for the preview wire format.
+See the [handbook](https://p4suta.github.io/aozora-tools/) for the
+LSP capability surface, custom protocol extensions, and the
+preview wire format. Deeper background on individual decisions
+lives in [`docs/adr/`](./docs/adr).
 
 ## Build and run
 

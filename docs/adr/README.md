@@ -1,5 +1,13 @@
 # Architecture Decision Records
 
+> **Canonical documentation lives in the
+> [aozora-tools handbook](https://p4suta.github.io/aozora-tools/).**
+> This directory holds the *deeper background* for individual
+> architectural choices — bench data, alternatives considered,
+> rejection rationale. New contributors should read the handbook
+> first; reach for these ADRs when you need the implementation-
+> detail discussion the handbook abbreviates.
+
 Every ADR documents one significant architectural choice: its
 context, the decision, the consequences (positive and negative),
 the alternatives we considered (and why we rejected them), and

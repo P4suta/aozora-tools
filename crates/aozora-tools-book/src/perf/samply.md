@@ -1,18 +1,13 @@
-# Profiling pipeline
+# Profiling with samply
 
 Data-driven optimisation — capture, symbolicate, summarise, diff.
-
-The point of this document is reproducibility. Every measurement
-that informs an optimisation should be re-runnable in a single
-command, and the post-processing should produce a textual report
-that diffs cleanly against past runs. Reading flame graphs by eye
-is necessary for shape, but for "did my change move the needle"
-we want **numbers next to function names**, captured the same way
-each time.
+Every measurement that informs an optimisation is re-runnable in a
+single command, and the post-processing produces text that diffs
+cleanly against past runs.
 
 ## One-liner workflow
 
-```bash
+```sh
 # Capture
 cargo run -p aozora-tools-xtask -- samply lsp-burst 30
 
@@ -38,9 +33,9 @@ spawning samply. They catch the four most common sources of
 
 Hard fixes are printed inline (`echo 1 | sudo tee /proc/sys/...`).
 Warnings don't block, but reading them every time is the point —
-"my flame graph put `mmap` at the top, that's surprising" is
-exactly the moment you remember "oh, I had Chrome compiling in
-the background and the trace is mostly page-fault noise."
+"my flame graph put `mmap` at the top" is exactly the moment you
+remember "oh, I had Chrome compiling in the background and the
+trace is mostly page-fault noise."
 
 ## Capture: what the runner does
 
@@ -60,12 +55,11 @@ the background and the trace is mostly page-fault noise."
    - `--unstable-presymbolicate` writes a `.syms.json` sidecar
      containing the symbol table for every binary touched. Without
      this, function names in the trace stay as raw hex addresses
-     (`0x1f547`) and our CLI analyzer can't resolve them.
+     (`0x1f547`).
    - `--profile-time <SECONDS>` is criterion's "spin each bench in
      a tight loop" flag — keeps the trace dominated by the
      measurement code, not by criterion's setup/teardown.
-   - `4 kHz` sampling → ~120 k samples per 30 s capture, plenty
-     for stable percentages.
+   - `4 kHz` sampling → ~120 k samples per 30 s capture.
 
 ## Post-processing: `samply analyze`
 
@@ -77,15 +71,15 @@ that two runs can `diff` against. That's `xtask samply analyze`.
 Pipeline:
 
 1. **Decompress** the `.json.gz` trace.
-2. **Resolve symbols**: load the `<trace>.syms.json` sidecar,
-   build a `(debug_name, rva) → symbol_name` table per binary,
-   walk every `funcTable.name` entry whose value is still a raw
-   `0x…` address, and replace it with the resolved name.
+2. **Resolve symbols**: load the `.syms.json` sidecar, build a
+   `(debug_name, rva) → symbol_name` table per binary, walk every
+   `funcTable.name` entry whose value is still a raw `0x…` address,
+   and replace it with the resolved name.
 3. **Aggregate** leaf-frame self-time per function name.
 4. **Sort + print** the top 25 per thread, with absolute count and
    percentage of that thread's total samples.
 
-Output shape (excerpt):
+Output excerpt:
 
 ```text
 # samply trace summary: /tmp/aozora-lsp-burst-1234-5678.json.gz
@@ -102,12 +96,11 @@ Output shape (excerpt):
    21526    4.5%  stack__iter
    17244    3.6%  aozora_lsp::state::DocState::rebuild_snapshot_now
    13996    3.0%  aozora_lsp::line_index::LineIndex::new
-   ...
 ```
 
 ## Diff workflow
 
-```bash
+```sh
 # Baseline
 cargo run -p aozora-tools-xtask -- samply lsp-burst 30
 mv /tmp/aozora-lsp-burst-*.json.gz /tmp/baseline.json.gz
@@ -126,24 +119,24 @@ diff -u /tmp/baseline.txt /tmp/variant.txt | less
 diff -y --width=200 /tmp/baseline.txt /tmp/variant.txt | less
 ```
 
-Numbers shifting >5 % between runs are real; smaller shifts may be
+Numbers shifting > 5 % between runs are real; smaller shifts may be
 noise — re-run a couple of times and look for the consistent
 direction.
 
 ## CI bench-diff (criterion baseline)
 
 `samply` itself is impractical on GitHub-hosted runners (default
-`perf_event_paranoid >= 2` blocks user-mode profiling). Instead the
-PR gate uses **criterion's built-in `--save-baseline` /
+`perf_event_paranoid >= 2` blocks user-mode profiling). The PR
+gate uses **criterion's built-in `--save-baseline` /
 `--baseline`** flow, which captures wall-time deltas without any
 kernel privilege:
 
 - **`.github/workflows/bench-diff.yml`** runs the LSP `burst` bench
   in two modes:
   - On every push to `main`: `cargo bench -- --save-baseline main`
-    and uploads `target/criterion/` as an artifact.
+    and uploads `target/criterion/` as an artefact.
   - On every PR: downloads the latest `criterion-baseline-main`
-    artifact, runs `cargo bench -- --baseline main`, and posts a
+    artefact, runs `cargo bench -- --baseline main`, and posts a
     sticky PR comment with the per-bench `Δ%` and verdict.
 
 - **`.github/scripts/bench-diff-summary.py`** parses criterion's
@@ -153,9 +146,8 @@ kernel privilege:
   (p ≥ 0.05) is reported as such instead of being scored.
 
 The local `samply` workflow above is still the right tool for
-deeper investigation (call hierarchies, allocator activity, owner
-rollups). Use bench-diff to spot the regression, samply to find
-its root cause.
+deeper investigation. Use bench-diff to spot the regression,
+samply to find its root cause.
 
 ## When the trace looks wrong
 
@@ -169,9 +161,9 @@ its root cause.
 
 ## Adding new profile targets
 
-The runner only knows about `lsp-burst` today. To add a new
-target (e.g. `gaiji-extract` to profile just the extract walk),
-extend `crates/aozora-tools-xtask/src/main.rs::SamplyTarget`:
+The runner currently knows about `lsp-burst`. To add a new target
+(e.g. `gaiji-extract` to profile just the extract walk), extend
+`crates/aozora-tools-xtask/src/main.rs::SamplyTarget`:
 
 ```rust
 #[derive(Subcommand)]
@@ -188,18 +180,3 @@ binary, spawn samply with `--unstable-presymbolicate`, call
 `print_post_run_help`. The analyzer is target-agnostic — it works
 on any `.json.gz` from `samply record` regardless of what was
 profiled.
-
-## Why this lives in `aozora-tools-xtask`
-
-- The runner needs to invoke `cargo bench --no-run` and locate
-  bench binaries — easier from inside the workspace's xtask than
-  from a shell wrapper.
-- Pre-flight checks read `/proc/...` files; native Rust handles
-  the parsing + reporting cleanly without bash brittleness.
-- The analyzer's symbol-resolution code is non-trivial (~250 LoC)
-  and benefits from `cargo test`-able units. Six tests pin the
-  parsing edge cases (hex-address detection, sidecar-path
-  derivation, lookup boundary cases).
-- Single workspace dependency hop (`cargo run -p
-  aozora-tools-xtask`) is easier than maintaining a separate tools
-  repo just for profiling.
