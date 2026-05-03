@@ -264,4 +264,225 @@ mod tests {
             .flatten();
         assert_eq!(kind.as_deref(), Some(kind::EXPLICIT_RUBY));
     }
+
+    #[test]
+    fn default_constructs_a_usable_parser() {
+        // `Default::default()` should produce a parser equivalent to
+        // `IncrementalDoc::new()` — the explicit `Default` impl exists
+        // for derive-friendly callers, so a regression that drops the
+        // language binding would surface here.
+        let doc = IncrementalDoc::default();
+        doc.parse_full("｜空《そら》");
+        let has_tree = doc.with_tree(|tree| tree.root_node().child_count() > 0);
+        assert_eq!(has_tree, Some(true));
+    }
+
+    #[test]
+    fn debug_format_does_not_leak_internals() {
+        // The `Debug` impl uses `finish_non_exhaustive` so a future
+        // refactor that exposes the parser / tree fields directly
+        // would change the formatted output. Pin the current shape so
+        // such a regression is loud.
+        let doc = IncrementalDoc::new();
+        let s = format!("{doc:?}");
+        assert!(s.starts_with("IncrementalDoc"), "got {s:?}");
+        assert!(
+            s.contains(".."),
+            "expected non_exhaustive marker, got {s:?}"
+        );
+    }
+
+    // -------------------------------------------------------------
+    // Rope-driven parse/edit paths (apply_edit_rope, parse_full_rope,
+    // chunk_callback). These mirror the byte-driven tests above; the
+    // backend always uses the rope path on real edits, so leaving them
+    // untested would mean the byte-driven tests were the only thing
+    // protecting the chunked-input contract.
+    // -------------------------------------------------------------
+
+    #[test]
+    fn parse_full_rope_matches_string_parse() {
+        let text = "｜青空《あおぞら》\n\n本文";
+        let by_string = IncrementalDoc::new();
+        by_string.parse_full(text);
+        let by_rope = IncrementalDoc::new();
+        by_rope.parse_full_rope(&Rope::from_str(text));
+
+        let s_kinds = by_string.with_tree(collect_kinds).expect("tree");
+        let r_kinds = by_rope.with_tree(collect_kinds).expect("tree");
+        assert_eq!(s_kinds, r_kinds);
+    }
+
+    #[test]
+    fn apply_edit_rope_matches_byte_apply_edit() {
+        let initial = "｜青空《あおぞら》";
+        let after = "｜青空《そら》";
+        let reading_start = initial.find("あおぞら").unwrap();
+        let edit = input_edit(
+            reading_start,
+            reading_start + "あおぞら".len(),
+            reading_start + "そら".len(),
+        );
+
+        let via_str = IncrementalDoc::new();
+        via_str.parse_full(initial);
+        via_str.apply_edit(after, edit);
+
+        let via_rope = IncrementalDoc::new();
+        via_rope.parse_full_rope(&Rope::from_str(initial));
+        via_rope.apply_edit_rope(&Rope::from_str(after), edit);
+
+        let s = via_str.with_tree(collect_kinds).expect("tree");
+        let r = via_rope.with_tree(collect_kinds).expect("tree");
+        assert_eq!(s, r);
+    }
+
+    #[test]
+    fn chunk_callback_returns_empty_past_end_of_rope() {
+        // `chunk_callback` is internal but exercised only via the
+        // rope-parse path, which never asks for an offset >= len in
+        // practice. Pin the early-return contract so a future change
+        // (e.g. wrapping vs panicking) can't slip in unnoticed.
+        let rope = Rope::from_str("hello");
+        let mut cb = chunk_callback(&rope);
+        assert!(!cb(0, Point::default()).is_empty());
+        assert!(cb(rope.len_bytes(), Point::default()).is_empty());
+        assert!(cb(rope.len_bytes() + 100, Point::default()).is_empty());
+    }
+
+    #[test]
+    fn chunk_callback_streams_multi_chunk_rope() {
+        // A rope built from many small fragments creates multiple
+        // internal chunks; the callback must hand back consecutive
+        // slices that, concatenated, reproduce the source. If the
+        // chunk-boundary math drifts by one byte, the parser would
+        // see corrupt input — exactly the regression class to pin.
+        let mut rope = Rope::new();
+        for _ in 0..64 {
+            rope.append(Rope::from_str("｜青空《あおぞら》\n"));
+        }
+        let len = rope.len_bytes();
+        let mut cb = chunk_callback(&rope);
+        let mut reconstructed = Vec::with_capacity(len);
+        let mut offset = 0;
+        while offset < len {
+            let slice = cb(offset, Point::default());
+            assert!(!slice.is_empty(), "callback returned empty mid-stream");
+            reconstructed.extend_from_slice(slice);
+            offset += slice.len();
+        }
+        assert_eq!(reconstructed.len(), len);
+        // String round-trip: bytes must be valid UTF-8 again.
+        let s = String::from_utf8(reconstructed).expect("valid utf8");
+        let want: String = (0..64).map(|_| "｜青空《あおぞら》\n").collect();
+        assert_eq!(s, want);
+    }
+
+    // -------------------------------------------------------------
+    // Core invariant: 1-shot parse ≡ (initial parse + incremental
+    // edit) for the same final text. This is the contract gaiji_spans
+    // / linked_editing / hover all rely on. Each scenario probes a
+    // different byte-range shape (insertion / deletion / replacement /
+    // multi-paragraph edit). A regression that miscomputes
+    // `InputEdit` byte boundaries would diverge the trees here.
+    // -------------------------------------------------------------
+
+    #[test]
+    fn invariant_insertion_matches_full_parse() {
+        let initial = "｜空《そら》";
+        let edit_at = initial.len(); // append at EOF
+        assert_incremental_matches_full_parse(initial, edit_at, 0, "\n本文");
+    }
+
+    #[test]
+    fn invariant_deletion_matches_full_parse() {
+        let initial = "｜青空《あおぞら》\n本文";
+        // Drop the trailing 「\n本文」.
+        let edit_at = initial.find("\n本文").unwrap();
+        assert_incremental_matches_full_parse(initial, edit_at, "\n本文".len(), "");
+    }
+
+    #[test]
+    fn invariant_replacement_matches_full_parse() {
+        let initial = "｜青空《あおぞら》";
+        // Replace the reading; same outer shape but different bytes.
+        let reading_start = initial.find("あおぞら").unwrap();
+        assert_incremental_matches_full_parse(initial, reading_start, "あおぞら".len(), "そらいろ");
+    }
+
+    #[test]
+    fn invariant_cross_paragraph_replacement_matches_full_parse() {
+        // Edit spans a `\n\n` paragraph boundary, the worst case for
+        // an incremental parser that hopes to reuse subtrees.
+        let initial = "段落1\n\n｜青空《あおぞら》\n\n段落3";
+        let edit_at = initial.find("｜").unwrap();
+        let span_end = initial.find("\n\n段落3").unwrap();
+        assert_incremental_matches_full_parse(initial, edit_at, span_end - edit_at, "新しい本文");
+    }
+
+    // -------------------------------------------------------------
+    // Test helpers
+    // -------------------------------------------------------------
+
+    fn collect_kinds(tree: &Tree) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut cursor = tree.walk();
+        walk_kinds(&mut cursor, &mut out);
+        out
+    }
+
+    fn walk_kinds(cursor: &mut tree_sitter::TreeCursor<'_>, out: &mut Vec<String>) {
+        out.push(cursor.node().kind().to_owned());
+        if cursor.goto_first_child() {
+            loop {
+                walk_kinds(cursor, out);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            let popped = cursor.goto_parent();
+            debug_assert!(popped, "every goto_first_child must have a matching parent");
+        }
+    }
+
+    /// Apply an `(edit_at, removed_len, inserted)` edit to `initial`
+    /// in two ways — 1-shot full parse of the final text, and
+    /// incremental `parse_full + apply_edit` from `initial` — and
+    /// assert the resulting syntax-tree kind sequences are
+    /// byte-for-byte identical.
+    fn assert_incremental_matches_full_parse(
+        initial: &str,
+        edit_at: usize,
+        removed_len: usize,
+        inserted: &str,
+    ) {
+        assert!(
+            initial.is_char_boundary(edit_at),
+            "edit_at not at char boundary"
+        );
+        assert!(
+            initial.is_char_boundary(edit_at + removed_len),
+            "edit_at + removed_len not at char boundary"
+        );
+        let mut after = String::with_capacity(initial.len() - removed_len + inserted.len());
+        after.push_str(&initial[..edit_at]);
+        after.push_str(inserted);
+        after.push_str(&initial[edit_at + removed_len..]);
+
+        let full = IncrementalDoc::new();
+        full.parse_full(&after);
+        let full_kinds = full.with_tree(collect_kinds).expect("full tree");
+
+        let inc = IncrementalDoc::new();
+        inc.parse_full(initial);
+        let edit = input_edit(edit_at, edit_at + removed_len, edit_at + inserted.len());
+        inc.apply_edit(&after, edit);
+        let inc_kinds = inc.with_tree(collect_kinds).expect("incremental tree");
+
+        assert_eq!(
+            inc_kinds, full_kinds,
+            "incremental tree diverged from 1-shot parse for edit \
+             at={edit_at} removed_len={removed_len} inserted={inserted:?}"
+        );
+    }
 }
