@@ -51,7 +51,11 @@ fn last_reparse_wins_under_serialised_access() {
     let inline = {
         let guard = cache.lock().expect("lock");
         guard
-            .with_tree(|tree| tree.lex_output().registry.inline.len())
+            .with_tree(|tree| {
+                tree.lex_output()
+                    .registry
+                    .count_kind(aozora::Sentinel::Inline)
+            })
             .expect("populated")
     };
     assert_eq!(inline, 1);

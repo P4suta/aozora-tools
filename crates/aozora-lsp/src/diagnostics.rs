@@ -19,7 +19,7 @@
 //! out unnecessary code). `data` carries enough context for the
 //! `code_action` handler to construct a quick-fix without re-parsing.
 
-use aozora::{Diagnostic as AozoraDiagnostic, Document, PairKind, Span};
+use aozora::{Diagnostic as AozoraDiagnostic, Document, InternalCheckCode, PairKind, Span};
 use serde::{Deserialize, Serialize};
 use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, DiagnosticTag, NumberOrString, Range};
 
@@ -179,16 +179,26 @@ fn describe(d: &AozoraDiagnostic) -> Described {
         AozoraDiagnostic::UnmatchedClose { span, kind, .. } => {
             describe_unmatched_close(*span, *kind)
         }
-        AozoraDiagnostic::ResidualAnnotationMarker { span, .. } => {
-            describe_residual_annotation_marker(*span)
-        }
-        AozoraDiagnostic::UnregisteredSentinel {
-            span, codepoint, ..
-        } => describe_unregistered_sentinel(*span, *codepoint),
-        AozoraDiagnostic::RegistryOutOfOrder { span, .. } => describe_registry_out_of_order(*span),
-        AozoraDiagnostic::RegistryPositionMismatch { span, expected, .. } => {
-            describe_registry_position_mismatch(*span, *expected)
-        }
+        // v0.3.0 で個別 variant だった ResidualAnnotationMarker /
+        // UnregisteredSentinel / RegistryOutOfOrder /
+        // RegistryPositionMismatch は `Internal { check }` に統合。
+        // 内部チェックは典型的に「pipeline-internal sanity-check 失敗 →
+        // バグ報告して」という意味付けで、ユーザに見せるメッセージは
+        // check コードごとに分岐する。
+        AozoraDiagnostic::Internal { span, check, .. } => match check {
+            InternalCheckCode::ResidualAnnotationMarker => {
+                describe_residual_annotation_marker(*span)
+            }
+            InternalCheckCode::UnregisteredSentinel => describe_unregistered_sentinel(*span),
+            InternalCheckCode::RegistryOutOfOrder => describe_registry_out_of_order(*span),
+            InternalCheckCode::RegistryPositionMismatch => {
+                describe_registry_position_mismatch(*span)
+            }
+            // `InternalCheckCode` は `#[non_exhaustive]`。今後 aozora-pipeline
+            // が新しい内部 sanity-check を追加した場合は generic な
+            // 「pipeline 内部の整合性エラー」として LSP に伝える。
+            _ => describe_unknown(d),
+        },
         // aozora::Diagnostic は `#[non_exhaustive]` なので、将来の追加 variant
         // は generic な warning として一旦通し、LSP クライアントには原文
         // メッセージを届ける。
@@ -276,14 +286,12 @@ fn describe_residual_annotation_marker(span: Span) -> Described {
     }
 }
 
-fn describe_unregistered_sentinel(span: Span, codepoint: char) -> Described {
+fn describe_unregistered_sentinel(span: Span) -> Described {
     Described {
         span,
-        message: format!(
-            "未登録の私用領域 sentinel `U+{cp:04X}` が検出されました (lexer 内部の整合性エラー)。\n\n\
-             これは aozora-lex のバグの可能性が高いです。再現手順を添えて issue で報告してください。",
-            cp = codepoint as u32,
-        ),
+        message: "未登録の私用領域 sentinel が検出されました (pipeline 内部の整合性エラー)。\n\n\
+             これは aozora-pipeline のバグの可能性が高いです。再現手順を添えて issue で報告してください。"
+            .to_owned(),
         code: "aozora::unregistered-sentinel",
         severity: DiagnosticSeverity::ERROR,
         tags: None,
@@ -294,9 +302,10 @@ fn describe_unregistered_sentinel(span: Span, codepoint: char) -> Described {
 fn describe_registry_out_of_order(span: Span) -> Described {
     Described {
         span,
-        message: "プレースホルダーレジストリの順序が崩れています (lexer 内部の整合性エラー)。\n\n\
-             aozora-lex のバグの可能性があります。"
-            .to_owned(),
+        message:
+            "プレースホルダーレジストリの順序が崩れています (pipeline 内部の整合性エラー)。\n\n\
+             aozora-pipeline のバグの可能性があります。"
+                .to_owned(),
         code: "aozora::registry-out-of-order",
         severity: DiagnosticSeverity::ERROR,
         tags: None,
@@ -304,14 +313,12 @@ fn describe_registry_out_of_order(span: Span) -> Described {
     }
 }
 
-fn describe_registry_position_mismatch(span: Span, expected: char) -> Described {
+fn describe_registry_position_mismatch(span: Span) -> Described {
     Described {
         span,
-        message: format!(
-            "プレースホルダーレジストリは `U+{cp:04X}` を期待していたのに別の字が置かれていました (lexer 内部の整合性エラー)。\n\n\
-             aozora-lex のバグの可能性があります。",
-            cp = expected as u32,
-        ),
+        message: "プレースホルダーレジストリの位置情報が期待と異なっています (pipeline 内部の整合性エラー)。\n\n\
+             aozora-pipeline のバグの可能性があります。"
+            .to_owned(),
         code: "aozora::registry-position-mismatch",
         severity: DiagnosticSeverity::ERROR,
         tags: None,

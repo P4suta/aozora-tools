@@ -26,8 +26,8 @@ categories   = ["development-tools", "command-line-utilities", "text-editors"]
 #
 # `aozora-encoding` is needed separately for the `gaiji::resolve`
 # entry the hover handler calls into.
-aozora          = { version = "0.2.3", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.3" }
-aozora-encoding = { version = "0.2.3", git = "https://github.com/P4suta/aozora.git", tag = "v0.2.3" }
+aozora          = { version = "0.3.0", git = "https://github.com/P4suta/aozora.git", tag = "v0.3.0" }
+aozora-encoding = { version = "0.3.0", git = "https://github.com/P4suta/aozora.git", tag = "v0.3.0" }
 
 # Internal workspace members
 aozora-fmt = { version = "0.1.3", path = "crates/aozora-fmt" }

@@ -56,7 +56,11 @@ fn segment_cache_with_tree_after_reparse_is_consistent() {
     let mut cache = SegmentCache::default();
     drop(cache.reparse("｜青梅《おうめ》"));
     let inline_count = cache
-        .with_tree(|tree| tree.lex_output().registry.inline.len())
+        .with_tree(|tree| {
+            tree.lex_output()
+                .registry
+                .count_kind(aozora::Sentinel::Inline)
+        })
         .expect("populated");
     assert_eq!(inline_count, 1);
 }

@@ -1035,7 +1035,7 @@ mod tests {
         state.run_segment_cache_reparse();
         state.with_segment_cache(|cache| {
             let inline = cache
-                .with_tree(|t| t.lex_output().registry.inline.len())
+                .with_tree(|t| t.lex_output().registry.count_kind(aozora::Sentinel::Inline))
                 .expect("populated");
             assert_eq!(inline, 1);
             assert!(cache.diagnostics().is_empty());
