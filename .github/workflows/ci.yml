@@ -142,3 +142,23 @@ jobs:
       - name: Check (biome + tsc, no writes)
         working-directory: editors/vscode
         run: bun run check
+
+  # Supply-chain gate. Mirrors the local `cargo deny check` invocation
+  # bacon / lefthook expose to developers; deny.toml at the workspace
+  # root is the single source of truth for licence + advisory policy.
+  # A separate job (rather than a step inside `rust`) so the failure
+  # mode reads cleanly in the PR check list.
+  deny:
+    name: cargo-deny (licenses + advisories + sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          # `--all-features` mirrors deny.toml's `[graph] all-features = true`;
+          # `--manifest-path Cargo.toml` is required because cargo-deny v0.19+
+          # otherwise walks `crates/*` looking for Cargo.toml files and trips on
+          # the manifest-less `crates/aozora-tools-book` mdbook tree.
+          manifest-path: Cargo.toml
+          arguments: --all-features --workspace

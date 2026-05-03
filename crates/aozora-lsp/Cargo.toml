@@ -23,7 +23,7 @@ path = "src/lib.rs"
 aozora             = { workspace = true }
 aozora-encoding    = { workspace = true }
 aozora-fmt         = { workspace = true }
-tree-sitter-aozora = { path = "../tree-sitter-aozora" }
+tree-sitter-aozora = { workspace = true }
 tree-sitter        = "0.26"
 
 tower-lsp          = { workspace = true }

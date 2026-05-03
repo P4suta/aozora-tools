@@ -110,6 +110,13 @@ pre-push:
     # VS Code TypeScript: biome (no writes) + tsc type-check.
     vscode-check:
       run: cd editors/vscode && bun run check
+    # Supply-chain gate. Mirrors the CI `deny` job. The
+    # `--manifest-path` is required because cargo-deny v0.19+ otherwise
+    # walks `crates/*` and trips on the manifest-less aozora-tools-book
+    # mdbook tree. Skipped silently when cargo-deny is not installed
+    # (contributors who haven't set up the dev tools chain).
+    deny:
+      run: command -v cargo-deny >/dev/null && cargo deny --all-features --manifest-path Cargo.toml check || true
 
 # After `git pull` / `git merge` / `git checkout` (i.e. when Cargo.lock
 # may have moved underneath us), surface dependency drift so the

@@ -1,0 +1,53 @@
+# cargo-deny configuration for the aozora-tools workspace.
+#
+# Mirrors the policy of the sibling `aozora` repo so a workspace-wide
+# `cargo deny check` produces the same answers regardless of which
+# repo it runs in.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked  = "deny"
+ignore  = []
+
+[licenses]
+version = 2
+# Our crates are Apache-2.0 OR MIT. The list below is the union of
+# allowed licenses across the transitive dep graph.
+#
+# MIT-0 (MIT No Attribution) is OSI-approved and strictly more
+# permissive than MIT. Listed defensively so a future transitive
+# dep on an MIT-0 crate (a growing convention for tiny
+# micro-utility crates on crates.io) lands without a policy
+# decision in the moment.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "MIT-0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards         = "deny"
+highlight         = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git      = "deny"
+allow-registry   = ["https://github.com/rust-lang/crates.io-index"]
+# `aozora` is consumed via git tag pin (see Cargo.toml workspace.deps).
+# Listed explicitly so cargo-deny doesn't fail on the "unknown-git"
+# rule above.
+allow-git = ["https://github.com/P4suta/aozora.git"]

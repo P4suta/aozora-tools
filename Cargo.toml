@@ -1,5 +1,10 @@
 [workspace]
 resolver = "3"
+# `members` is an explicit list (no glob) so cargo never picks up
+# `crates/aozora-tools-book/` as an implicit member — the handbook
+# is an mdbook source tree, not a Cargo crate. cargo-deny v0.19+
+# rejects a `[workspace] exclude` entry that names a directory
+# without a Cargo.toml, so explicit-only is the simplest setup.
 members = [
     "crates/aozora-fmt",
     "crates/aozora-lsp",
@@ -30,7 +35,12 @@ aozora          = { version = "0.3.0", git = "https://github.com/P4suta/aozora.g
 aozora-encoding = { version = "0.3.0", git = "https://github.com/P4suta/aozora.git", tag = "v0.3.0" }
 
 # Internal workspace members
-aozora-fmt = { version = "0.1.3", path = "crates/aozora-fmt" }
+aozora-fmt         = { version = "0.1.3", path = "crates/aozora-fmt" }
+# `tree-sitter-aozora` carries an explicit version (matching its
+# `[package].version`) so cargo-deny's `bans.wildcards = "deny"` rule
+# accepts the path dep — a path-only declaration has an implicit
+# wildcard version that the gate refuses.
+tree-sitter-aozora = { version = "0.1.0", path = "crates/tree-sitter-aozora" }
 
 # CLI
 clap   = { version = "4.6.1", features = ["derive", "wrap_help"] }
