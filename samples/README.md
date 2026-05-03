@@ -16,9 +16,7 @@ fixture for `aozora-lsp/benches/burst.rs`.
 fixture (Tsumi to Batsu × 100), gitignored and built locally from
 the public Aozora Bunko text. The
 [handbook's State model chapter](https://p4suta.github.io/aozora-tools/lsp/state-model.html)
-describes the worst-case workloads it exists to exercise; the deeper
-background on the rope-buffer decision lives in
-[`docs/adr/0006-rope-buffer.md`](../docs/adr/0006-rope-buffer.md).
+describes the worst-case workloads it exists to exercise.
 
 ## Try
 

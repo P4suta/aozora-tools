@@ -51,9 +51,8 @@ the bug-detector value of the workspace lint policy.
 ## Security review
 
 The committed `parser.c` is reviewed at the `tree-sitter generate`
-boundary by reading the diff against the previous version. The
-`fix(security): resolve 3 CodeQL Code Scanning alerts (#10)` commit
-is the canonical example — CodeQL flagged three alerts in the
-generated source, the fix landed by adjusting the grammar to avoid
-the patterns and regenerating. This is the recommended workflow:
-fix the grammar, regenerate, commit.
+boundary by reading the diff against the previous version. When
+CodeQL or another scanner flags an alert in the generated source,
+the recommended workflow is to adjust `grammar.js` so the offending
+pattern no longer appears, regenerate `parser.c`, and commit the
+two together.

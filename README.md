@@ -69,8 +69,7 @@ editors get every other capability through the standard LSP surface.
 
 See the [handbook](https://p4suta.github.io/aozora-tools/) for the
 LSP capability surface, custom protocol extensions, and the
-preview wire format. Deeper background on individual decisions
-lives in [`docs/adr/`](./docs/adr).
+preview wire format.
 
 ## Build and run
 

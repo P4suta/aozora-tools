@@ -117,7 +117,7 @@ mod tests {
     use super::*;
     use crate::position::byte_offset_to_position;
 
-    fn matches_legacy(source: &str, byte_offset: usize) -> bool {
+    fn matches_reference(source: &str, byte_offset: usize) -> bool {
         let idx = LineIndex::new(source);
         let via_index = idx.position(source, byte_offset);
         let via_scan = byte_offset_to_position(source, byte_offset);
@@ -136,40 +136,40 @@ mod tests {
     }
 
     #[test]
-    fn position_at_origin_matches_legacy() {
-        assert!(matches_legacy("hello", 0));
+    fn position_at_origin_matches_reference() {
+        assert!(matches_reference("hello", 0));
     }
 
     #[test]
-    fn position_after_newlines_matches_legacy() {
+    fn position_after_newlines_matches_reference() {
         let src = "one\ntwo\nthree";
         for offset in 0..=src.len() {
             if !src.is_char_boundary(offset) {
                 continue;
             }
-            assert!(matches_legacy(src, offset), "offset {offset}");
+            assert!(matches_reference(src, offset), "offset {offset}");
         }
     }
 
     #[test]
-    fn utf8_multibyte_columns_match_legacy() {
+    fn utf8_multibyte_columns_match_reference() {
         let src = "あいう\nえおか";
         for offset in 0..=src.len() {
             if !src.is_char_boundary(offset) {
                 continue;
             }
-            assert!(matches_legacy(src, offset), "offset {offset}");
+            assert!(matches_reference(src, offset), "offset {offset}");
         }
     }
 
     #[test]
-    fn surrogate_pair_columns_match_legacy() {
+    fn surrogate_pair_columns_match_reference() {
         let src = "a😀b\nc😀d";
         for offset in 0..=src.len() {
             if !src.is_char_boundary(offset) {
                 continue;
             }
-            assert!(matches_legacy(src, offset), "offset {offset}");
+            assert!(matches_reference(src, offset), "offset {offset}");
         }
     }
 

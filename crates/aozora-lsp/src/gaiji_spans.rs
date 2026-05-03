@@ -1,6 +1,6 @@
 //! Gaiji-span extraction primitives.
 //!
-//! ## Layering after the paragraph-first rearchitecture
+//! ## Layering
 //!
 //! This module is the **pure walker** that knows how to extract every
 //! `※［＃description、mencode］` span from a single tree-sitter
@@ -17,10 +17,9 @@
 //!
 //! - **Iterative single-cursor walk** via
 //!   `TreeCursor::goto_first_child` / `goto_next_sibling` /
-//!   `goto_parent`. The earlier recursive form allocated a fresh
-//!   `TreeCursor` per non-gaiji node and recursed Rust stack frames
-//!   in lock-step — both lit up the allocator hot path in samply.
-//!   The iterative form holds one cursor across the entire walk.
+//!   `goto_parent`. One cursor is held across the entire walk; a
+//!   recursive form would allocate a fresh `TreeCursor` per
+//!   non-gaiji node and dominate the allocator hot path.
 //! - **`Query` API rejected**: tree-sitter's `(gaiji) @g` capture
 //!   ran ~5× slower than this hand-rolled walk (71 ms → 330 ms on
 //!   the 6 MB bench fixture) because the `QueryCursor`'s general
@@ -37,7 +36,7 @@ use tree_sitter_aozora::kind;
 /// `description` and `mencode` are `Arc<str>` rather than `String`
 /// so the snapshot rebuild can reuse them across snapshot generations
 /// via pointer bump — the body of a gaiji span doesn't change unless
-/// its containing paragraph was re-parsed (see ADR-0007).
+/// its containing paragraph was re-parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GaijiSpan {
     /// Byte offset of the leading `※`. Whether this is paragraph-

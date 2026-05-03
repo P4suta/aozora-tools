@@ -43,12 +43,11 @@
 //! ## Reader / writer decoupling
 //!
 //! The `BufferState` mutex protects writers; readers go through
-//! `Snapshot` via `ArcSwap`. ADR-0005 explains the wait-free read
-//! property in detail. Per-paragraph snapshots add another layer:
-//! unchanged paragraphs across snapshot generations are
-//! `Arc::clone`d (single atomic increment), so a snapshot rebuild
-//! after a small edit costs `O(1 paragraph rebuilt + N - 1
-//! Arc-bumps)` rather than `O(doc)`.
+//! `Snapshot` via `ArcSwap` for wait-free loads. Per-paragraph
+//! snapshots add another layer: unchanged paragraphs across snapshot
+//! generations are `Arc::clone`d (single atomic increment), so a
+//! snapshot rebuild after a small edit costs
+//! `O(1 paragraph rebuilt + N - 1 Arc-bumps)` rather than `O(doc)`.
 
 use std::collections::BTreeMap;
 use std::env;

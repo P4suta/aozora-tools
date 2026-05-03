@@ -23,10 +23,10 @@ async fn main() {
 
     let stdin = stdin();
     let stdout = stdout();
-    // Custom request `aozora/renderHtml` powers the VSCode preview
-    // pane (Phase 3.1). Wired here at LspService build-time because
-    // tower-lsp's `LanguageServer` trait only covers spec-defined
-    // methods; custom methods go on the builder.
+    // Custom requests `aozora/renderHtml` and `aozora/gaijiSpans` are
+    // wired here at LspService build-time because tower-lsp's
+    // `LanguageServer` trait only covers spec-defined methods; custom
+    // methods go on the builder.
     let (service, socket) = LspService::build(aozora_lsp::Backend::new)
         .custom_method("aozora/renderHtml", aozora_lsp::Backend::render_html)
         .custom_method("aozora/gaijiSpans", aozora_lsp::Backend::gaiji_spans)

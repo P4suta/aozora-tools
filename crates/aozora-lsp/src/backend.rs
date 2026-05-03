@@ -190,7 +190,7 @@ impl Backend {
         self.docs.get(uri).map(|entry| Arc::clone(&*entry))
     }
 
-    /// Custom LSP request `aozora/renderHtml` — Phase 3.1.
+    /// Custom LSP request `aozora/renderHtml`.
     ///
     /// Returns the document's HTML rendering (via `aozora`'s borrowed
     /// HTML renderer). The `VSCode` preview pane consumes this on

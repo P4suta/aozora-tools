@@ -14,7 +14,7 @@
 //! 1. **Position round-trip**: `position(byte) → byte` is the
 //!    identity for every char-boundary byte offset, regardless of
 //!    line / column shape (CRLF, surrogate pairs, mixed scripts).
-//! 2. **`LineIndex` agrees with the legacy single-shot scanner**
+//! 2. **`LineIndex` agrees with a single-shot reference scanner**
 //!    for every char-boundary byte offset.
 //! 3. **`apply_edits` round-trip**: applying the empty edit list
 //!    yields the source unchanged; non-empty edits are equivalent
@@ -83,7 +83,7 @@ proptest! {
     /// based on whether the handler keeps a `LineIndex` or falls
     /// back to the scanner.
     #[test]
-    fn line_index_matches_legacy_scanner(text in realistic_text_strategy()) {
+    fn line_index_matches_reference_scanner(text in realistic_text_strategy()) {
         let idx = LineIndex::new(&text);
         for byte in 0..=text.len() {
             if !text.is_char_boundary(byte) {

@@ -1,7 +1,6 @@
-//! `workspace/executeCommand` handler — Phase 2.4 of the
-//! editor-integration sprint.
+//! `workspace/executeCommand` handler.
 //!
-//! Single command today: `aozora.canonicalizeSlug`. Argument shape:
+//! Single command: `aozora.canonicalizeSlug`. Argument shape:
 //!
 //! ```json
 //! {

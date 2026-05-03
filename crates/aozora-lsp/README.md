@@ -33,13 +33,12 @@ LSP can call `aozora_lsp::inlay_hints` from a library context.
 ## Architecture (one-liner)
 
 Per-document state is split into a writer-side `Mutex<BufferState>`
-(Rope buffer + tree-sitter incremental parse, segmented
-paragraph-first per ADR-0008) and a reader-side
-`ArcSwap<Snapshot>` for wait-free LSP request handling. The
-semantic `aozora` parser is the source of truth for formatting,
-diagnostics, and HTML rendering; the tree-sitter tree backs the
-high-frequency syntactic queries (hover, inlay, completion,
-codeAction).
+(Rope buffer + tree-sitter incremental parse, paragraph-segmented)
+and a reader-side `ArcSwap<Snapshot>` for wait-free LSP request
+handling. The semantic `aozora` parser is the source of truth for
+formatting, diagnostics, and HTML rendering; the tree-sitter tree
+backs the high-frequency syntactic queries (hover, inlay,
+completion, codeAction).
 
 ## Documentation
 
@@ -51,10 +50,6 @@ The canonical documentation for `aozora-lsp` is the
 - [Standard LSP capabilities](https://p4suta.github.io/aozora-tools/lsp/capabilities.html)
 - [Custom protocol extensions](https://p4suta.github.io/aozora-tools/lsp/extensions.html)
 - [Diagnostics catalogue](https://p4suta.github.io/aozora-tools/lsp/diagnostics.html)
-
-The [`docs/adr/`](../../docs/adr) directory holds deeper background
-on individual architectural choices (bench data, alternatives
-considered, rejection rationale).
 
 ## Run
 

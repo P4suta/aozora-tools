@@ -1,9 +1,9 @@
 //! aozora lexer diagnostic → LSP `Diagnostic` mapping.
 //!
 //! Every variant of [`aozora::Diagnostic`] carries a byte-range
-//! [`aozora::Span`] that points into the original source buffer
-//! (the lexer's Phase 0 sanitization does not shift byte offsets, so
-//! these indices line up with the source the editor is holding).
+//! [`aozora::Span`] that points into the original source buffer.
+//! Source sanitisation does not shift byte offsets, so these indices
+//! line up with the source the editor is holding.
 //!
 //! ## Message style
 //!
@@ -179,12 +179,9 @@ fn describe(d: &AozoraDiagnostic) -> Described {
         AozoraDiagnostic::UnmatchedClose { span, kind, .. } => {
             describe_unmatched_close(*span, *kind)
         }
-        // v0.3.0 で個別 variant だった ResidualAnnotationMarker /
-        // UnregisteredSentinel / RegistryOutOfOrder /
-        // RegistryPositionMismatch は `Internal { check }` に統合。
-        // 内部チェックは典型的に「pipeline-internal sanity-check 失敗 →
-        // バグ報告して」という意味付けで、ユーザに見せるメッセージは
-        // check コードごとに分岐する。
+        // pipeline-internal sanity checks dispatch on the typed
+        // `InternalCheckCode`; each fires a "pipeline bug, please
+        // report" style message with the appropriate code.
         AozoraDiagnostic::Internal { span, check, .. } => match check {
             InternalCheckCode::ResidualAnnotationMarker => {
                 describe_residual_annotation_marker(*span)
@@ -194,14 +191,13 @@ fn describe(d: &AozoraDiagnostic) -> Described {
             InternalCheckCode::RegistryPositionMismatch => {
                 describe_registry_position_mismatch(*span)
             }
-            // `InternalCheckCode` は `#[non_exhaustive]`。今後 aozora-pipeline
-            // が新しい内部 sanity-check を追加した場合は generic な
-            // 「pipeline 内部の整合性エラー」として LSP に伝える。
+            // `InternalCheckCode` is `#[non_exhaustive]`; an unknown
+            // future variant falls through to a generic warning.
             _ => describe_unknown(d),
         },
-        // aozora::Diagnostic は `#[non_exhaustive]` なので、将来の追加 variant
-        // は generic な warning として一旦通し、LSP クライアントには原文
-        // メッセージを届ける。
+        // `aozora::Diagnostic` is `#[non_exhaustive]`; an unknown
+        // future variant falls through to a generic warning so the
+        // LSP client still sees a marker.
         other => describe_unknown(other),
     }
 }

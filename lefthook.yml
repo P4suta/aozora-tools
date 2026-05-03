@@ -1,23 +1,12 @@
 # aozora-tools — strict lefthook hooks (pre-commit / commit-msg /
 # pre-push / post-merge / post-checkout).
 #
-# Runs straight on the host (no docker container — unlike the sibling
-# `aozora` repo where everything routes through `just _dev`). Hooks
-# call `cargo`, `bun`, `typos`, `rg` directly. All of them are managed
-# by mise — see `~/.config/mise/config.toml` (chezmoi-tracked).
+# Runs straight on the host. Hooks call `cargo`, `bun`, `typos`
+# directly; install them however you prefer (cargo install,
+# distribution package, or a runtime version manager).
 #
 # Enable after clone:  `lefthook install`
 # Disable:             `lefthook uninstall`
-#
-# ## jj+git colocated note
-#
-# This is a `jj git init --colocate` repo. jj BYPASSES git hooks for
-# `jj commit` / `jj describe` / `jj squash` etc — those operations
-# never touch the filesystem `.git/hooks/*` files. So `pre-commit` and
-# `commit-msg` only fire on direct `git commit` (rare for the jj
-# workflow). `pre-push` IS load-bearing because `jj git push` delegates
-# to `git push` underneath; the pre-push gate catches everything that
-# slipped past the jj-side editor / clippy / test loop.
 #
 # ## Strictness policy
 #
@@ -54,9 +43,6 @@ pre-commit:
       glob: "*.{rs,toml}"
       run: cargo clippy --workspace --all-targets -- -D warnings
     # Spell check. Dictionary + project terms live in `_typos.toml`.
-    # `typos` ships via mise (`github:crate-ci/typos`); the user's
-    # interactive shell has the mise shim on PATH, which `git commit`
-    # inherits when invoking the hook.
     typos:
       run: typos
     # VS Code extension: biome (lint + format + organize-imports) +

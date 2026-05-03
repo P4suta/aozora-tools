@@ -1,18 +1,8 @@
 //! Per-document parse wrapper for the LSP backend.
 //!
-//! # Migration note (Phase 0 of the editor-integration sprint)
-//!
-//! The previous implementation cached per-paragraph parses keyed by
-//! content hash, leaning on `aozora_parser::{identify_segments,
-//! parse_segment, merge_segments}` to merge them into a whole-document
-//! `ParseResult`. The 0.2 split (top-level `aozora` crate, borrowed
-//! AST in a bumpalo arena) retired both the segment APIs and the
-//! `ParseResult` shape. The new `aozora::Document::parse` is fast
-//! enough that the corpus median document re-parses in single-digit
-//! milliseconds — well below the keystroke-perceptibility threshold
-//! the cache was sized against — so the segment cache is replaced
-//! with a straightforward "stash the latest diagnostics; re-derive
-//! the parse on demand".
+//! Stores the latest source text plus the diagnostics from the most
+//! recent parse, and re-derives a fresh [`AozoraTree`] on demand
+//! when a request handler needs structural access.
 //!
 //! # Why no stored `Document`
 //!
@@ -20,15 +10,11 @@
 //! make it `!Sync`. The LSP backend wraps every per-document state
 //! in `Arc<DashMap<Url, DocState>>`, which requires `DocState: Sync`.
 //! Stashing a `Document` inside `DocState` therefore cannot work
-//! across threads. Instead, [`SegmentCache`] stores the latest
-//! diagnostics and re-parses with a fresh `Document` whenever a
-//! request handler needs the [`AozoraTree`].
-//!
-//! Per-call statistics ([`ReparseStats`]) are still produced so the
-//! [`crate::metrics::Metrics`] dashboard keeps the same fields it
-//! used in the cache era — `cache_hits` / `cache_misses` are set to
-//! `0` / `1` (every reparse is a "miss" by definition under the new
-//! whole-document model).
+//! across threads. Instead, [`SegmentCache`] stores the latest text
+//! and re-parses with a fresh `Document` whenever a request handler
+//! needs the [`AozoraTree`]. The corpus median document re-parses in
+//! single-digit milliseconds — well below the keystroke-perceptibility
+//! threshold — so the per-call cost is acceptable.
 
 use std::time::{Duration, Instant};
 
@@ -38,9 +24,10 @@ use tracing::field::Empty as TracingEmpty;
 /// Per-call statistics emitted by [`SegmentCache::reparse`].
 ///
 /// The caller (typically the LSP backend's `DocState`) feeds these
-/// into the per-document [`crate::metrics::Metrics`] so parse latency,
-/// segment count, and (legacy) cache hit fields are observable from a
-/// third party reading the log.
+/// into the per-document [`crate::metrics::Metrics`] so parse latency
+/// and cache fields are observable from a third party reading the
+/// log. `cache_hits` / `cache_misses` are set to `0` / `1` for every
+/// call — every reparse is a "miss" under the whole-document model.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReparseStats {
     pub segment_count: u64,

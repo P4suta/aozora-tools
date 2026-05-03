@@ -15,8 +15,9 @@ fn plain_text_yields_no_diagnostics_and_no_edits() {
 
 #[test]
 fn pua_collision_produces_warning_diagnostic() {
-    // Phase 0 (SourceContainsPua) と Phase 6 (UnregisteredSentinel) の
-    // 両方が発火するため、少なくとも 1 件の Warning が出ていれば OK。
+    // PUA collision triggers SourceContainsPua plus an internal
+    // sanity-check; at least one warning-severity diagnostic must
+    // surface.
     let src = "oops\u{E001}here";
     let diags = compute_diagnostics(src);
     assert!(

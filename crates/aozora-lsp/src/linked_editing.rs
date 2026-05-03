@@ -297,8 +297,9 @@ mod tests {
         assert!(result.is_none(), "expected None, got {result:?}");
     }
 
-    /// Regression: backward scan with `floor = end - SCAN_WINDOW`
-    /// landing inside a multi-byte char used to panic on the slice.
+    /// Backward scan with `floor = end - SCAN_WINDOW` landing inside
+    /// a multi-byte char must not panic on the slice; the floor
+    /// snaps to the nearest char boundary.
     #[test]
     fn backward_scan_does_not_panic_on_mid_codepoint_floor() {
         // Same idea but mirrored: cursor on the close brace, with

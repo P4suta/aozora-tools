@@ -1,5 +1,5 @@
-//! `textDocument/codeAction` handler — Phase 2.5 (wrap selection in
-//! delimiter pair).
+//! `textDocument/codeAction` handler — wrap selection in a delimiter
+//! pair.
 //!
 //! When the user has a non-empty selection in an aozora document, the
 //! editor (right-click → Refactor, or Ctrl+. lightbulb) shows a menu
@@ -353,9 +353,9 @@ mod tests {
 
     #[test]
     fn ruby_wrap_inserts_pipe_before_and_brackets_after() {
-        // Pin the selection-as-base + always-pipe-prefix shape that
-        // the user's UX feedback insisted on. The first action in
-        // the menu is the bare ruby; it must produce ｜SEL《》.
+        // Pin the selection-as-base + always-pipe-prefix shape: the
+        // first action in the menu is the bare ruby, which must
+        // produce ｜SEL《》.
         let src = "青空";
         let sel = Range::new(Position::new(0, 0), Position::new(0, 2));
         let actions = wrap_selection_actions(src, &LineIndex::new(src), &fake_uri(), sel);

@@ -45,7 +45,7 @@ pairing stack, or with a stack top of a different `PairKind`.
 
 **Quick fix** — Delete the unmatched close. The verbose message
 also lists three other manual recovery options (insert the missing
-open earlier, fix a mis-matched intermediate close, etc.) for cases
+open earlier, fix a mismatched intermediate close, etc.) for cases
 where the deletion is wrong.
 
 ## `aozora::residual-annotation-marker`

@@ -4,14 +4,10 @@
 //! Each paragraph owns its own [`Rope`] text + tree-sitter [`Tree`] +
 //! extracted [`GaijiSpan`] table + per-paragraph
 //! [`crate::line_index::LineIndex`]. Editing a single paragraph never
-//! touches another paragraph's memory at all — Rope mutations stay
-//! local, the tree-sitter reparse covers only that paragraph's
-//! ~1-10 KB span (vs the prior whole-doc 220 ms reparse), and the
-//! snapshot rebuild for unchanged paragraphs is a single `Arc` pointer
-//! bump.
-//!
-//! See ADR-0008 for the wider rationale (paragraph-first
-//! rearchitecture follow-up to ADR-0001 / ADR-0002 / ADR-0007).
+//! touches another paragraph's memory: Rope mutations stay local, the
+//! tree-sitter reparse covers only that paragraph's ~1-10 KB span,
+//! and the snapshot rebuild for unchanged paragraphs is a single
+//! `Arc` pointer bump.
 //!
 //! ## Structure
 //!
@@ -464,8 +460,8 @@ mod tests {
     #[test]
     fn doc_state_handles_giant_multibyte_paragraph_without_panic() {
         use crate::state::DocState;
-        // 30 000 あ's = ~90 KB without any newline — used to panic in
-        // `BufferState::new`'s `paragraph_from_rope_slice` call.
+        // 30 000 あ's = ~90 KB without any newline — single-paragraph
+        // stress for `BufferState::new`'s `paragraph_from_rope_slice`.
         let s: String = "あ".repeat(30_000);
         let state = DocState::new(s.clone());
         // Round-trip text equality is the strongest possible check

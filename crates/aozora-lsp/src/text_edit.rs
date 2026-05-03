@@ -1,16 +1,7 @@
-//! In-tree text edit primitive (Phase 0 of the editor-integration
-//! sprint, was `aozora_parser::{TextEdit, apply_edits}`).
+//! In-tree text edit primitive: turn `(byte_range, new_text)` pairs
+//! into a validated string splice.
 //!
-//! The retired top-level `aozora-parser` crate carried a public
-//! [`LocalTextEdit`] + [`apply_edits`] pair so any LSP / TextMate-grammar
-//! integration could turn `(byte_range, new_text)` pairs into a
-//! validated string splice. The 0.2 split removed that crate; the
-//! splice routine itself is small and editor-only, so the LSP brings
-//! its own copy here. Same byte-range semantics as the original — any
-//! test that round-tripped through `aozora_parser::apply_edits`
-//! continues to round-trip through this one.
-//!
-//! Validation policy mirrors the original:
+//! Validation policy:
 //!
 //! - Edits are processed in source order; an edit's `range` must lie
 //!   strictly after every prior edit's `range.end`.

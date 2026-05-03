@@ -145,7 +145,7 @@ cargo    = { level = "warn", priority = -1 }
 # Carve-outs from the cargo group: `multiple_crate_versions` fires on
 # transitive dep version mismatches (e.g. unicode-width 0.1 vs 0.2
 # pulled in by different deps) — those collisions are not our problem
-# to fix locally. Match afm's policy.
+# to fix locally.
 multiple_crate_versions = "allow"
 
 # `unreachable_pub` (rustc) and `redundant_pub_crate` (clippy::nursery)
@@ -169,10 +169,7 @@ missing_assert_message     = "warn"
 
 # Restriction group — hand-picked. The full restriction group is
 # deliberately NOT enabled (it contains mutually contradictory lints);
-# each entry below is a considered decision. Mirrors the canonical
-# `aozora` lib's superset so a workspace-wide `cargo clippy` produces
-# the same warnings whether you run it inside `aozora` or
-# `aozora-tools`.
+# each entry below is a considered decision.
 str_to_string                   = "warn"  # prefer `.into()` / `String::from`
 absolute_paths                  = "warn"  # prefer `use`-imported names
 allow_attributes_without_reason = "warn"  # belt-and-braces; every allow must justify itself
@@ -231,8 +228,7 @@ inherits = "release"
 strip    = "none"
 debug    = 1
 
-# Dev-mode build tuning (matches afm/aozora baselines). Two wins
-# documented by Fairy Devices and the rust-perf-book:
+# Dev-mode build tuning. Two wins:
 #   1. `split-debuginfo = "unpacked"` keeps debug info in sibling
 #      `.dwo` files instead of inlining into every `.o`. On Linux/macOS
 #      this halves link wall-time on incremental rebuilds because the
