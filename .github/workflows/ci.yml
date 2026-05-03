@@ -133,6 +133,124 @@ jobs:
         working-directory: editors/vscode
         run: bun run check
 
+  # Coverage via `cargo llvm-cov nextest`. Runs in its own job so:
+  #   - the instrumented build doesn't poison the `rust` job's cache
+  #     (instrument-coverage adds a different RUSTFLAGS fingerprint),
+  #   - reports go up as a job summary + artifact independently of
+  #     whether `rust` is green (we still want the numbers when a
+  #     test fails),
+  #   - the gate step is a clean separate red/green signal in the PR
+  #     check list.
+  #
+  # Stable-toolchain story: LLVM `--branch` (true C1) is nightly-only.
+  # Region coverage is the closest stable analogue — LLVM emits one
+  # MC region per `if` / `match` arm, so each branch counts
+  # independently. The gate uses `--fail-under-regions` instead of
+  # `--fail-under-branches`.
+  #
+  # Threshold gate (`gate (line / region floor)` step) starts as a
+  # *display-only* run while Phase B fills in the thin modules; once
+  # the workspace clears the floor the `continue-on-error: true` is
+  # removed and the step becomes a hard gate. See the test plan in
+  # the workspace handbook for the rollout.
+  coverage:
+    name: coverage (llvm-cov, line + region)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}
+          # `llvm-tools-preview` ships `llvm-profdata` / `llvm-cov`,
+          # which `cargo-llvm-cov` shells out to. Already pinned in
+          # rust-toolchain.toml; named here for fork PR runners that
+          # bypass the toolchain file.
+          components: rustfmt, clippy, llvm-tools-preview
+
+      - name: Install mold linker
+        uses: rui314/setup-mold@v1
+
+      # Separate cache slot from the `rust` job: instrument-coverage
+      # produces a different target-dir fingerprint, so sharing the
+      # `aozora-tools-ci` slot would invalidate the rust job's cache
+      # on every run.
+      - name: Cache cargo target / registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: aozora-tools-coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install cargo-llvm-cov + nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+
+      - name: Run instrumented tests + lcov
+        # `--no-report` defers report generation so the same `.profraw`
+        # set feeds both the lcov artifact and the summary below.
+        # No `--branch` flag — that requires nightly; we gate on
+        # region coverage instead (see job header).
+        # `--ignore-filename-regex` excludes dev tooling (xtask) and
+        # binary entry points (LSP/CLI `main.rs`) from the denominator
+        # — see `crates/aozora-tools-xtask/src/coverage.rs::IGNORE_FILENAME_REGEX`
+        # which keeps this exact same pattern in lockstep with local runs.
+        env:
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+        run: |
+          cargo llvm-cov nextest \
+            --workspace --all-features --no-report \
+            --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
+          cargo llvm-cov report --lcov \
+            --output-path target/llvm-cov/lcov.info \
+            --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
+          cargo llvm-cov report --html \
+            --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
+
+      - name: Coverage summary → job summary
+        env:
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+        run: |
+          {
+            echo '## Coverage'
+            echo
+            echo '```'
+            cargo llvm-cov report --summary-only \
+              --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: gate (line ≥ 80%, region ≥ 70%)
+        # Hard gate: a PR that takes coverage below either floor will
+        # fail this step. Region coverage is the stable-toolchain
+        # analogue of branch coverage; `--fail-under-branches` is
+        # nightly-only.
+        env:
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+        run: |
+          cargo llvm-cov report \
+            --fail-under-lines 80 \
+            --fail-under-regions 70 \
+            --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
+
+      - name: Upload coverage artifact (lcov + html)
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            target/llvm-cov/lcov.info
+            target/llvm-cov/html/
+          retention-days: 14
+
   # Supply-chain gate. Mirrors the local `cargo deny check` invocation
   # bacon / lefthook expose to developers; deny.toml at the workspace
   # root is the single source of truth for licence + advisory policy.

@@ -1,4 +1,8 @@
 [toolchain]
 channel    = "1.95.0"
-components = ["rustfmt", "clippy"]
+# `llvm-tools-preview` ships the `llvm-profdata` / `llvm-cov` binaries
+# `cargo-llvm-cov` shells out to. Keeping it in the pinned toolchain
+# means contributors get coverage with `rustup-init` alone and CI
+# doesn't have to add the component out-of-band.
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
 profile    = "minimal"

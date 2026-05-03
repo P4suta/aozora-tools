@@ -1,6 +1,6 @@
 //! aozora-tools developer tooling.
 //!
-//! Two `samply`-related subcommands today:
+//! Subcommands:
 //!
 //! - `xtask samply lsp-burst <SECONDS>` — runs the criterion `burst`
 //!   bench under [samply](https://github.com/mstange/samply) so we
@@ -11,6 +11,9 @@
 //! - `xtask samply analyze <TRACE>` — post-processes a `.json.gz`
 //!   trace into a CLI top-N "self-time per leaf function" report.
 //!   Stdout is plain text so the report diffs cleanly between runs.
+//! - `xtask coverage [--lcov] [--summary] [--open] [--fail-under-…]`
+//!   — wraps `cargo llvm-cov nextest --workspace --branch` so local
+//!   runs use the same flags CI does. See `coverage.rs`.
 //!
 //! Workflow + pre/post pipeline documented in `docs/profiling.md`.
 
@@ -36,6 +39,7 @@ use std::{
 use clap::{Args, Parser, Subcommand};
 
 mod analyze;
+mod coverage;
 mod preflight;
 mod vsix;
 
@@ -60,6 +64,10 @@ enum Cmd {
     /// `editors/vscode/server/`. Outputs land in
     /// `editors/vscode/dist-vsix/`.
     VsixAll(VsixAllArgs),
+    /// Run `cargo llvm-cov nextest --workspace --branch` and emit
+    /// HTML / lcov / summary reports with an optional gate. Mirrors
+    /// the CI `coverage` job so local + CI numbers are comparable.
+    Coverage(coverage::CoverageArgs),
 }
 
 #[derive(Args)]
@@ -126,6 +134,7 @@ fn main() -> ExitCode {
             SamplyTarget::Analyze { trace } => analyze::analyze(&trace),
         },
         Cmd::VsixAll(args) => vsix::run_vsix_all(args.jobs, args.target.as_deref()),
+        Cmd::Coverage(args) => coverage::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -254,7 +263,7 @@ fn workspace_root() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn expect_status(status: process::ExitStatus, what: &str) -> Result<(), String> {
+pub(crate) fn expect_status(status: process::ExitStatus, what: &str) -> Result<(), String> {
     if status.success() {
         Ok(())
     } else {
