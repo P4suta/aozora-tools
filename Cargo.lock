@@ -99,10 +99,11 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
 name = "aozora"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
- "aozora-lex",
+ "aozora-encoding",
+ "aozora-pipeline",
  "aozora-render",
  "aozora-spec",
  "aozora-syntax",
@@ -110,15 +111,14 @@ dependencies = [
 
 [[package]]
 name = "aozora-encoding"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
  "encoding_rs",
  "miette",
  "phf",
  "phf_codegen",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -128,39 +128,6 @@ dependencies = [
  "anyhow",
  "aozora",
  "clap",
-]
-
-[[package]]
-name = "aozora-lex"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
-dependencies = [
- "aozora-encoding",
- "aozora-lexer",
- "aozora-scan",
- "aozora-spec",
- "aozora-syntax",
- "aozora-veb",
- "bumpalo",
- "memchr",
-]
-
-[[package]]
-name = "aozora-lexer"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
-dependencies = [
- "aho-corasick",
- "aozora-encoding",
- "aozora-scan",
- "aozora-spec",
- "aozora-syntax",
- "bumpalo",
- "memchr",
- "miette",
- "phf",
- "smallvec",
- "thiserror",
 ]
 
 [[package]]
@@ -190,11 +157,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "aozora-render"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+name = "aozora-pipeline"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
- "aozora-lex",
+ "aho-corasick",
+ "aozora-encoding",
+ "aozora-scan",
+ "aozora-spec",
+ "aozora-syntax",
+ "aozora-veb",
+ "bumpalo",
+ "memchr",
+ "miette",
+ "phf",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
+name = "aozora-render"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
+dependencies = [
+ "aozora-pipeline",
  "aozora-spec",
  "aozora-syntax",
  "memchr",
@@ -202,8 +188,8 @@ dependencies = [
 
 [[package]]
 name = "aozora-scan"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
  "aho-corasick",
  "aozora-spec",
@@ -214,8 +200,8 @@ dependencies = [
 
 [[package]]
 name = "aozora-spec"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
  "miette",
  "phf",
@@ -224,8 +210,8 @@ dependencies = [
 
 [[package]]
 name = "aozora-syntax"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 dependencies = [
  "aozora-encoding",
  "aozora-spec",
@@ -248,8 +234,8 @@ dependencies = [
 
 [[package]]
 name = "aozora-veb"
-version = "0.2.3"
-source = "git+https://github.com/P4suta/aozora.git?tag=v0.2.3#d6623d1ec346073b9ddf262d8ba4f670a26b6487"
+version = "0.3.0"
+source = "git+https://github.com/P4suta/aozora.git?tag=v0.3.0#a58bfeea618376d5fb244d39355992614b7a0298"
 
 [[package]]
 name = "arc-swap"
@@ -633,7 +619,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1150,7 +1136,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1597,7 +1583,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1843,7 +1829,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1853,7 +1839,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2320,7 +2306,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

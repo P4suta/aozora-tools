@@ -1,10 +1,9 @@
-# Publish the aozora-tools rustdoc API reference to GitHub Pages.
+# Publish the aozora-tools handbook + rustdoc API reference to GitHub Pages.
 #
-# Layout produced:
-#   https://p4suta.github.io/aozora-tools/                ← redirect to /aozora_lsp/
-#   https://p4suta.github.io/aozora-tools/aozora_lsp/     ← cargo doc landing
-#   https://p4suta.github.io/aozora-tools/aozora_fmt/     ← formatter docs
-#   https://p4suta.github.io/aozora-tools/aozora_tools_xtask/
+# Two-tier layout:
+#   https://p4suta.github.io/aozora-tools/         ← mdbook handbook (root)
+#   https://p4suta.github.io/aozora-tools/api/     ← rustdoc API reference
+#                                                    └─ index → /api/aozora_lsp/
 
 name: docs
 
@@ -28,10 +27,9 @@ jobs:
   build:
     name: build site
     runs-on: ubuntu-latest
-    # `cargo doc` rustc-links a thin shim per crate; on a 282-crate
-    # workspace that link cost is non-trivial. Mirror ci.yml's mold
-    # setup so we get the same ~30 % link-time savings here.
     env:
+      # `cargo doc` rustc-links a thin shim per crate; mirror ci.yml's
+      # mold setup so we get the same ~30 % link-time savings here.
       RUSTDOCFLAGS: "-C linker=clang -C link-arg=-fuse-ld=mold"
     steps:
       - uses: actions/checkout@v6
@@ -53,15 +51,37 @@ jobs:
         with:
           key: docs
 
+      # mdbook + mdbook-mermaid as prebuilt binaries (~5s each).
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook,mdbook-mermaid,lychee
+
       - name: Build rustdoc
         run: cargo doc --workspace --no-deps --document-private-items
 
-      - name: Assemble site
+      - name: Install mermaid assets
+        run: mdbook-mermaid install crates/aozora-tools-book
+
+      - name: Build handbook
+        run: mdbook build crates/aozora-tools-book
+
+      - name: Lychee link check (handbook)
+        run: |
+          lychee --offline \
+            --config crates/aozora-tools-book/lychee.toml \
+            crates/aozora-tools-book/book/
+
+      - name: Assemble two-tier site
         run: |
           set -euo pipefail
+          # Handbook root → site root.
           mkdir -p site
-          cp -r target/doc/. site/
-          cat > site/index.html <<'HTML'
+          cp -r crates/aozora-tools-book/book/. site/
+
+          # Rustdoc → /api/, with a redirect index landing on aozora_lsp.
+          mkdir -p site/api
+          cp -r target/doc/. site/api/
+          cat > site/api/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
           <title>aozora-tools — rustdoc</title>
@@ -69,6 +89,7 @@ jobs:
           <link rel="canonical" href="./aozora_lsp/index.html">
           <p>Redirecting to <a href="./aozora_lsp/index.html">aozora-lsp API reference</a>.</p>
           HTML
+
           # GitHub Pages otherwise runs Jekyll and hides paths like `_sources`.
           touch site/.nojekyll
 

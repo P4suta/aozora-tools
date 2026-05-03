@@ -1,0 +1,56 @@
+aozora-tools — formatter, LSP, tree-sitter grammar, and VS Code extension
+                for the 青空文庫 (Aozora Bunko) annotation notation
+Copyright (c) the aozora-tools contributors
+
+This NOTICE file is a convenience index of third-party material
+incorporated into the aozora-tools source repository. It does not
+replace the individual license files and source-level attributions;
+those remain the authoritative record. Unless specified otherwise in
+one of the sections below, everything in this repository is original
+aozora-tools code and is dual-licensed under Apache-2.0 OR MIT (see
+LICENSE-APACHE and LICENSE-MIT).
+
+
+================================================================================
+1. tree-sitter-aozora generated parser
+================================================================================
+
+`crates/tree-sitter-aozora/src/parser.c` (and accompanying header) is a
+machine-generated artifact produced by tree-sitter
+(https://tree-sitter.github.io/) from the hand-written `grammar.js` in
+the same crate. The generated C is checked in so downstream consumers
+(VS Code extension, LSP server, third-party editors) do not need a
+tree-sitter CLI on their build machine. The grammar source is
+Apache-2.0 OR MIT (the aozora-tools default); the tree-sitter generator
+itself is MIT, see https://github.com/tree-sitter/tree-sitter for the
+generator license.
+
+
+================================================================================
+2. Aozora Bunko sample works (public domain)
+================================================================================
+
+`samples/tsumi-to-batsu-x100.afm` is a dev-only ~200 MB stress fixture
+(Fyodor M. Dostoyevsky's 『罪と罰』 in the Japanese translation by
+米川正夫 (Masao Yonekawa), repeated 100×), gitignored and built locally
+from the public Aozora Bunko text. Aozora Bunko card number 56656
+(https://www.aozora.gr.jp/cards/001485/card56656.html). Public domain:
+the author died in 1881 and the translator in 1966; the Japanese
+translation copyright has lapsed under Japanese law. The fixture is
+not redistributed in this repository — it is reconstituted on the
+developer's machine on demand for benchmarks.
+
+All other files under `samples/` are original hand-written aozora
+notation by the aozora-tools contributors and are dual-licensed under
+the same terms as the rest of this repository.
+
+
+================================================================================
+3. aozora-tools (Apache-2.0 OR MIT)
+================================================================================
+
+All original aozora-tools source code is dual-licensed under Apache-2.0
+OR MIT at the user's option. See LICENSE-APACHE and LICENSE-MIT for the
+full license texts. By contributing to aozora-tools you agree that your
+contribution is dual-licensed under the same terms (see
+CONTRIBUTING.md).

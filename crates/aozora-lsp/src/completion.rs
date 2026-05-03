@@ -1,6 +1,4 @@
-//! `textDocument/completion` handler — Phase 2.3 of the
-//! editor-integration sprint, plus the Phase 2.5 half-width-bracket
-//! input affordance.
+//! `textDocument/completion` handler.
 //!
 //! When the cursor sits in or just after either:
 //!
@@ -212,13 +210,13 @@ fn build_completion_item(source: &str, entry: &SlugEntry, ctx: &SlugCtx) -> Comp
 
     // Detect the "full-width opener already has a full-width close"
     // case once, before deriving the replacement text and range from
-    // it. The branch matters in both places because we have to keep
-    // the existing close out of the replaced range — earlier code
-    // built `new_text = body_text` (no close) but used `edit_end =
-    // close_end` (covers the close), so accepting a completion in
-    // `［＃｜］` collapsed the existing `］`. The half-open
-    // `TextEdit.range` semantics are explicit in the LSP spec
-    // (start inclusive, end exclusive); we must aim end at the
+    // it. The branch matters in both places because the existing
+    // close must stay outside the replaced range — `new_text` is the
+    // body alone, and `edit_end` aims at the byte before the close
+    // so accepting a completion inside `［＃｜］` does not collapse
+    // the existing `］`. The half-open `TextEdit.range` semantics
+    // are explicit in the LSP spec (start inclusive, end exclusive);
+    // we must aim end at the
     // START of `］`, not its END.
     let existing_full_close_start: Option<usize> = (!ctx.half_width()
         && ctx.close_end > ctx.body_start

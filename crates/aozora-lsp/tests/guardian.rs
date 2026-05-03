@@ -95,7 +95,7 @@ fn adversarial_corpus() -> Vec<String> {
     // Long mixed-byte run (~300 bytes, well within scan budgets).
     out.push("あ".repeat(100));
     // Stress the paragraph-byte-ranges cap: 64 KB of multi-byte text
-    // with no \n\n boundary used to panic in earlier paragraph.rs.
+    // with no `\n\n` boundary inside a single paragraph.
     out.push("あ".repeat(30_000));
     // Long single line without any aozora notation.
     out.push("x".repeat(5_000));

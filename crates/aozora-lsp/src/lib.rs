@@ -1,8 +1,7 @@
 //! `aozora-lsp` — Language Server for aozora-flavored-markdown.
 //!
-//! The server is built on top of the stable `aozora` library surface
-//! defined by ADR-0009 in the sibling `aozora` repository. It exposes
-//! three LSP capabilities today:
+//! The server is built on top of the `aozora` library surface from
+//! the sibling `aozora` repository. Three primary LSP capabilities:
 //!
 //! - `textDocument/publishDiagnostics` — every `aozora::Diagnostic`
 //!   variant is mapped to an LSP `Diagnostic` with a byte-range span

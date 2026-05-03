@@ -1,13 +1,11 @@
 # CI for aozora-tools.
 #
 # Runs on every push and PR to main. The aozora dependency is fetched
-# from the public sibling repo (P4suta/aozora) at the pinned tag; the
-# only checkout this workflow needs is aozora-tools itself.
+# from the public sibling repo at the pinned tag; the only checkout
+# this workflow needs is aozora-tools itself.
 #
-# Build optimisation policy (per Fairy Devices 2025-01-07 +
-# Aleksey Kladov 2021 + rust-perf-book):
+# Build optimisations:
 #   - mold linker on Linux (rui314/setup-mold)
-#   - sccache with the GHA backend (mozilla-actions/sccache-action)
 #   - target-dir cache via Swatinem/rust-cache@v2 with shared-key so
 #     fmt/clippy/test/doc/bench-build all reuse one cache slot
 #   - cargo-nextest for parallel test execution (taiki-e/install-action)
@@ -41,17 +39,9 @@ env:
   # for crates that don't inherit it through workspace.lints.
   RUSTFLAGS: -D warnings -C linker=clang -C link-arg=-fuse-ld=mold
   RUSTDOCFLAGS: -D warnings -C linker=clang -C link-arg=-fuse-ld=mold
-  # NB: sccache via mozilla-actions/sccache-action was tried with the
-  # GHA Cache backend but the runner-side sccache init writes a probe
-  # blob (`.sccache_check`) at startup and the action exits non-zero
-  # if that write fails. Whenever the GHA Cache API has a transient
-  # outage (which it does, see GitHub Actions status history), every
-  # job in this matrix dies on a 400 from the cache API before any
-  # cargo invocation runs. Swatinem/rust-cache@v2 below already gives
-  # us the bulk of the wins (target-dir + registry caching) without
-  # the fail-fast surface; sccache stays off until the action grows a
-  # `--tolerate-cache-failures` flag or we move to a more resilient
-  # backend (s3 / cloud storage).
+  # sccache is intentionally not configured. Swatinem/rust-cache@v2
+  # below provides the target-dir + registry caching wins without
+  # the additional moving parts.
 
 jobs:
   rust:
@@ -142,3 +132,23 @@ jobs:
       - name: Check (biome + tsc, no writes)
         working-directory: editors/vscode
         run: bun run check
+
+  # Supply-chain gate. Mirrors the local `cargo deny check` invocation
+  # bacon / lefthook expose to developers; deny.toml at the workspace
+  # root is the single source of truth for licence + advisory policy.
+  # A separate job (rather than a step inside `rust`) so the failure
+  # mode reads cleanly in the PR check list.
+  deny:
+    name: cargo-deny (licenses + advisories + sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          # `--all-features` mirrors deny.toml's `[graph] all-features = true`;
+          # `--manifest-path Cargo.toml` is required because cargo-deny v0.19+
+          # otherwise walks `crates/*` looking for Cargo.toml files and trips on
+          # the manifest-less `crates/aozora-tools-book` mdbook tree.
+          manifest-path: Cargo.toml
+          arguments: --all-features --workspace

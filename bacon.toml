@@ -1,0 +1,58 @@
+# bacon configuration for aozora-tools.
+#
+# Launch with `bacon` for the default `check` job, or `bacon clippy` /
+# `bacon test` / `bacon doc` for the alternates. Keybindings (built-in
+# defaults):
+#   c  clippy       t  test        d  doc           f  failing-only
+#   q  quit         esc previous   Ctrl-J  list jobs
+#
+# Config reference: https://dystroy.org/bacon/config/
+
+default_job = "check"
+
+# Fast edit-compile loop. `cargo check` skips codegen so the feedback
+# cycle stays under a second for most touches.
+[jobs.check]
+command            = ["cargo", "check", "--workspace", "--all-targets", "--color", "always"]
+need_stdout        = false
+watch              = ["crates"]
+on_change_strategy = "kill_then_restart"
+
+# Mirrors the `cargo clippy` invocation used by lefthook pre-push and
+# CI. Flag surface stays minimal because [workspace.lints] in
+# Cargo.toml is the single source of truth.
+[jobs.clippy]
+command = [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--color",
+    "always",
+    "--",
+    "-D",
+    "warnings",
+]
+need_stdout = false
+
+# Full workspace test suite. Plain `cargo test` (not nextest) so this
+# config works without the cargo-nextest binary installed locally —
+# CI uses nextest separately.
+[jobs.test]
+command     = ["cargo", "test", "--workspace", "--all-targets", "--color", "always"]
+need_stdout = true
+
+# Rustdoc build with `--document-private-items` so the docs.yml CI
+# gate (intra-doc-link denial) reproduces locally.
+[jobs.doc]
+command = [
+    "cargo",
+    "doc",
+    "--workspace",
+    "--no-deps",
+    "--document-private-items",
+    "--color",
+    "always",
+]
+need_stdout = false

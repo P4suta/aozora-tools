@@ -33,24 +33,23 @@ LSP can call `aozora_lsp::inlay_hints` from a library context.
 ## Architecture (one-liner)
 
 Per-document state is split into a writer-side `Mutex<BufferState>`
-(Rope buffer + tree-sitter incremental parse, segmented
-paragraph-first per ADR-0008) and a reader-side
-`ArcSwap<Snapshot>` for wait-free LSP request handling. The
-semantic `aozora` parser is the source of truth for formatting,
-diagnostics, and HTML rendering; the tree-sitter tree backs the
-high-frequency syntactic queries (hover, inlay, completion,
-codeAction).
+(Rope buffer + tree-sitter incremental parse, paragraph-segmented)
+and a reader-side `ArcSwap<Snapshot>` for wait-free LSP request
+handling. The semantic `aozora` parser is the source of truth for
+formatting, diagnostics, and HTML rendering; the tree-sitter tree
+backs the high-frequency syntactic queries (hover, inlay,
+completion, codeAction).
 
-ADRs that drove the current shape:
+## Documentation
 
-- [ADR-0001 — Shuttle randomized-schedule check](../../docs/adr/0001-shuttle-segment-cache.md)
-- [ADR-0002 — LSP feature roadmap](../../docs/adr/0002-lsp-feature-roadmap.md)
-- [ADR-0003 — Position encoding](../../docs/adr/0003-position-encoding.md)
-- [ADR-0004 — Preview sync protocol](../../docs/adr/0004-preview-sync-protocol.md)
-- [ADR-0005 — `ArcSwap` snapshot](../../docs/adr/0005-arcswap-snapshot.md)
-- [ADR-0006 — `ropey::Rope` buffer](../../docs/adr/0006-rope-buffer.md)
-- [ADR-0007 — Incremental gaiji-span rebuild](../../docs/adr/0007-incremental-gaiji-rebuild.md)
-- [ADR-0008 — Paragraph-first document model](../../docs/adr/0008-paragraph-first-document-model.md)
+The canonical documentation for `aozora-lsp` is the
+[handbook](https://p4suta.github.io/aozora-tools/lsp/overview.html):
+
+- [Overview](https://p4suta.github.io/aozora-tools/lsp/overview.html)
+- [State model](https://p4suta.github.io/aozora-tools/lsp/state-model.html)
+- [Standard LSP capabilities](https://p4suta.github.io/aozora-tools/lsp/capabilities.html)
+- [Custom protocol extensions](https://p4suta.github.io/aozora-tools/lsp/extensions.html)
+- [Diagnostics catalogue](https://p4suta.github.io/aozora-tools/lsp/diagnostics.html)
 
 ## Run
 
@@ -75,8 +74,8 @@ idempotence, and concurrency invariant gate. The `burst` bench
 (driven by `samples/bouten.afm`) is what the criterion-based
 PR diff workflow (`.github/workflows/bench-diff.yml`) gates on.
 
-Profiling pipeline (samply) is documented in
-[`docs/profiling.md`](../../docs/profiling.md).
+Profiling pipeline (samply) is documented in the
+[handbook's Profiling chapter](https://p4suta.github.io/aozora-tools/perf/samply.html).
 
 ## Install
 

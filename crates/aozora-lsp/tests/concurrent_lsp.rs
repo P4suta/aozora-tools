@@ -1,18 +1,8 @@
 //! Concurrent-access regression tests for the LSP backend's
 //! `Arc<DashMap<Url, DocState>>` surface.
 //!
-//! Pre-0.2 the LSP carried its own re-implementation of `DocState`
-//! inside the test crate so the test could mutate `aozora_parser`
-//! parse results directly. The 0.2 split (top-level `aozora` crate
-//! with `Document` + bumpalo arena, `Document: !Sync`) made that
-//! reimplementation moot: every shared-state path now goes through
-//! the in-tree `aozora_lsp::segment_cache::SegmentCache`, which is
-//! `Sync` by construction (no `Document` field — see `segment_cache.rs`
-//! for the migration note).
-//!
-//! These tests therefore drive the public `SegmentCache` directly
-//! from multiple threads and assert the invariants that the legacy
-//! tests pinned: independent threads' parses never deadlock, every
+//! Drive the public `SegmentCache` directly from multiple threads
+//! and assert: independent threads' parses never deadlock, every
 //! thread observes a consistent diagnostic count after its own
 //! reparse, and per-document state never gets crossed between URIs.
 
@@ -56,7 +46,11 @@ fn segment_cache_with_tree_after_reparse_is_consistent() {
     let mut cache = SegmentCache::default();
     drop(cache.reparse("｜青梅《おうめ》"));
     let inline_count = cache
-        .with_tree(|tree| tree.lex_output().registry.inline.len())
+        .with_tree(|tree| {
+            tree.lex_output()
+                .registry
+                .count_kind(aozora::Sentinel::Inline)
+        })
         .expect("populated");
     assert_eq!(inline_count, 1);
 }

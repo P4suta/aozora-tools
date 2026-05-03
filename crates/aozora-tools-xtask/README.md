@@ -25,7 +25,8 @@ cleanly — that's the workflow for "did this change move the
 needle on `ts_parser_parse`?".
 
 Full pipeline (capture → symbolicate → summarise → diff)
-documented in [`docs/profiling.md`](../../docs/profiling.md).
+documented in the
+[handbook's Profiling chapter](https://p4suta.github.io/aozora-tools/perf/samply.html).
 
 ## Repository
 

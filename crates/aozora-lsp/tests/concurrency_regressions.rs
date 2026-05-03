@@ -1,12 +1,9 @@
 //! Bug-pattern regression suite for the LSP concurrency surface.
 //!
-//! Pre-0.2 the LSP carried a re-implementation of `DocState` here so
-//! tests could trigger `aozora_parser`-internal corner cases. The
-//! 0.2 split moved the parser surface to the top-level `aozora`
-//! crate; the new `Document` is `!Sync` (bumpalo arena interior),
-//! so concurrent state lives in the in-tree
-//! `aozora_lsp::segment_cache::SegmentCache` instead. These tests
-//! pin the invariant set that survived the migration.
+//! `aozora::Document` is `!Sync` (bumpalo arena interior), so the
+//! shared concurrent state lives in `aozora_lsp::segment_cache::SegmentCache`.
+//! These tests pin the invariant set the cache must hold under
+//! concurrent reparses from multiple threads.
 
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -51,7 +48,11 @@ fn last_reparse_wins_under_serialised_access() {
     let inline = {
         let guard = cache.lock().expect("lock");
         guard
-            .with_tree(|tree| tree.lex_output().registry.inline.len())
+            .with_tree(|tree| {
+                tree.lex_output()
+                    .registry
+                    .count_kind(aozora::Sentinel::Inline)
+            })
             .expect("populated")
     };
     assert_eq!(inline, 1);
