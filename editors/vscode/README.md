@@ -23,7 +23,8 @@
 - **半角キーで全角入力** — `[#` → `［＃canonical］`、`<<` → `《》`、
   `|` → `｜` のスニペット展開(slug カタログ補完つき)
 - **HTML プレビュー** — `Aozora: Open Preview` で横にプレビューを
-  開き、編集にリアルタイム追従
+  開き、編集にリアルタイム追従。既定は縦書き (青空文庫の本来の方向)、
+  `Aozora: プレビューの縦書き／横書きを切り替え` で切り替え可能
 - **アウトライン** — 見出しの一覧を Quick Pick で表示してジャンプ
 - **記法ガイド** — `Aozora: 記法ガイドを開く` で完全リファレンスを
   ブラウザで開く
@@ -79,6 +80,7 @@ PATH 上の `aozora-lsp` の順で解決される。
 | `aozora.trace.server` | `off` | LSP メッセージのトレース (`off` / `messages` / `verbose`) |
 | `aozora.autoDetect.plaintext` | `true` | `.txt` ファイルを開くとき青空文庫記法を検出して自動でモード切替 |
 | `aozora.gaijiFold.enabled` | `true` | `※［＃…］` 外字注記を解決字 1 文字に視覚折りたたみ |
+| `aozora.preview.writingMode` | `vertical` | プレビュー WebView の組み方向 (`vertical` / `horizontal`)。`Aozora: プレビューの縦書き／横書きを切り替え` で一時切替も可 |
 
 ## はじめての方へ
 
