@@ -129,7 +129,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: aozora-tools-*
           merge-multiple: true
@@ -159,7 +159,7 @@ jobs:
       - name: Show release notes
         run: cat CHANGES.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             artefacts/aozora-tools-*.tar.gz
