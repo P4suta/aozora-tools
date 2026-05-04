@@ -88,6 +88,21 @@ once 1.0 ships.
   (`media/walkthrough/04-preview.md`) document the writing-mode
   toggle and the new `aozora.preview.writingMode` setting.
 
+### Fixed
+
+- The `coverage` CI job has been silently failing on every main
+  push since it landed in #12 with `error: failed to generate
+  report: failed to create file 'target/llvm-cov/lcov.info': No
+  such file or directory`. The 292 instrumented tests passed, but
+  `cargo llvm-cov report --lcov --output-path …/lcov.info` does
+  not auto-create the parent directory, so the report (and the
+  gate that depends on it) never ran. Auto-merge wasn't blocked
+  because `coverage` was not a required check. Fix: `mkdir -p
+  target/llvm-cov/html` ahead of the report invocations in
+  `.github/workflows/ci.yml`, and `std::fs::create_dir_all` the
+  same path inside `xtask coverage` so local runs surface the
+  same shape.
+
 ## [0.1.3] — 2026-04-28
 
 ### Changed

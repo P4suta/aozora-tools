@@ -246,6 +246,14 @@ jobs:
         env:
           IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
         run: |
+          # `cargo llvm-cov report --lcov --output-path …/lcov.info`
+          # does not auto-create the parent directory; without this
+          # mkdir the report step fails with "No such file or
+          # directory" before the gate ever runs. Pin both
+          # `target/llvm-cov` (lcov.info parent) and the html subdir
+          # so the artifact upload at the end of the job has a
+          # consistent path to read from on every run.
+          mkdir -p target/llvm-cov/html
           cargo llvm-cov nextest \
             --workspace --all-features --no-report \
             --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
