@@ -26,6 +26,8 @@
 //! comparable.
 
 use std::env;
+use std::fs;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use clap::Args;
@@ -90,6 +92,13 @@ pub(crate) struct CoverageArgs {
 pub(crate) fn run(args: &CoverageArgs) -> Result<(), String> {
     ensure_llvm_cov_installed()?;
     clean_profraws()?;
+    // `cargo llvm-cov report --lcov --output-path …/lcov.info` does
+    // not auto-create its parent directory; ensure it exists after
+    // `clean` (which can wipe `target/llvm-cov/`) so the report step
+    // fails loudly with "no coverage data" rather than silently with
+    // "No such file or directory".
+    fs::create_dir_all(Path::new("target/llvm-cov/html"))
+        .map_err(|err| format!("failed to mkdir -p target/llvm-cov/html: {err}"))?;
     run_instrumented_tests(args.nextest)?;
 
     if args.html {
