@@ -12,8 +12,10 @@
 //!   trace into a CLI top-N "self-time per leaf function" report.
 //!   Stdout is plain text so the report diffs cleanly between runs.
 //! - `xtask coverage [--lcov] [--summary] [--open] [--fail-under-…]`
-//!   — wraps `cargo llvm-cov nextest --workspace --branch` so local
-//!   runs use the same flags CI does. See `coverage.rs`.
+//!   — wraps `cargo llvm-cov` for the workspace so local runs use the
+//!   same flag set CI does. Region coverage is the stable-toolchain
+//!   analogue of branch coverage (`--fail-under-branches` is
+//!   nightly-only); see `coverage.rs`.
 //!
 //! Workflow + pre/post pipeline documented in `docs/profiling.md`.
 

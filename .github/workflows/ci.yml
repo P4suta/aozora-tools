@@ -97,7 +97,14 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: nextest
-        run: cargo nextest run --workspace --all-targets --locked
+        # `--features aozora-lsp/shuttle-tests` enables the
+        # randomized-schedule concurrency checker
+        # (`crates/aozora-lsp/tests/shuttle_doc_state.rs`). Without it
+        # that test would only execute inside the `coverage` job (which
+        # uses `--all-features`), so a coverage-side regression could
+        # mask a shuttle failure. The default 1,000 iterations finish
+        # in a few seconds; nightly cron raises `AOZORA_SHUTTLE_ITERS`.
+        run: cargo nextest run --workspace --all-targets --features aozora-lsp/shuttle-tests --locked
 
       - name: doc test
         run: cargo test --doc --workspace --locked
@@ -112,6 +119,43 @@ jobs:
       # noticeably cheaper than `bench --no-run` on a warm cache.
       - name: check benches (compile-only)
         run: cargo check --benches --workspace --locked
+
+  # MSRV gate. The workspace declares `rust-version = "1.95.0"` in
+  # `Cargo.toml` and pins the same channel in `rust-toolchain.toml`;
+  # this job verifies that the codebase actually compiles on that
+  # exact toolchain. Without it, a contributor (or a future channel
+  # bump on the canonical toolchain) could land code that uses a
+  # feature unavailable on the declared MSRV without anything
+  # noticing until a downstream consumer hit the failure.
+  #
+  # `cargo check` is sufficient — MSRV regressions are caught by the
+  # type / borrow checker. The `rust` job above covers the actual
+  # test run on the canonical channel.
+  msrv:
+    name: msrv (Rust 1.95.0 cargo check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust 1.95.0
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.95.0
+
+      - name: Install mold linker
+        uses: rui314/setup-mold@v1
+
+      # Separate cache slot from the `rust` job because the toolchain
+      # version is part of the target-dir fingerprint.
+      - name: Cache cargo target / registry
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: aozora-tools-msrv
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo check (MSRV)
+        run: cargo check --workspace --all-features --all-targets --locked
 
   typos:
     name: typos
@@ -146,13 +190,8 @@ jobs:
   # Region coverage is the closest stable analogue — LLVM emits one
   # MC region per `if` / `match` arm, so each branch counts
   # independently. The gate uses `--fail-under-regions` instead of
-  # `--fail-under-branches`.
-  #
-  # Threshold gate (`gate (line / region floor)` step) starts as a
-  # *display-only* run while Phase B fills in the thin modules; once
-  # the workspace clears the floor the `continue-on-error: true` is
-  # removed and the step becomes a hard gate. See the test plan in
-  # the workspace handbook for the rollout.
+  # `--fail-under-branches`. A PR that drives line coverage below 80%
+  # or region coverage below 70% fails the gate step.
   coverage:
     name: coverage (llvm-cov, line + region)
     runs-on: ubuntu-latest

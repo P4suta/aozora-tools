@@ -71,6 +71,11 @@
         "category": "Aozora"
       },
       {
+        "command": "aozora.preview.toggleWritingMode",
+        "title": "Aozora: プレビューの縦書き／横書きを切り替え",
+        "category": "Aozora"
+      },
+      {
         "command": "aozora.canonicalizeSlugAtCursor",
         "title": "Aozora: Canonicalize slug at cursor",
         "category": "Aozora"
@@ -239,6 +244,19 @@
           "type": "boolean",
           "default": true,
           "description": "Visually collapse `※［＃description、mencode］` gaiji notations to their resolved character when the cursor is elsewhere. The source re-appears when the cursor enters the span. Disable to always show the raw notation."
+        },
+        "aozora.preview.writingMode": {
+          "type": "string",
+          "enum": [
+            "vertical",
+            "horizontal"
+          ],
+          "enumDescriptions": [
+            "縦書き (右上から下へ、青空文庫の本来の方向)",
+            "横書き (左上から右へ)"
+          ],
+          "default": "vertical",
+          "description": "プレビュー WebView の組み方向。`Aozora: プレビューの縦書き／横書きを切り替え` コマンドで一時的に切り替えられる (この設定は次回プレビューを開いたときの初期値)。"
         }
       }
     },

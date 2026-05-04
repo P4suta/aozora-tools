@@ -68,9 +68,11 @@ use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_fu
 
 /// LSP backend for aozora documents.
 ///
-/// `Clone` so we can hand a copy to debounced background tasks
-/// (Stage 5). The fields are cheap to clone — `Client` is a
-/// channel handle and `docs` is `Arc<DashMap<...>>`.
+/// `Clone` so the debounced publish task (`schedule_publish_debounced`)
+/// can hold its own backend handle for the duration of the sleep
+/// without keeping a borrow on the original. The fields are cheap to
+/// clone — `Client` is a channel handle and `docs` is
+/// `Arc<DashMap<...>>`.
 #[derive(Debug, Clone)]
 pub struct Backend {
     client: Client,
@@ -225,7 +227,7 @@ impl Backend {
         Ok(RenderHtmlResult { html })
     }
 
-    /// Custom LSP request `aozora/gaijiSpans` — Stage 7.
+    /// Custom LSP request `aozora/gaijiSpans`.
     ///
     /// Returns every resolvable `※［＃...］` gaiji span in the
     /// requested document, mapped to its resolved glyph and the
@@ -542,10 +544,10 @@ impl LanguageServer for Backend {
                 state.rebuild_snapshot_now();
             }
         }
-        // Stage 5 — schedule the slow Rust parse + publish as a
-        // debounced background task. did_change itself returns now
-        // (microseconds later), so subsequent LSP requests are not
-        // blocked by tower-lsp's notification ordering.
+        // Schedule the slow semantic parse + publish as a debounced
+        // background task. `did_change` itself returns now (microseconds
+        // later), so subsequent LSP requests are not blocked by
+        // tower-lsp's notification ordering.
         self.schedule_publish_debounced(uri);
     }
 
@@ -1027,11 +1029,11 @@ mod tests {
         let state = DocState::new("plain text".to_owned());
         let edit = LocalTextEdit::new(5..6, "｜青梅《おうめ》".to_owned());
         state.apply_changes(&[edit]);
-        // Stage 5: apply_changes is the *fast* path — text + TS
-        // edit only. The semantic re-parse runs in a background
-        // task in production. For this unit test (no async runtime)
-        // we drive it synchronously through the same entry point the
-        // debounced task uses.
+        // `apply_changes` is the fast path — text + TS edit only. The
+        // semantic re-parse runs in a debounced background task in
+        // production. For this unit test (no async runtime) we drive
+        // it synchronously through the same entry point the debounced
+        // task uses.
         state.run_segment_cache_reparse();
         state.with_segment_cache(|cache| {
             let inline = cache
@@ -1047,8 +1049,9 @@ mod tests {
         let state = DocState::new("plain".to_owned());
         let edit = LocalTextEdit::new(0..0, "\u{E001}".to_owned());
         state.apply_changes(&[edit]);
-        // See note in `edit_inserting_aozora_trigger_reparses` —
-        // semantic re-parse is deferred under Stage 5.
+        // See note in `edit_inserting_aozora_trigger_reparses` — the
+        // semantic re-parse is deferred to the debounced background
+        // task in production.
         state.run_segment_cache_reparse();
         state.with_segment_cache(|cache| {
             assert!(

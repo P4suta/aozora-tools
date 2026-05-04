@@ -1,27 +1,47 @@
-//! Incremental tree-sitter state for the LSP backend.
+//! Document-level tree-sitter wrapper. Kept as the control group for
+//! the editor-burst microbenchmarks (`crates/aozora-lsp/benches/burst.rs`)
+//! and as the home of the `input_edit` helper that
+//! [`crate::state::BufferState`] reuses.
 //!
-//! Each open document holds an [`IncrementalDoc`] alongside the
-//! existing `SegmentCache`. The two parsers serve different masters:
+//! ## Production state lives in `crate::paragraph`, not here
 //!
-//! - **`SegmentCache` (semantic Rust parser)** — source of truth for
-//!   diagnostics, HTML rendering, and formatting. Each invocation
-//!   re-parses the whole document; called only when a heavy
-//!   operation needs it (renderHtml, formatting, didChange's
-//!   diagnostic publish).
-//! - **`IncrementalDoc` (tree-sitter)** — keeps a tree synchronised
-//!   with the buffer via incremental edits. Hover, inlay,
-//!   codeAction, completion, and `linked_editing` all query this
-//!   tree in microseconds, regardless of document size.
+//! Each open document is split at `\n\n` boundaries into a
+//! `Vec<MutParagraph>`, where every [`crate::paragraph::MutParagraph`]
+//! owns its own `Rope` text and tree-sitter `Tree`. Edits reparse only
+//! the paragraph they hit. The reason is operational: tree-sitter's
+//! parse on the aozora grammar is `O(doc-size)` (~33 ns/byte), so a
+//! single document-wide reparse on a 6 MB input costs ~220 ms — too
+//! slow for keystroke responsiveness. See [`crate::state`] for the
+//! split-buffer architecture and the snapshot rebuild reuse story.
 //!
-//! ## Why two parsers
+//! ## What `IncrementalDoc` is for
 //!
-//! The semantic parser is precise (gaiji resolution, kaeriten linking,
-//! container nesting, diagnostic emission) but slow on big inputs.
-//! Tree-sitter is structural-only (gaiji *spans*, ruby *spans*) but
-//! fast and incremental. Letting the high-frequency LSP requests
-//! (10–100 per second during editing) hit the fast parser keeps the
-//! editor feel responsive even on 100 KB+ documents — the win the
-//! 8:45 PM trace asked for.
+//! The struct below predates the paragraph-first refactor. It is now
+//! retained as the **measurement control** for the design decision:
+//!
+//! - `bench_ts_parse_full` measures whole-document parse cost on a
+//!   6 MB input.
+//! - `bench_ts_apply_edit_offset_0` and `bench_ts_apply_edit_mid_doc`
+//!   measure tree-sitter's `apply_edit` cost depending on edit
+//!   position.
+//! - `bench_ts_parse_60kb_slice` / `bench_ts_parse_600kb_slice` measure
+//!   parse cost on smaller slices, so the paragraph-first design's
+//!   payoff (per-edit cost capped at paragraph size) stays quantifiable.
+//!
+//! The unit tests at the bottom of this module pin the tree-sitter
+//! incremental contract — 1-shot parse ≡ initial parse + `apply_edit`,
+//! the chunked-Rope parse path, char-boundary handling — invariants
+//! the per-paragraph production code reuses through
+//! [`crate::paragraph::MutParagraph::apply_edit`].
+//!
+//! ## Semantic vs syntactic split
+//!
+//! The `aozora` Rust parser remains the source of truth for
+//! diagnostics, HTML rendering, and formatting (see
+//! [`crate::segment_cache::SegmentCache`]). Tree-sitter is the
+//! structural-only fast path that high-frequency LSP requests
+//! (hover, completion, linkedEditingRange, semanticTokens, gaiji
+//! span extraction) ride against the per-paragraph trees.
 
 use std::fmt;
 use std::sync::Mutex;
