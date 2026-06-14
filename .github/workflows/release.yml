@@ -126,6 +126,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write # provenance attestation (Sigstore OIDC)
+      attestations: write # record the attestation against the repo
     steps:
       - uses: actions/checkout@v6
 
@@ -143,6 +145,17 @@ jobs:
           sha256sum aozora-tools-*.tar.gz aozora-tools-*.zip 2>/dev/null | sort > SHA256SUMS
           cat SHA256SUMS
 
+      # Software bill of materials for the released workspace (syft reads
+      # Cargo.lock). Attached to the Release and covered by the provenance
+      # attestation below so consumers can audit the dependency set.
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: artefacts/aozora-tools-sbom.cdx.json
+          upload-artifact: false
+
       # Replace GitHub's `generate_release_notes: true` (which renders a
       # commit log + author table) with git-cliff output driven by
       # cliff.toml. Same source of truth as the local
@@ -159,6 +172,17 @@ jobs:
       - name: Show release notes
         run: cat CHANGES.md
 
+      # SLSA-style build provenance for every shipped archive + the SBOM.
+      # Consumers verify with
+      # `gh attestation verify <file> --repo P4suta/aozora-tools`.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            artefacts/aozora-tools-*.tar.gz
+            artefacts/aozora-tools-*.zip
+            artefacts/aozora-tools-sbom.cdx.json
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -166,6 +190,7 @@ jobs:
             artefacts/aozora-tools-*.zip
             artefacts/*.sha256
             artefacts/SHA256SUMS
+            artefacts/aozora-tools-sbom.cdx.json
           body_path: CHANGES.md
           draft: false
           prerelease: false

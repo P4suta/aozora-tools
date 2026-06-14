@@ -83,6 +83,12 @@ once 1.0 ships.
   `clippy`, `doc`, `deny`, `cov`, `ci`) plus the `fuzz-*` triage family,
   mirroring the sibling aozora / afm repos.
 - `#![warn(missing_docs)]` on the `aozora-fmt` public library.
+- **Release supply-chain integrity**: the `release` and `release-vscode`
+  workflows now attach a CycloneDX SBOM and emit SLSA build-provenance
+  attestations for every archive and `.vsix` (verify with
+  `gh attestation verify <file> --repo P4suta/aozora-tools`). CodeQL
+  default setup already scans `c-cpp` (the tree-sitter `parser.c`),
+  JS/TS, and Rust, so no separate code-scanning workflow is added.
 
 ### Changed
 
