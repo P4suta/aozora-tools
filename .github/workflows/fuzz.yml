@@ -1,0 +1,75 @@
+# Nightly cargo-fuzz soak.
+#
+# The fuzz harnesses live in nightly-only sub-crates under
+# crates/<crate>/fuzz/ (outside the main workspace). This job runs each
+# registered target for a bounded time on a schedule; a crash uploads the
+# minimised artifact so it can be promoted into the stable
+# tests/fuzz_regressions/ replay set with `just fuzz-promote`.
+name: fuzz
+
+on:
+  schedule:
+    # 04:17 UTC daily — offset off the hour to dodge the scheduler rush.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      max_total_time:
+        description: "Seconds to fuzz each target"
+        default: "300"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "10"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.crate }}/${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - crate: aozora-fmt
+            target: format_idempotent
+          - crate: aozora-lsp
+            target: edit_pipeline
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/${{ matrix.crate }}/fuzz
+          shared-key: fuzz-${{ matrix.crate }}-${{ matrix.target }}
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      # (Pinned crash regressions already replay on the stable `ci`
+      # workflow via tests/fuzz_regressions.rs, so they are not re-run
+      # here.)
+      - name: Fuzz ${{ matrix.target }}
+        working-directory: crates/${{ matrix.crate }}/fuzz
+        run: |
+          dur="${{ github.event.inputs.max_total_time || '300' }}"
+          cargo +nightly fuzz run "${{ matrix.target }}" -- -max_total_time="$dur"
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.crate }}-${{ matrix.target }}
+          path: crates/${{ matrix.crate }}/fuzz/artifacts/
+          if-no-files-found: ignore
