@@ -155,7 +155,17 @@ async function openPreview(
     `Aozora Preview — ${document.fileName.split("/").pop() ?? "untitled"}`,
     vscode.ViewColumn.Beside,
     {
-      enableScripts: true,
+      // The preview only ever shows a static HTML+CSS fragment the LSP
+      // renders from the document (no client-side script, no
+      // `acquireVsCodeApi`, no `postMessage`). Keeping scripts OFF means
+      // that even if the renderer ever emitted an unescaped tag, an
+      // injected `<script>` could not execute — defense-in-depth over
+      // aozora-render's HTML escaping, and consistent with the
+      // `enableScripts: false` notation guide. Mirrors the strict CSP
+      // the upstream aozora playground adopted (aozora#67).
+      enableScripts: false,
+      // Nothing is loaded from disk, so lock the resource roots to none.
+      localResourceRoots: [],
       retainContextWhenHidden: true,
     },
   );
@@ -244,6 +254,13 @@ function wrapHtml(body: string, mode: WritingMode): string {
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
+  <!-- Strict CSP, defense-in-depth over the renderer's escaping: no
+       scripts of any origin, no remote/data anything except inline
+       styles (the <style> block below) and data: images. Combined with
+       enableScripts:false this makes injected markup inert even if the
+       LSP fragment ever carried an unescaped tag. -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'" />
   <title>Aozora Preview</title>
   <style>
     body {
