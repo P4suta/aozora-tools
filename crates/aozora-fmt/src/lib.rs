@@ -10,6 +10,11 @@
 //! contract across the full Aozora Bunko corpus.
 
 #![forbid(unsafe_code)]
+// The public surface here is a single function; keep it (and anything
+// added later) documented. The `aozora-lsp` library deliberately does
+// not opt in — it re-exports many internals purely for in-crate test
+// visibility, where doc stubs would be noise rather than signal.
+#![warn(missing_docs)]
 
 use aozora::Document;
 

@@ -1,0 +1,30 @@
+# Nightly-only cargo-fuzz sub-crate, detached from the main workspace
+# (own `[workspace]` below) so the shipped crates never link
+# libfuzzer-sys. Crash inputs promote to ../tests/fuzz_regressions/ for
+# stable replay.
+[package]
+name = "aozora-lsp-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+aozora-lsp = { path = ".." }
+
+# Detach from the parent workspace.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "edit_pipeline"
+path = "fuzz_targets/edit_pipeline.rs"
+test = false
+doc = false
+bench = false

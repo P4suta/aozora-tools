@@ -62,7 +62,7 @@ use arc_swap::ArcSwap;
 use parking_lot::Mutex;
 use ropey::Rope;
 use tokio::runtime::Handle;
-use tokio::task::spawn_blocking;
+use tokio::task::{AbortHandle, spawn_blocking};
 use tree_sitter::Parser;
 
 use crate::gaiji_spans::GaijiSpan;
@@ -562,6 +562,10 @@ pub struct DocState {
     snapshot: ArcSwap<Snapshot>,
     edit_version: AtomicU64,
     pub metrics: Arc<Metrics>,
+    /// Abort handle for the most recently scheduled debounced publish
+    /// task. Bounds in-flight debounce tasks to one per document under
+    /// an edit flood (see [`Self::replace_debounce_task`]).
+    debounce_task: Mutex<Option<AbortHandle>>,
 }
 
 impl fmt::Debug for DocState {
@@ -585,6 +589,7 @@ impl DocState {
             snapshot: ArcSwap::from(initial),
             edit_version: AtomicU64::new(0),
             metrics: Arc::new(Metrics::default()),
+            debounce_task: Mutex::new(None),
         });
         state.run_segment_cache_reparse();
         state
@@ -598,6 +603,19 @@ impl DocState {
 
     pub fn edit_version(&self) -> u64 {
         self.edit_version.load(Ordering::SeqCst)
+    }
+
+    /// Install the abort handle for the most recently scheduled
+    /// debounced publish task, aborting the previous one if it is still
+    /// pending. Bounds in-flight debounce tasks to one per document so
+    /// an adversarial edit flood cannot accumulate sleeping tasks; the
+    /// `edit_version` guard in the task body remains the correctness
+    /// mechanism (only the latest version actually publishes).
+    pub fn replace_debounce_task(&self, handle: AbortHandle) {
+        let prev = self.debounce_task.lock().replace(handle);
+        if let Some(prev) = prev {
+            prev.abort();
+        }
     }
 
     pub fn with_segment_cache<R>(&self, f: impl FnOnce(&SegmentCache) -> R) -> R {

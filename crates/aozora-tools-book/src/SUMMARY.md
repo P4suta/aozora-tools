@@ -49,5 +49,6 @@
 
 - [Development loop](contrib/dev.md)
 - [Lint posture](contrib/lints.md)
+- [Fuzzing](contrib/fuzzing.md)
 - [Release process](contrib/release.md)
 - [Sanitizers](contrib/sanitizers.md)

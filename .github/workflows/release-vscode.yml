@@ -159,6 +159,10 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/vscode-v')
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # provenance attestation (Sigstore OIDC)
+      attestations: write # record the attestation against the repo
     steps:
       - uses: actions/checkout@v6
 
@@ -170,6 +174,14 @@ jobs:
 
       - name: List artefacts
         run: ls -la vsix/
+
+      # SLSA-style provenance for each .vsix before it ships to the
+      # Marketplace / Open VSX. Verify with
+      # `gh attestation verify <file> --repo P4suta/aozora-tools`.
+      - name: Attest VSIX provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "vsix/*.vsix"
 
       - uses: oven-sh/setup-bun@v2
         with:

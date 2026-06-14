@@ -1,0 +1,31 @@
+# Nightly-only cargo-fuzz sub-crate. Kept OUT of the main workspace (its
+# own `[workspace]` below) so `cargo build --workspace` never pulls in
+# libfuzzer-sys and the shipped crates stay stable-toolchain + forbid
+# unsafe. Crash inputs are promoted to ../tests/fuzz_regressions/ where
+# the stable `fuzz_regressions.rs` test replays them without nightly.
+[package]
+name = "aozora-fmt-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+aozora-fmt = { path = ".." }
+
+# Detach from the parent workspace.
+[workspace]
+members = ["."]
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "format_idempotent"
+path = "fuzz_targets/format_idempotent.rs"
+test = false
+doc = false
+bench = false

@@ -10,6 +10,29 @@ once 1.0 ships.
 
 ## [Unreleased]
 
+### Security
+
+- **VS Code preview hardened against HTML injection.** The preview
+  webview ran with `enableScripts: true` and no Content-Security-Policy,
+  relying solely on the upstream renderer's escaping. It now runs with
+  `enableScripts: false`, a strict CSP (`default-src 'none'`), and
+  `localResourceRoots: []`, so injected markup is inert even if the
+  renderer ever emitted an unescaped tag
+  (`editors/vscode/src/preview.ts`).
+- **LSP document-size backstop.** Documents above `MAX_DOCUMENT_BYTES`
+  (16 MiB) now skip the `O(n)` semantic parse, diagnostics, HTML
+  preview, and per-request tree access — publishing one informational
+  diagnostic instead — while editing and tree-sitter syntax features
+  keep working. Debounced re-parse tasks are coalesced to one per
+  document. Together these bound the CPU/memory an adversarial
+  multi-hundred-MiB paste can demand
+  (`crates/aozora-lsp/src/{segment_cache,backend,state}.rs`).
+- **`aozora-fmt --write` safety net.** In-place writes are now guarded
+  by a `catch_unwind` (a parser panic exits 2 cleanly and never writes)
+  and a fixed-point check (`format(format(x)) == format(x)`), so a
+  non-idempotent or panicking parse can no longer corrupt the file
+  (`crates/aozora-fmt/src/main.rs`).
+
 ### Added
 
 - **CI `coverage` job** (`.github/workflows/ci.yml`) runs
@@ -49,6 +72,23 @@ once 1.0 ships.
   --all-targets --locked` against the declared
   `rust-version = "1.95.0"`. Catches MSRV regressions that the
   canonical-toolchain `rust` job would miss.
+- **Fuzzing** (`just fuzz-*`, `.github/workflows/fuzz.yml`): cargo-fuzz
+  harnesses `aozora-fmt/format_idempotent` and
+  `aozora-lsp/edit_pipeline` as nightly-only, out-of-workspace
+  sub-crates; a stable `format_source` proptest; and a
+  `tests/fuzz_regressions.rs` replay that pins promoted crash inputs on
+  every `cargo test` (no nightly). Documented at handbook
+  `contrib/fuzzing`.
+- **`Justfile`** with host-run developer recipes (`test`, `fmt`,
+  `clippy`, `doc`, `deny`, `cov`, `ci`) plus the `fuzz-*` triage family,
+  mirroring the sibling aozora / afm repos.
+- `#![warn(missing_docs)]` on the `aozora-fmt` public library.
+- **Release supply-chain integrity**: the `release` and `release-vscode`
+  workflows now attach a CycloneDX SBOM and emit SLSA build-provenance
+  attestations for every archive and `.vsix` (verify with
+  `gh attestation verify <file> --repo P4suta/aozora-tools`). CodeQL
+  default setup already scans `c-cpp` (the tree-sitter `parser.c`),
+  JS/TS, and Rust, so no separate code-scanning workflow is added.
 
 ### Changed
 
@@ -87,6 +127,12 @@ once 1.0 ships.
 - `editors/vscode/README.md` and the preview walkthrough
   (`media/walkthrough/04-preview.md`) document the writing-mode
   toggle and the new `aozora.preview.writingMode` setting.
+- **`aozora` / `aozora-encoding` dependency bumped `v0.3.0` → `v0.4.0`**,
+  picking up the upstream pre-release security hardening (FFI/WASM
+  oversized-input rejection, PUA-sentinel neutralisation, parser
+  cargo-fuzz harnesses) and the `serialize` I3-idempotency fixes
+  (decorative-rule adjacency, leading BOM) that `aozora-fmt --write`
+  relies on.
 
 ### Fixed
 

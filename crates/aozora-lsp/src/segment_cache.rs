@@ -21,6 +21,23 @@ use std::time::{Duration, Instant};
 use aozora::{AozoraTree, Diagnostic, Document};
 use tracing::field::Empty as TracingEmpty;
 
+/// Documents larger than this skip whole-document semantic analysis —
+/// diagnostics, the HTML preview, and the per-request tree access that
+/// powers hover / completion / inlay hints. Tree-sitter syntax features
+/// and plain editing keep working; only the `aozora`-parser-backed
+/// paths degrade.
+///
+/// This is a denial-of-service backstop. The upstream parser is `O(n)`
+/// and runs on the editor's behalf for every keystroke (debounced) and
+/// every preview refresh, so an adversarial multi-hundred-MiB paste
+/// could otherwise peg a core or exhaust memory. Real aozora-bunko
+/// prose is single-digit MiB, so 16 MiB never rejects a genuine
+/// document. Mirrors the per-paragraph `MAX_PARAGRAPH_BYTES` cap at the
+/// whole-document level; enforced in [`SegmentCache::reparse`] and
+/// [`SegmentCache::with_tree`], with the user-facing notice published by
+/// the backend.
+pub(crate) const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
+
 /// Per-call statistics emitted by [`SegmentCache::reparse`].
 ///
 /// The caller (typically the LSP backend's `DocState`) feeds these
@@ -68,6 +85,26 @@ impl SegmentCache {
     )]
     pub fn reparse(&mut self, text: &str) -> (Vec<Diagnostic>, ReparseStats) {
         let started_at = Instant::now();
+
+        // Skip the O(n) parse for oversized documents (see
+        // `MAX_DOCUMENT_BYTES`). Store the text so size checks stay
+        // consistent, leave diagnostics empty — the backend publishes a
+        // single "too large" notice in their place — and report a
+        // zero-segment reparse so metrics don't count phantom work.
+        if text.len() > MAX_DOCUMENT_BYTES {
+            text.clone_into(&mut self.text);
+            self.diagnostics.clear();
+            let stats = ReparseStats {
+                segment_count: 0,
+                cache_hits: 0,
+                cache_misses: 0,
+                cache_entries_after: 0,
+                cache_bytes_estimate: u64::try_from(text.len()).unwrap_or(u64::MAX),
+                latency_us: duration_as_us(started_at.elapsed()),
+            };
+            return (Vec::new(), stats);
+        }
+
         let document = Document::new(text);
         let diagnostics: Vec<Diagnostic> = document.parse().diagnostics().to_vec();
         let latency_us = duration_as_us(started_at.elapsed());
@@ -114,6 +151,13 @@ impl SegmentCache {
     /// on the corpus).
     pub fn with_tree<R>(&self, f: impl FnOnce(&AozoraTree<'_>) -> R) -> Option<R> {
         if self.text.is_empty() && self.diagnostics.is_empty() {
+            return None;
+        }
+        // Oversized documents skip semantic parsing (see `reparse`);
+        // re-parsing the whole text on every hover / completion would
+        // hang the editor. Degrade to `None` so those handlers return
+        // nothing rather than block.
+        if self.text.len() > MAX_DOCUMENT_BYTES {
             return None;
         }
         let document = Document::new(self.text.as_str());
@@ -187,5 +231,18 @@ mod tests {
         let mut cache = SegmentCache::default();
         let (diags, _) = cache.reparse("");
         assert!(diags.is_empty());
+    }
+
+    #[test]
+    fn oversized_text_skips_parse_and_degrades_tree() {
+        let mut cache = SegmentCache::default();
+        let big = "a".repeat(MAX_DOCUMENT_BYTES + 1);
+        let (diags, stats) = cache.reparse(&big);
+        assert!(diags.is_empty(), "oversized parse must be skipped");
+        assert_eq!(stats.segment_count, 0, "no segments parsed when oversized");
+        assert!(
+            cache.with_tree(|_| ()).is_none(),
+            "with_tree must degrade to None for oversized documents",
+        );
     }
 }
