@@ -37,6 +37,7 @@ use crate::half_width_emmet::emmet_completions;
 use crate::linked_editing::linked_editing_at;
 use crate::metrics::ParseSample;
 use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
+use crate::segment_cache::MAX_DOCUMENT_BYTES;
 use crate::state::DocState;
 use crate::structured_snippets::snippet_completions;
 use crate::text_edit::LocalTextEdit;
@@ -45,17 +46,17 @@ use tower_lsp::jsonrpc::{Error as JsonRpcError, Result};
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
     CodeActionResponse, CompletionItem, CompletionOptions, CompletionParams, CompletionResponse,
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentFormattingParams, DocumentOnTypeFormattingOptions, DocumentOnTypeFormattingParams,
-    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, ExecuteCommandOptions,
-    ExecuteCommandParams, FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, Hover,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
-    LinkedEditingRangeParams, LinkedEditingRangeServerCapabilities, LinkedEditingRanges,
-    MessageType, OneOf, Range, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
-    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo,
-    TextDocumentContentChangeEvent, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-    Url, WorkDoneProgressOptions,
+    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentFormattingParams, DocumentOnTypeFormattingOptions,
+    DocumentOnTypeFormattingParams, DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse,
+    ExecuteCommandOptions, ExecuteCommandParams, FoldingRange, FoldingRangeParams,
+    FoldingRangeProviderCapability, Hover, HoverParams, HoverProviderCapability, InitializeParams,
+    InitializeResult, InitializedParams, LinkedEditingRangeParams,
+    LinkedEditingRangeServerCapabilities, LinkedEditingRanges, MessageType, OneOf, Position, Range,
+    SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
+    SemanticTokensParams, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, ServerInfo, TextDocumentContentChangeEvent, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Url, WorkDoneProgressOptions,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -86,6 +87,46 @@ pub struct Backend {
 /// tasks see a stale version and exit.
 const PUBLISH_DEBOUNCE_MS: u64 = 150;
 
+/// Render a byte length as whole MiB for user-facing messages. Integer
+/// division sidesteps the `clippy::cast_precision_loss` a float cast
+/// would trip.
+const fn as_mib(bytes: usize) -> usize {
+    bytes / (1024 * 1024)
+}
+
+/// The single informational diagnostic published for a document above
+/// [`MAX_DOCUMENT_BYTES`], anchored at the start of the file.
+fn oversize_notice(byte_len: usize) -> Diagnostic {
+    Diagnostic {
+        range: Range {
+            start: Position::new(0, 0),
+            end: Position::new(0, 0),
+        },
+        severity: Some(DiagnosticSeverity::INFORMATION),
+        source: Some("aozora-lsp".to_owned()),
+        message: format!(
+            "This document is {} MiB, above the {} MiB limit for full analysis. \
+             Editing and syntax highlighting keep working; diagnostics and the HTML \
+             preview are paused for this file.",
+            as_mib(byte_len),
+            as_mib(MAX_DOCUMENT_BYTES),
+        ),
+        ..Default::default()
+    }
+}
+
+/// Inert HTML fragment returned by `aozora/renderHtml` for an oversized
+/// document. Plain text only — no document content is interpolated, so
+/// it is safe in the (script-free, strict-CSP) preview webview.
+fn oversize_html_notice(byte_len: usize) -> String {
+    format!(
+        "<p>Preview paused — this document is {} MiB, above the {} MiB limit. \
+         Editing still works.</p>",
+        as_mib(byte_len),
+        as_mib(MAX_DOCUMENT_BYTES),
+    )
+}
+
 impl Backend {
     /// Build a new backend. Signature matches `LspService::new`'s
     /// `FnOnce(Client) -> Backend` requirement, so users call this
@@ -101,8 +142,15 @@ impl Backend {
     async fn publish(&self, uri: Url) {
         let diags = self.lookup(&uri).map_or_else(Vec::new, |state| {
             let snap = state.snapshot();
+            let text = snap.doc_text();
+            // Oversized documents skip semantic analysis; surface a
+            // single informational notice in place of (empty)
+            // diagnostics so the absence of squiggles is explained.
+            if text.len() > MAX_DOCUMENT_BYTES {
+                return vec![oversize_notice(text.len())];
+            }
             state.with_segment_cache(|cache| {
-                compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
+                compute_diagnostics_from_parsed(text, cache.diagnostics())
             })
         });
         self.client.publish_diagnostics(uri, diags, None).await;
@@ -121,12 +169,17 @@ impl Backend {
         };
         let target_version = state.edit_version();
         let backend = self.clone();
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             sleep(Duration::from_millis(PUBLISH_DEBOUNCE_MS)).await;
             backend
                 .reparse_and_publish_if_current(uri, target_version)
                 .await;
         });
+        // Cap in-flight debounce tasks at one per document: aborting the
+        // previous pending task stops an edit flood from piling up
+        // sleeping tasks. The version guard in the task body still
+        // decides who actually publishes.
+        state.replace_debounce_task(task.abort_handle());
     }
 
     /// The debounced task body — re-parse semantically then
@@ -145,6 +198,16 @@ impl Backend {
             }
             (Arc::clone(state.snapshot().doc_text()), state)
         };
+
+        // Oversized documents skip the O(n) semantic parse; publish a
+        // single notice (re-published on later edits, which is harmless)
+        // and bail before the expensive work.
+        if text.len() > MAX_DOCUMENT_BYTES {
+            self.client
+                .publish_diagnostics(uri, vec![oversize_notice(text.len())], None)
+                .await;
+            return;
+        }
 
         // Parse off the async runtime so concurrent hover /
         // codeAction / inlay requests do not stall waiting for an
@@ -214,6 +277,13 @@ impl Backend {
             .lookup(&params.uri)
             .ok_or_else(|| JsonRpcError::invalid_params("no document at uri"))?;
         let text = state.snapshot().doc_text().to_string();
+        // The preview drives the same O(n) renderer; skip it for
+        // oversized documents and return a short inert notice instead.
+        if text.len() > MAX_DOCUMENT_BYTES {
+            return Ok(RenderHtmlResult {
+                html: oversize_html_notice(text.len()),
+            });
+        }
         let html = spawn_blocking(move || {
             let document = aozora::Document::new(text);
             document.parse().to_html()
