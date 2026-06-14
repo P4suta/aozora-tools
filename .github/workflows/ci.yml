@@ -165,7 +165,7 @@ jobs:
       - uses: crate-ci/typos@v1
 
   vscode:
-    name: vscode extension (biome + tsc)
+    name: vscode extension (biome + tsc + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -176,6 +176,9 @@ jobs:
       - name: Check (biome + tsc, no writes)
         working-directory: editors/vscode
         run: bun run check
+      - name: Test (preview security guard)
+        working-directory: editors/vscode
+        run: bun run test
 
   # Coverage via `cargo llvm-cov nextest`. Runs in its own job so:
   #   - the instrumented build doesn't poison the `rust` job's cache

@@ -352,6 +352,7 @@
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
+    "test": "node --test",
     "check": "biome check . && tsc -p ./ --noEmit",
     "check:fix": "biome check --write . && tsc -p ./ --noEmit"
   },
