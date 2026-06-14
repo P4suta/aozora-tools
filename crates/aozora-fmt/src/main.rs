@@ -20,10 +20,11 @@
 
 use std::fs;
 use std::io::{self, Read, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind, set_hook, take_hook};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use aozora_fmt::format_source;
 use clap::Parser;
 
@@ -59,7 +60,7 @@ fn main() -> ExitCode {
 
 fn run(cli: &Cli) -> Result<ExitCode> {
     let (source, source_path) = read_input(cli.path.as_deref())?;
-    let formatted = format_source(&source);
+    let formatted = format_guarded(&source)?;
     let changed = formatted != source;
 
     if cli.check {
@@ -78,6 +79,21 @@ fn run(cli: &Cli) -> Result<ExitCode> {
             bail!("--write requires a file path, not stdin");
         };
         if changed {
+            // Safety net before clobbering the file in place. `format_source`
+            // is contractually idempotent — `format(format(x)) == format(x)`.
+            // If a second pass changes the output, the round-trip is not a
+            // fixed point for this input, so writing would persist something
+            // the next run would immediately rewrite. Refuse rather than risk
+            // corrupting the user's file.
+            let reformatted = format_guarded(&formatted)?;
+            if reformatted != formatted {
+                bail!(
+                    "refusing to overwrite {}: formatting is not idempotent for this \
+                     input (a second pass changes the output). This is a bug — please \
+                     report it. The file was left unchanged.",
+                    path.display()
+                );
+            }
             fs::write(&path, &formatted).with_context(|| format!("writing {}", path.display()))?;
         }
         return Ok(ExitCode::SUCCESS);
@@ -86,6 +102,33 @@ fn run(cli: &Cli) -> Result<ExitCode> {
     // Default: pipe the canonical form to stdout.
     io::stdout().write_all(formatted.as_bytes())?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// Format `source`, turning an unexpected parser panic into a clean
+/// error rather than a process abort.
+///
+/// [`format_source`] is infallible by type, but it delegates to the
+/// upstream `aozora` parser. A panic there (e.g. on adversarial input)
+/// would otherwise crash the CLI with exit code 101 and a backtrace —
+/// and, worse, in `--write` mode could leave the file half-written.
+/// The workspace builds with `panic = "unwind"`, so `catch_unwind`
+/// turns that into a controlled exit-2 and guarantees no file is
+/// touched after a panic.
+fn format_guarded(source: &str) -> Result<String> {
+    // Silence the default panic hook for the guarded call so a caught
+    // panic does not also dump "thread 'main' panicked …" to stderr —
+    // we report it ourselves below.
+    let prev_hook = take_hook();
+    set_hook(Box::new(|_| {}));
+    let result = catch_unwind(AssertUnwindSafe(|| format_source(source)));
+    set_hook(prev_hook);
+    result.map_err(|_| {
+        anyhow!(
+            "the formatter panicked while processing this input; no files were \
+             modified. This is a bug — please report it at \
+             https://github.com/P4suta/aozora-tools/issues"
+        )
+    })
 }
 
 fn read_input(path: Option<&Path>) -> Result<(String, Option<PathBuf>)> {
