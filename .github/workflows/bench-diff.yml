@@ -151,7 +151,7 @@ jobs:
           workspaces: aozora-tools
 
       - name: Download baseline artifact from main
-        uses: dawidd6/action-download-artifact@v20
+        uses: dawidd6/action-download-artifact@v21
         with:
           workflow: bench-diff.yml
           branch: main
