@@ -3,6 +3,12 @@
     "module": "commonjs",
     "target": "ES2022",
     "lib": ["ES2022"],
+    // Pin the ambient type packages explicitly. vscode-languageclient v10
+    // perturbs the node_modules/@types layout enough that the implicit
+    // "include every @types package" default stops surfacing Node's
+    // globals (process, setTimeout, node: imports). Listing them keeps the
+    // extension host (Node) + VS Code API types resolving deterministically.
+    "types": ["node", "vscode"],
     "outDir": "out",
     "rootDir": "src",
     "sourceMap": true,
