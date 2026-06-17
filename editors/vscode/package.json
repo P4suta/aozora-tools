@@ -16,7 +16,7 @@
   },
   "homepage": "https://github.com/P4suta/aozora-tools/tree/main/editors/vscode#readme",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages",
@@ -362,7 +362,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.13",
     "@types/node": "^25.6.0",
-    "@types/vscode": "^1.80.0",
+    "@types/vscode": "^1.91.0",
     "esbuild": "^0.28.0",
     "typescript": "^6.0.3"
   }
