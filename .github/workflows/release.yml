@@ -131,7 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: aozora-tools-*
           merge-multiple: true
@@ -176,14 +176,14 @@ jobs:
       # Consumers verify with
       # `gh attestation verify <file> --repo P4suta/aozora-tools`.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             artefacts/aozora-tools-*.tar.gz
             artefacts/aozora-tools-*.zip
             artefacts/aozora-tools-sbom.cdx.json
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             artefacts/aozora-tools-*.tar.gz
