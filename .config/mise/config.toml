@@ -1,0 +1,13 @@
+# Rust toolchain + cargo-built dev tools for aozora-tools. mise merges
+# this with mise.toml (same directory, tool-level union), so a single
+# `mise install` provisions everything.
+#
+# The rust version is the source of truth in rust-toolchain.toml; it is
+# restated here so `mise install` provisions a matching toolchain.
+# cargo-fuzz is intentionally absent: it needs the nightly toolchain and
+# is provisioned by the dedicated fuzz workflow, not the default dev set.
+[tools]
+rust = "1.95.0"
+"cargo:cargo-nextest" = "latest"
+"cargo:cargo-deny" = "latest"
+"cargo:cargo-llvm-cov" = "latest"

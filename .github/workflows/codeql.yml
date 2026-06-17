@@ -1,0 +1,43 @@
+---
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"  # weekly, Monday 04:23 UTC
+
+permissions:
+  security-events: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Advanced CodeQL setup (replaces default setup). The language matrix is
+# explicit so we scan only the real source: Rust (the workspace) and
+# TypeScript/JavaScript (the VS Code extension under editors/vscode/).
+# The auto-detected `c-cpp` (the *generated* tree-sitter parser at
+# crates/tree-sitter-aozora/src/parser.c) and the `actions` /
+# js-ts-alias noise that default setup pulled in are intentionally dropped.
+jobs:
+  codeql:
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

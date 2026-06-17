@@ -11,6 +11,13 @@ set shell := ["bash", "-c"]
 default:
     @just --list
 
+# One-command contributor bootstrap: provision every pinned dev tool from
+# the mise manifest (mise.toml + .config/mise/config.toml), then install
+# the git hooks.
+bootstrap:
+    mise install
+    lefthook install
+
 # --- core gates --------------------------------------------------------------
 
 # Test suite: workspace tests (shuttle + fuzz-regression replay) + doctests.

@@ -166,7 +166,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: vsix-*
           merge-multiple: true
@@ -179,7 +179,7 @@ jobs:
       # Marketplace / Open VSX. Verify with
       # `gh attestation verify <file> --repo P4suta/aozora-tools`.
       - name: Attest VSIX provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "vsix/*.vsix"
 
