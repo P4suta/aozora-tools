@@ -1,0 +1,14 @@
+# mise (https://mise.jdx.dev/) — single declarative source of dev-tool
+# versions for aozora-tools. Run `just bootstrap` (or `mise install`)
+# once after cloning.
+#
+# Rust + cargo plugins live in .config/mise/config.toml; mise reads both
+# files and merges the [tools] tables.
+[tools]
+just = "latest"
+lefthook = "latest"
+"github:crate-ci/typos" = "latest"
+"github:crate-ci/committed" = "latest"
+actionlint = "latest"
+# editors/vscode is a TypeScript extension built/checked with bun + biome.
+bun = "latest"

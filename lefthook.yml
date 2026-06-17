@@ -56,13 +56,10 @@ pre-commit:
 
 commit-msg:
   commands:
-    # Conventional Commits — type required, scope optional, breaking-`!`
-    # optional. The `{1}` is lefthook's positional reference to the
-    # commit-message file path that git passes to the hook.
-    conventional:
-      run: |
-        grep -qE '^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?!?: .{1,}' {1} \
-          || { echo 'Commit message must follow Conventional Commits (https://www.conventionalcommits.org/)'; exit 1; }
+    # Conventional Commits via `committed` (config in committed.toml).
+    # `{1}` is lefthook's positional reference to the commit-message file.
+    committed:
+      run: committed --commit-file {1}
 
 pre-push:
   parallel: true
