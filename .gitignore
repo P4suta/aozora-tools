@@ -43,3 +43,4 @@ crates/tree-sitter-aozora/*.o
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/settings.json
+!.vscode/extensions.json

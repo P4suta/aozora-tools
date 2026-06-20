@@ -66,6 +66,29 @@ See the [handbook](https://p4suta.github.io/aozora-tools/) for the
 LSP capability surface, custom protocol extensions, and the
 preview wire format.
 
+## Quick start (contributors)
+
+**Recommended — dev container / Codespaces.** Open the repo in a dev
+container (VS Code: *Dev Containers: Reopen in Container*) or a Codespace
+(GitHub: *Code → Codespaces → Create*). The container provisions the
+pinned toolchain, installs the git hooks, and warms the caches for you —
+you land in a ready workspace. Run `just doctor` any time to confirm.
+
+**Host toolchain (also fully supported).** Prefer your own machine? You
+need [`rustup`](https://rustup.rs/) (reads `rust-toolchain.toml` → Rust
+1.95.0), a C compiler (for the tree-sitter grammar), and
+[`mise`](https://mise.jdx.dev/) for the rest of the pinned tools:
+
+```sh
+just bootstrap   # mise install + lefthook install
+just doctor      # verify the environment; prints the next step for any gap
+bacon            # edit-build-test loop
+```
+
+Both paths are documented in full in
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) and
+[`contrib/dev.md`](./crates/aozora-tools-book/src/contrib/dev.md).
+
 ## Build and run
 
 The workspace pins [`aozora`](https://github.com/P4suta/aozora) at an
@@ -74,7 +97,7 @@ Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
 [`bun`](https://bun.sh/) for the VS Code extension.
 
 ```sh
-# Native cargo build (host toolchain — no Docker, by design).
+# Native cargo build (host toolchain).
 cargo build --workspace
 cargo test  --workspace --all-targets
 cargo run   --bin aozora-fmt -- sample.txt

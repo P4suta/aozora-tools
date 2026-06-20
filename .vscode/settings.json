@@ -1,0 +1,88 @@
+{
+  // Settings for the aozora-tools Rust workspace opened at the repo root.
+  // Per-folder wiring for the VS Code extension lives in
+  // editors/vscode/.vscode/, and the sample LSP path in samples/.vscode/.
+
+  // ── rust-analyzer: mirror CI's clippy gate (ci.yml) ──
+  // CI runs `clippy --workspace --all-targets --all-features`. We match
+  // the surface but deliberately omit `-D warnings`: in-editor, lints
+  // should surface as warnings, not paint the file red as you type.
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": [
+    "--workspace",
+    "--all-targets",
+    "--all-features"
+  ],
+  "rust-analyzer.checkOnSave": true,
+
+  // Keep check artifacts out of the CLI build's target/ so a terminal
+  // `cargo build` / `just ci` doesn't fight the analyzer for the same
+  // lock ("Blocking waiting for file lock on build directory").
+  "rust-analyzer.cargo.targetDir": true,
+
+  // editors/vscode (TS) and crates/aozora-tools-book (mdbook) are not
+  // Cargo members — don't let the analyzer index their build output.
+  "rust-analyzer.files.excludeDirs": [
+    "editors/vscode/node_modules",
+    "editors/vscode/out",
+    "crates/aozora-tools-book/book",
+    "target"
+  ],
+
+  // ── File associations ──
+  "files.associations": {
+    "*.afm": "aozora",
+    "*.aozora": "aozora"
+  },
+
+  // ── Keep the tree, search, and watcher light ──
+  "files.exclude": {
+    "**/.git": true,
+    "**/target": true,
+    "editors/vscode/node_modules": true,
+    "editors/vscode/out": true,
+    "crates/aozora-tools-book/book": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/Cargo.lock": true,
+    "editors/vscode/node_modules": true,
+    "editors/vscode/out": true,
+    "editors/vscode/bun.lock": true,
+    "crates/aozora-tools-book/book": true,
+    "samples/bouten.afm": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/.git/**": true,
+    "editors/vscode/node_modules/**": true,
+    "editors/vscode/out/**": true,
+    "crates/aozora-tools-book/book/**": true,
+    "samples/bouten.afm": true
+  },
+
+  // ── Formatters ──
+  // Rust → rustfmt (via rust-analyzer, reads rustfmt.toml).
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true
+  },
+  // TS/JS/JSON under editors/vscode → biome (reads biome.json).
+  "[typescript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[javascript]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[json]": { "editor.defaultFormatter": "biomejs.biome" },
+  "[jsonc]": { "editor.defaultFormatter": "biomejs.biome" },
+  // TOML configs are hand-aligned with column comments — don't reflow.
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml",
+    "editor.formatOnSave": false
+  },
+  // aozora corpus/fixtures are byte-sensitive — never format on save.
+  "[aozora]": {
+    "editor.formatOnSave": false
+  },
+  "editor.formatOnSave": true,
+
+  // bouten.afm is ~6.5 MB; keep tokenization-heavy features in check.
+  "editor.largeFileOptimizations": true
+}

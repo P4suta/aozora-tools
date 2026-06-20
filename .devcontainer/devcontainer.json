@@ -1,0 +1,76 @@
+{
+  // aozora-tools dev container — the *recommended* onboarding path.
+  // The host (rustup + mise) path remains fully supported; see
+  // CONTRIBUTING.md and crates/aozora-tools-book/src/contrib/dev.md.
+  //
+  // Tool-version single source of truth:
+  //   - Rust: rust-toolchain.toml (rustup honours it; CI does too).
+  //   - Everything else: mise.toml + .config/mise/config.toml.
+  // We deliberately let mise NOT manage Rust in the container
+  // (MISE_DISABLE_TOOLS=rust) so there is exactly one effective Rust pin
+  // (rust-toolchain.toml) and no second rustc shadowing it on PATH.
+  "name": "aozora-tools",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+
+  "remoteEnv": {
+    // Provision every mise tool EXCEPT rust; rustup owns Rust.
+    "MISE_DISABLE_TOOLS": "rust",
+    // Pull cargo:* tools (nextest, deny, llvm-cov) as prebuilt binaries
+    // via cargo-binstall instead of compiling from source.
+    "MISE_CARGO_BINSTALL": "true",
+    // Link with mold for faster builds (mold is apt-installed in the
+    // image). Matches the RUSTFLAGS the CI workflows use; .cargo/config.toml
+    // deliberately does NOT force a linker, so this env doesn't clobber
+    // any project-level build.rustflags (there are none). Cargo registry
+    // retries already come from .cargo/config.toml ([net] retry = 10).
+    "RUSTFLAGS": "-C link-arg=-fuse-ld=mold",
+    "RUSTDOCFLAGS": "-C link-arg=-fuse-ld=mold"
+  },
+
+  // ---- lifecycle ----------------------------------------------------------
+  // onCreate: provision the pinned toolchain set (prebuild-eligible).
+  "onCreateCommand": "bash .devcontainer/on-create.sh",
+  // postCreate: wire up THIS checkout (git hooks, JS deps, warm cargo).
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  // updateContent: keep prebuilds warm when lockfiles move.
+  "updateContentCommand": "bash .devcontainer/update-content.sh",
+
+  // ---- persistent caches (fast rebuilds) ----------------------------------
+  "mounts": [
+    "source=aozora-cargo-registry,target=/home/vscode/.cargo/registry,type=volume",
+    "source=aozora-cargo-git,target=/home/vscode/.cargo/git,type=volume",
+    "source=aozora-target,target=${containerWorkspaceFolder}/target,type=volume",
+    "source=aozora-bun-cache,target=/home/vscode/.bun/install/cache,type=volume",
+    "source=aozora-mise,target=/home/vscode/.local/share/mise,type=volume"
+  ],
+
+  "customizations": {
+    "vscode": {
+      // Container-essential recommendations only. The canonical,
+      // human-facing recommended list lives in .vscode/extensions.json
+      // (host devs read that). Keep the two lists in sync.
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "vadimcn.vscode-lldb",
+        "tamasfe.even-better-toml",
+        "biomejs.biome",
+        "yasunobu-sakashita.aozora-vscode"
+      ],
+      "settings": {
+        // Container-only wiring; editor/format prefs stay in
+        // .vscode/settings.json.
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  // 4-core / 8GB is the practical floor for a warm Rust workspace build.
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb"
+  },
+
+  "remoteUser": "vscode"
+}

@@ -1,0 +1,71 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // One-click debug: aozora-fmt against a sample file. `--check` is
+      // read-only, so it never rewrites the tracked fixture.
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug aozora-fmt (samples/ruby.afm)",
+      "cargo": {
+        "args": ["build", "--bin=aozora-fmt", "--package=aozora-fmt"],
+        "filter": { "name": "aozora-fmt", "kind": "bin" }
+      },
+      "args": ["${workspaceFolder}/samples/ruby.afm", "--check"],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      // aozora-fmt reading from stdin (paste / redirect into the console).
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug aozora-fmt (stdin)",
+      "cargo": {
+        "args": ["build", "--bin=aozora-fmt", "--package=aozora-fmt"],
+        "filter": { "name": "aozora-fmt", "kind": "bin" }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "stdio": ["*", "*", "*"]
+    },
+    {
+      // aozora-lsp is a stdio server: it only does useful work once a
+      // client spawns it. So we ATTACH to the process the Extension Dev
+      // Host launched. Pick the `aozora-lsp` PID when prompted. Point the
+      // Dev Host's `aozora.lsp.path` at target/debug/aozora-lsp first, and
+      // `cargo build -p aozora-lsp` so the binary exists.
+      "type": "lldb",
+      "request": "attach",
+      "name": "Attach to aozora-lsp",
+      "program": "${workspaceFolder}/target/debug/aozora-lsp",
+      "pid": "${command:pickProcess}"
+    },
+    {
+      // Extension Dev Host launched from the ROOT window, samples preloaded.
+      // The canonical inner-loop Dev Host lives in editors/vscode/.vscode;
+      // this is the root-window convenience equivalent.
+      "type": "extensionHost",
+      "request": "launch",
+      "name": "Launch Extension Dev Host (samples/)",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/editors/vscode",
+        "${workspaceFolder}/samples"
+      ],
+      "outFiles": ["${workspaceFolder}/editors/vscode/out/**/*.js"],
+      "preLaunchTask": "vscode: compile extension"
+    }
+  ],
+  "compounds": [
+    {
+      // Launch the Dev Host, then attach to its aozora-lsp child. Note the
+      // ordering: start this compound, open a .afm in the Dev Host to
+      // trigger the server spawn, THEN pick the PID in the attach prompt.
+      "name": "Dev Host + attach aozora-lsp",
+      "configurations": [
+        "Launch Extension Dev Host (samples/)",
+        "Attach to aozora-lsp"
+      ],
+      "stopAll": true
+    }
+  ]
+}
