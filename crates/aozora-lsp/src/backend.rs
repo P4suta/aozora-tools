@@ -30,7 +30,7 @@ use crate::hover::hover_at;
 use crate::linked_editing::linked_editing_at;
 use crate::metrics::ParseSample;
 use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
-use crate::segment_cache::MAX_DOCUMENT_BYTES;
+use crate::parse_cache::MAX_DOCUMENT_BYTES;
 use crate::state::DocState;
 use crate::structured_snippets::snippet_completions;
 use crate::text_edit::LocalTextEdit;
@@ -141,7 +141,7 @@ impl Backend {
             if text.len() > MAX_DOCUMENT_BYTES {
                 return vec![oversize_notice(text.len())];
             }
-            state.with_segment_cache(|cache| {
+            state.with_parse_cache(|cache| {
                 compute_diagnostics_from_parsed(text, cache.diagnostics())
             })
         });
@@ -231,7 +231,7 @@ impl Backend {
             cache_bytes_estimate: bytes_estimate,
         });
         let snap = state.snapshot();
-        let publish_diags = state.with_segment_cache(|cache| {
+        let publish_diags = state.with_parse_cache(|cache| {
             compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
         });
         self.client
@@ -999,7 +999,7 @@ mod tests {
         // Plain text emits zero diagnostics — the cache surfaces an
         // empty slice but is *populated* (no longer "first reparse"
         // pending).
-        state.with_segment_cache(|cache| {
+        state.with_parse_cache(|cache| {
             assert!(cache.diagnostics().is_empty());
         });
         assert_eq!(&**state.snapshot().doc_text(), "hello");
@@ -1091,8 +1091,8 @@ mod tests {
         // production. For this unit test (no async runtime) we drive
         // it synchronously through the same entry point the debounced
         // task uses.
-        state.run_segment_cache_reparse();
-        state.with_segment_cache(|cache| {
+        state.run_parse_cache_reparse();
+        state.with_parse_cache(|cache| {
             let inline = cache
                 .with_tree(|t| t.lex_output().registry.count_kind(aozora::Sentinel::Inline))
                 .expect("populated");
@@ -1109,8 +1109,8 @@ mod tests {
         // See note in `edit_inserting_aozora_trigger_reparses` — the
         // semantic re-parse is deferred to the debounced background
         // task in production.
-        state.run_segment_cache_reparse();
-        state.with_segment_cache(|cache| {
+        state.run_parse_cache_reparse();
+        state.with_parse_cache(|cache| {
             assert!(
                 !cache.diagnostics().is_empty(),
                 "PUA injection must produce diagnostics; got {:?}",

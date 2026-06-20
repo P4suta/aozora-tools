@@ -38,7 +38,7 @@
 //!
 //! The `aozora` Rust parser remains the source of truth for
 //! diagnostics, HTML rendering, and formatting (see
-//! [`crate::segment_cache::SegmentCache`]). Tree-sitter is the
+//! [`crate::parse_cache::ParseCache`]). Tree-sitter is the
 //! structural-only fast path that high-frequency LSP requests
 //! (hover, completion, linkedEditingRange, semanticTokens, gaiji
 //! span extraction) ride against the per-paragraph trees.

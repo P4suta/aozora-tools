@@ -63,7 +63,7 @@ pub struct Metrics {
     pub cache_hit_total: AtomicU64,
     /// Cumulative cache misses.
     pub cache_miss_total: AtomicU64,
-    /// Live entries in the segment cache after the last reparse.
+    /// Live entries in the parse cache after the last reparse.
     pub cache_entries: AtomicU64,
     /// Approximate cache memory: sum of segment text bytes that
     /// remained in the cache after the last reparse. Useful for

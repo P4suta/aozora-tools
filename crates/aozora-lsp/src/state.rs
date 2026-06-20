@@ -35,7 +35,7 @@ use crate::paragraph::{
     MAX_PARAGRAPH_BYTES, MutParagraph, ParagraphSnapshot, build_paragraph_snapshot,
     paragraph_byte_ranges,
 };
-use crate::segment_cache::SegmentCache;
+use crate::parse_cache::ParseCache;
 use crate::text_edit::{EditError, LocalTextEdit};
 
 /// Slice `source` at `range`, build a new owned `Rope` from that
@@ -80,7 +80,7 @@ fn paragraph_from_rope_slice(
 pub struct BufferState {
     pub paragraphs: Vec<MutParagraph>,
     pub parser: Parser,
-    pub segment_cache: SegmentCache,
+    pub parse_cache: ParseCache,
 }
 
 impl fmt::Debug for BufferState {
@@ -111,7 +111,7 @@ impl BufferState {
         Self {
             paragraphs,
             parser,
-            segment_cache: SegmentCache::default(),
+            parse_cache: ParseCache::default(),
         }
     }
 
@@ -553,7 +553,7 @@ impl DocState {
             metrics: Arc::new(Metrics::default()),
             debounce_task: Mutex::new(None),
         });
-        state.run_segment_cache_reparse();
+        state.run_parse_cache_reparse();
         state
     }
 
@@ -580,14 +580,14 @@ impl DocState {
         }
     }
 
-    pub fn with_segment_cache<R>(&self, f: impl FnOnce(&SegmentCache) -> R) -> R {
+    pub fn with_parse_cache<R>(&self, f: impl FnOnce(&ParseCache) -> R) -> R {
         let buffer = self.buffer.lock();
-        f(&buffer.segment_cache)
+        f(&buffer.parse_cache)
     }
 
     pub fn install_diagnostics(&self, diagnostics: Vec<aozora::Diagnostic>) {
         let mut buffer = self.buffer.lock();
-        buffer.segment_cache.set_diagnostics(diagnostics);
+        buffer.parse_cache.set_diagnostics(diagnostics);
     }
 
     /// Apply a batch of edits and ratchet the snapshot.
@@ -660,14 +660,14 @@ impl DocState {
         }
     }
 
-    pub fn run_segment_cache_reparse(&self) {
+    pub fn run_parse_cache_reparse(&self) {
         let stats = {
             let mut buffer = self.buffer.lock();
             let mut text = String::new();
             for paragraph in &buffer.paragraphs {
                 text.push_str(&paragraph.text.to_string());
             }
-            let (_diags, stats) = buffer.segment_cache.reparse(&text);
+            let (_diags, stats) = buffer.parse_cache.reparse(&text);
             stats
         };
         self.metrics.record_parse(ParseSample {
@@ -682,7 +682,7 @@ impl DocState {
             tracing::warn!(
                 latency_us = stats.latency_us,
                 threshold_us = threshold,
-                segment_count = stats.segment_count,
+                parse_count = stats.parse_count,
                 cache_hits = stats.cache_hits,
                 cache_misses = stats.cache_misses,
                 "parse exceeded slow-path threshold",

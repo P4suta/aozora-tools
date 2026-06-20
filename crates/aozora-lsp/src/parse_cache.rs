@@ -10,7 +10,7 @@
 //! make it `!Sync`. The LSP backend wraps every per-document state
 //! in `Arc<DashMap<Url, DocState>>`, which requires `DocState: Sync`.
 //! Stashing a `Document` inside `DocState` therefore cannot work
-//! across threads. Instead, [`SegmentCache`] stores the latest text
+//! across threads. Instead, [`ParseCache`] stores the latest text
 //! and re-parses with a fresh `Document` whenever a request handler
 //! needs the [`AozoraTree`]. The corpus median document re-parses in
 //! single-digit milliseconds — well below the keystroke-perceptibility
@@ -33,12 +33,12 @@ use tracing::field::Empty as TracingEmpty;
 /// could otherwise peg a core or exhaust memory. Real aozora-bunko
 /// prose is single-digit MiB, so 16 MiB never rejects a genuine
 /// document. Mirrors the per-paragraph `MAX_PARAGRAPH_BYTES` cap at the
-/// whole-document level; enforced in [`SegmentCache::reparse`] and
-/// [`SegmentCache::with_tree`], with the user-facing notice published by
+/// whole-document level; enforced in [`ParseCache::reparse`] and
+/// [`ParseCache::with_tree`], with the user-facing notice published by
 /// the backend.
 pub(crate) const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 
-/// Per-call statistics emitted by [`SegmentCache::reparse`].
+/// Per-call statistics emitted by [`ParseCache::reparse`].
 ///
 /// The caller (typically the LSP backend's `DocState`) feeds these
 /// into the per-document `Metrics` so parse latency
@@ -47,7 +47,7 @@ pub(crate) const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 /// call — every reparse is a "miss" under the whole-document model.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReparseStats {
-    pub segment_count: u64,
+    pub parse_count: u64,
     pub cache_hits: u64,
     pub cache_misses: u64,
     pub cache_entries_after: u64,
@@ -63,7 +63,7 @@ pub struct ReparseStats {
 /// [`Self::with_tree`], which builds a fresh [`Document`] on the
 /// stack and yields a borrowed tree to the closure.
 #[derive(Debug, Default, Clone)]
-pub struct SegmentCache {
+pub struct ParseCache {
     /// Latest source text. Owned so reads don't have to borrow back
     /// into the parent `DocState`.
     text: String,
@@ -72,7 +72,7 @@ pub struct SegmentCache {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl SegmentCache {
+impl ParseCache {
     /// Re-parse `text`. Returns the diagnostics produced by the parse
     /// plus per-call statistics.
     #[tracing::instrument(
@@ -95,7 +95,7 @@ impl SegmentCache {
             text.clone_into(&mut self.text);
             self.diagnostics.clear();
             let stats = ReparseStats {
-                segment_count: 0,
+                parse_count: 0,
                 cache_hits: 0,
                 cache_misses: 0,
                 cache_entries_after: 0,
@@ -114,7 +114,7 @@ impl SegmentCache {
 
         let bytes_estimate = u64::try_from(text.len()).unwrap_or(u64::MAX);
         let stats = ReparseStats {
-            segment_count: 1,
+            parse_count: 1,
             cache_hits: 0,
             cache_misses: 1,
             cache_entries_after: 1,
@@ -185,16 +185,16 @@ mod tests {
 
     #[test]
     fn first_reparse_populates_state() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         assert!(cache.is_empty());
         let (diags, stats) = cache.reparse("hello, world");
         assert!(diags.is_empty());
-        assert_eq!(stats.segment_count, 1);
+        assert_eq!(stats.parse_count, 1);
     }
 
     #[test]
     fn reparse_updates_text_and_with_tree_sees_it() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         drop(cache.reparse("first"));
         drop(cache.reparse("｜青梅《おうめ》"));
         let inline_count = cache
@@ -209,14 +209,14 @@ mod tests {
 
     #[test]
     fn reparse_reports_latency_micros() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         let (_, stats) = cache.reparse("plain text");
         assert!(stats.latency_us < 10_000_000, "stats: {stats:?}");
     }
 
     #[test]
     fn pua_collision_surfaces_diagnostic() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         let (diags, _) = cache.reparse("abc\u{E001}def");
         assert!(
             diags
@@ -228,18 +228,18 @@ mod tests {
 
     #[test]
     fn empty_text_parses_with_no_diagnostics() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         let (diags, _) = cache.reparse("");
         assert!(diags.is_empty());
     }
 
     #[test]
     fn oversized_text_skips_parse_and_degrades_tree() {
-        let mut cache = SegmentCache::default();
+        let mut cache = ParseCache::default();
         let big = "a".repeat(MAX_DOCUMENT_BYTES + 1);
         let (diags, stats) = cache.reparse(&big);
         assert!(diags.is_empty(), "oversized parse must be skipped");
-        assert_eq!(stats.segment_count, 0, "no segments parsed when oversized");
+        assert_eq!(stats.parse_count, 0, "no segments parsed when oversized");
         assert!(
             cache.with_tree(|_| ()).is_none(),
             "with_tree must degrade to None for oversized documents",
