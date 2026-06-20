@@ -23,7 +23,7 @@ use tokio::time::sleep;
 use crate::code_actions::{quick_fix_actions, wrap_selection_actions};
 use crate::commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 use crate::completion::completion_at;
-use crate::diagnostics::compute_diagnostics_from_parsed;
+use crate::diagnostics::diagnostics_from_aozora;
 use crate::formatting::format_edits;
 use crate::half_width_emmet::emmet_completions;
 use crate::hover::hover_at;
@@ -141,9 +141,7 @@ impl AozoraLanguageServer {
             if text.len() > MAX_DOCUMENT_BYTES {
                 return vec![oversize_notice(text.len())];
             }
-            state.with_parse_cache(|cache| {
-                compute_diagnostics_from_parsed(text, cache.diagnostics())
-            })
+            state.with_parse_cache(|cache| diagnostics_from_aozora(text, cache.diagnostics()))
         });
         self.client.publish_diagnostics(uri, diags, None).await;
     }
@@ -232,7 +230,7 @@ impl AozoraLanguageServer {
         });
         let snap = state.snapshot();
         let publish_diags = state.with_parse_cache(|cache| {
-            compute_diagnostics_from_parsed(snap.doc_text(), cache.diagnostics())
+            diagnostics_from_aozora(snap.doc_text(), cache.diagnostics())
         });
         self.client
             .publish_diagnostics(uri, publish_diags, None)

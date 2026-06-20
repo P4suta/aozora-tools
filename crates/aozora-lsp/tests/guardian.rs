@@ -32,9 +32,10 @@ use std::thread;
 
 use aozora_fmt::format_source;
 use aozora_lsp::internals::{
-    ByteEdit, LineIndex, OpenDocument, byte_offset_to_position, completion_at, compute_diagnostics,
-    document_symbols, emmet_completions, folding_ranges, format_edits, format_on_type, hover_at,
-    linked_editing_at, position_to_byte_offset, snippet_completions, wrap_selection_actions,
+    ByteEdit, LineIndex, OpenDocument, byte_offset_to_position, completion_at,
+    diagnostics_for_source, document_symbols, emmet_completions, folding_ranges, format_edits,
+    format_on_type, hover_at, linked_editing_at, position_to_byte_offset, snippet_completions,
+    wrap_selection_actions,
 };
 use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
@@ -166,7 +167,7 @@ fn linked_editing_never_panics_on_corpus() {
 #[test]
 fn diagnostics_format_folding_symbol_never_panic_on_corpus() {
     for src in adversarial_corpus() {
-        drop(compute_diagnostics(&src));
+        drop(diagnostics_for_source(&src));
         drop(format_edits(&src));
         drop(folding_ranges(&src));
         let idx = LineIndex::new(&src);
@@ -405,15 +406,15 @@ fn snapshot_reads_under_write_pressure_stay_consistent() {
 // 5. Compute-diagnostics never panics on malformed input
 // ---------------------------------------------------------------
 
-/// `compute_diagnostics` is the gatekeeper for what the editor
+/// `diagnostics_for_source` is the gatekeeper for what the editor
 /// shows the user — and it sits on top of the aozora semantic
 /// parser, which is the most complex piece in our dependency
 /// graph. Every adversarial input from the corpus must produce
 /// SOME diagnostic vector (possibly empty) without panicking.
 #[test]
-fn compute_diagnostics_returns_valid_ranges_for_corpus() {
+fn diagnostics_for_source_returns_valid_ranges_for_corpus() {
     for src in adversarial_corpus() {
-        let diags = compute_diagnostics(&src);
+        let diags = diagnostics_for_source(&src);
         // Every diagnostic's range must round-trip through the
         // line index — i.e. its line/column must resolve back to a
         // valid byte offset. A diagnostic pointing into the void

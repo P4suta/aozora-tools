@@ -3,13 +3,13 @@
 //! a tokio runtime with stdin/stdout plumbing and is cheaper to cover
 //! by spawning the binary from an editor smoketest on demand.
 
-use aozora_lsp::internals::{compute_diagnostics, format_edits, hover_at};
+use aozora_lsp::internals::{diagnostics_for_source, format_edits, hover_at};
 use tower_lsp::lsp_types::{DiagnosticSeverity, HoverContents, Position};
 
 #[test]
 fn plain_text_yields_no_diagnostics_and_no_edits() {
     let src = "hello world";
-    assert!(compute_diagnostics(src).is_empty());
+    assert!(diagnostics_for_source(src).is_empty());
     assert!(format_edits(src).is_empty());
 }
 
@@ -19,7 +19,7 @@ fn pua_collision_produces_warning_diagnostic() {
     // sanity-check; at least one warning-severity diagnostic must
     // surface.
     let src = "oops\u{E001}here";
-    let diags = compute_diagnostics(src);
+    let diags = diagnostics_for_source(src);
     assert!(
         diags
             .iter()

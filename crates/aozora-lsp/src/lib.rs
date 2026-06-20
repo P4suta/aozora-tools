@@ -115,9 +115,7 @@ pub mod internals {
     pub use crate::code_actions::wrap_selection_actions;
     pub use crate::commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
     pub use crate::completion::completion_at;
-    pub use crate::diagnostics::{
-        compute_diagnostics, compute_diagnostics_from_iter, compute_diagnostics_from_parsed,
-    };
+    pub use crate::diagnostics::{diagnostics_for_source, diagnostics_from_aozora};
     pub use crate::document_symbol::document_symbols;
     pub use crate::folding_range::folding_ranges;
     pub use crate::formatting::format_edits;
