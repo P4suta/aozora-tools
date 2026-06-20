@@ -74,6 +74,7 @@ doctor:
     check cargo-nextest  cargo-nextest  'cargo-nextest --version'  '`mise install`' req
     check cargo-deny     cargo-deny     'cargo-deny --version'     '`mise install`' opt
     check cargo-llvm-cov cargo-llvm-cov 'cargo-llvm-cov --version' '`mise install`' opt
+    check cargo-shear    cargo-shear    'cargo-shear --version'    '`mise install`' opt
     check lefthook       lefthook       'lefthook version'         '`mise install`' req
     check typos          typos          'typos --version'          '`mise install`' opt
     check committed      committed      'committed --version'      '`mise install`' opt
@@ -141,6 +142,10 @@ doc:
 deny:
     cargo deny check
 
+# Unused-dependency check: flag crates in Cargo.toml that nothing imports.
+shear:
+    cargo shear
+
 # Coverage gate (delegates to xtask; same thresholds as CI).
 cov *ARGS:
     cargo run -p aozora-tools-xtask -- coverage {{ARGS}}
@@ -159,7 +164,7 @@ gen-assets-check:
     cargo run -p aozora-tools-xtask -- gen-assets --check
 
 # The full local gate — mirrors CI. Run before pushing.
-ci: fmt-check clippy test doc deny gen-assets-check
+ci: fmt-check clippy test doc deny shear gen-assets-check
     @echo "ci: all gates passed"
 
 # --- fuzzing -----------------------------------------------------------------

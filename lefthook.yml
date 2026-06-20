@@ -76,6 +76,12 @@ pre-push:
       # smoke-tests. Slower than `--lib` alone but catches integration
       # regressions before they reach `main`.
       run: cargo test --workspace --all-targets
+    # Doctests. `--all-targets` above deliberately EXCLUDES them, so without
+    # this hook a broken doc example (e.g. the README wired into
+    # `aozora-fmt` via `#[doc = include_str!]`) would only fail in CI. Mirrors
+    # the CI `rust` job's `doc test` step.
+    rust-doctest:
+      run: cargo test --doc --workspace
     # Build the bench binaries without running them. Catches bench
     # compile errors that wouldn't show up in `cargo test`. Cheap
     # (~3s after warm cache) and prevents broken benches from landing.
@@ -105,6 +111,11 @@ pre-push:
     # (contributors who haven't set up the dev tools chain).
     deny:
       run: command -v cargo-deny >/dev/null && cargo deny --all-features --manifest-path Cargo.toml check || true
+    # Unused-dependency gate. Mirrors the CI `shear` job. Flags crates
+    # declared in Cargo.toml but never used — the blind spot `dead_code`
+    # can't see. Skipped silently when cargo-shear is not installed.
+    shear:
+      run: command -v cargo-shear >/dev/null && cargo shear || true
 
 # After `git pull` / `git merge` / `git checkout` (i.e. when Cargo.lock
 # may have moved underneath us), surface dependency drift so the

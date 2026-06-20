@@ -27,8 +27,8 @@ just doctor           # verify; prints the next command for any gap
 
 `just bootstrap` provisions everything in the mise manifest (Rust per
 `rust-toolchain.toml`, plus just, lefthook, typos, committed, actionlint,
-bun, cargo-nextest, cargo-deny, cargo-llvm-cov) and installs the git
-hooks. Prefer to drive Rust yourself? `rustup show` reads
+bun, cargo-nextest, cargo-deny, cargo-llvm-cov, cargo-shear) and installs
+the git hooks. Prefer to drive Rust yourself? `rustup show` reads
 `rust-toolchain.toml` and materialises the pinned channel + components.
 `bacon` and the rest (`git-cliff`, `mdbook`, …) come in via mise /
 `cargo-binstall`; cargo-fuzz needs nightly and is installed by the fuzz
@@ -53,9 +53,10 @@ TUI with `c` / `t` / `d`.
 `lefthook` runs *gentle* checks on commit: format-and-restage
 (`cargo fmt --all` writes; `bun run check:fix` writes), `cargo
 clippy`, `typos`. The pre-push hook is **strict**: `cargo fmt
---check`, full `clippy --all-features`, the workspace test suite,
-`cargo bench --no-run`, `cargo doc`, `typos`, `gen-assets --check`,
-and the VS Code extension `bun run check`.
+--check`, full `clippy --all-features`, the workspace test suite plus
+doctests, `cargo bench --no-run`, `cargo doc`, `typos`, `cargo deny`,
+`cargo shear`, `gen-assets --check`, and the VS Code extension
+`bun run check`.
 
 `jj` colocated repos bypass git hooks. The pre-push hook is the
 hard gate — it runs whether you commit through `git` or `jj`.
@@ -73,6 +74,7 @@ cargo doc --workspace --no-deps --document-private-items --locked
 cargo check --benches --workspace --locked
 cargo run -p aozora-tools-xtask --locked -- gen-assets --check
 cargo deny --all-features --manifest-path Cargo.toml check
+cargo shear
 typos
 (cd editors/vscode && bun run check)
 ```

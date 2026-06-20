@@ -42,16 +42,24 @@ into the same dispatcher in `aozora_lsp::hover`.
 
 ## `textDocument/completion`
 
-Two completion sources:
+Three completion sources merge into one response (the client's own
+ranker decides ordering):
 
-1. **Slug catalogue** — every entry in `aozora::SLUGS`. Slugs that
-   take arguments (e.g. `［＃「…」に傍点］`) come back as parametric
-   snippets so the cursor lands inside the placeholder.
-2. **Paired delimiter partner** — typing `「` while the cursor is
-   not already inside a paired-delimiter context offers `」` as a
-   "complete pair" item.
+1. **Slug catalogue** — every entry in `aozora::SLUGS`, fired when the
+   cursor sits in a slug-open context (`［＃`, `[#`, `［#`, or `[＃`).
+   Half-width openers are rewritten to the canonical `［＃…］` form on
+   accept, and paired slugs append their close marker as an additional
+   edit.
+2. **Half-width emmet** — typing `[`, `]`, `<`, `>`, `|`, or `*` offers
+   the matching full-width glyph (`［`, `］`, `《…》`, `》`, `｜`, `※`).
+   This is the popup fallback; the primary surface is `onTypeFormatting`
+   (below), which converts on every keystroke without a popup.
+3. **Structured snippets** — snippet items with `${…}` tab-stops that
+   expand into a fully-structured form (e.g. `［＃改ページ］`) and leave
+   the cursor on the next placeholder.
 
-Trigger characters: `［`, `《`, `「`, `〔`, and `※`.
+Trigger characters: `＃`, `#`, `「`, `[`, `]`, `<`, `>`, `|`, `*`, `｜`,
+`《`, and `※`.
 
 ## `textDocument/linkedEditingRange`
 
@@ -80,15 +88,13 @@ matches the document's structural shape.
 
 ## `textDocument/semanticTokens`
 
-Token categories: `kanjiBody`, `rubyBase`, `rubyReading`, `gaiji`,
-`annotationKeyword`, `containerOpen`, `containerClose`, `pageBreak`,
-`headingHint`, `kaeriten`. Modifiers: `unresolved` (gaiji whose
-mencode could not be resolved), `paired` (delimiter that found its
-partner).
+Three token types, emitted as the standard LSP types and mapped from the
+tree-sitter parse: `macro` (gaiji, `※［＃…］`), `enum` (the base 漢字 of
+a ruby pair), and `string` (the reading inside `《…》`). No token
+modifiers are published.
 
-The full token range is returned on `textDocument/semanticTokens/full`;
-delta updates are advertised via `textDocument/semanticTokens/full/delta`
-for editors that opt in.
+Only `textDocument/semanticTokens/full` is advertised — neither range
+requests (`range: false`) nor `full/delta` updates are offered.
 
 ## `workspace/executeCommand`
 

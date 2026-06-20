@@ -326,3 +326,36 @@ jobs:
           # the manifest-less `crates/aozora-tools-book` mdbook tree.
           manifest-path: Cargo.toml
           arguments: --all-features --workspace
+
+  # Unused-dependency gate. `dead_code = "deny"` flags unreachable code but is
+  # blind to crates declared in Cargo.toml yet never compiled in; cargo-shear
+  # parses the source for actual `use` sites and reports the difference. A
+  # separate job (like `deny`) so the failure reads cleanly in the PR check
+  # list; mirrors the local `just shear` recipe and pre-push hook. No build
+  # happens (syn-parses sources + `cargo metadata`), so no linker is needed.
+  shear:
+    name: cargo-shear (unused dependencies)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read Rust toolchain version
+        id: toolchain
+        shell: bash
+        run: |
+          version=$(awk -F'"' '/^channel/ { print $2; exit }' rust-toolchain.toml)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.version }}
+
+      - name: Install cargo-shear
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-shear
+
+      - name: cargo shear
+        run: cargo shear
