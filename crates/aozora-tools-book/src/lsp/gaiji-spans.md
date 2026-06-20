@@ -59,10 +59,9 @@ for the codes.
 
 ## Performance
 
-The data is computed off the latest `Snapshot` (no extra parse). On
-a 6 MB document the response wire size is dominated by the spans
-list, not the per-span payload — clients should consume spans
-incrementally if they support it. The VS Code extension consumes
+The data is computed off the latest `Snapshot` (no extra parse).
+Response wire size scales with the span count, so clients that can
+should consume spans incrementally. The VS Code extension consumes
 the whole array in one pass and uses the LSP `Range` to drive
 `vscode.window.createTextEditorDecorationType`.
 

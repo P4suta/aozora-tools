@@ -1,25 +1,15 @@
 //! `textDocument/inlayHint` handler — cache-driven, lock-free reads.
 //!
-//! Walks the pre-extracted [`crate::gaiji_spans::GaijiSpan`] list
-//! kept up-to-date by `DocState` (refreshed under the same write
-//! lock as the text edit) and emits a small "→ glyph" inlay just
-//! *after* every `※［＃…］` gaiji span whose description+mencode
-//! resolve through [`aozora_encoding::gaiji::lookup`].
+//! Walks the pre-extracted [`crate::gaiji_spans::GaijiSpan`] list that
+//! `DocState` keeps current under the write lock, and emits a small
+//! "→ glyph" inlay just *after* every `※［＃…］` span whose
+//! description+mencode resolve through [`aozora_encoding::gaiji::lookup`].
 //!
-//! ## Why cache-driven
-//!
-//! Earlier passes walked the tree-sitter tree per request, holding
-//! the parser `Mutex` for the duration. Concurrent inlay calls
-//! (VS Code fires several per cursor move / viewport change)
-//! serialised on that lock, costing tens-to-hundreds of milliseconds
-//! per burst. The cached span list lives behind an
-//! `Arc<[GaijiSpan]>` that the handler clones — concurrent calls
-//! work against independent immutable snapshots.
-//!
-//! Combined with [`crate::line_index::LineIndex`], the per-hint cost
-//! drops from `O(doc_size)` (full byte walk per position conversion)
-//! to `O(log lines)`. The whole handler is now
-//! `O(log lines + visible spans)` — independent of document size.
+//! The span list lives behind an `Arc<[GaijiSpan]>` the handler clones,
+//! so concurrent inlay calls (VS Code fires several per cursor move)
+//! never serialise on the parser lock. With
+//! [`crate::line_index::LineIndex`] the handler is
+//! `O(log lines + visible spans)`, independent of document size.
 
 use aozora_encoding::gaiji;
 use tower_lsp::lsp_types::{

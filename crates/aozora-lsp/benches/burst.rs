@@ -141,11 +141,9 @@ fn bench_inlay(c: &mut Criterion) {
     g.finish();
 }
 
-/// Top-level dispatcher. Each individual bench is its own helper
-/// below — splitting them out keeps `bench_subcomponents` short
-/// enough to drop the previous `#[allow(clippy::too_many_lines)]`
-/// and makes each bench discoverable as a named function in
-/// stack traces / `cargo bench --bench burst -- <name>`.
+/// Top-level dispatcher. Each individual bench is its own helper below,
+/// keeping `bench_subcomponents` short and each bench discoverable as a
+/// named function in stack traces / `cargo bench --bench burst -- <name>`.
 fn bench_subcomponents(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let mut g = c.benchmark_group("subcomponents");
@@ -243,9 +241,9 @@ fn bench_ts_apply_edit_offset_0(g: &mut BenchmarkGroup<'_, WallTime>, text: &str
 }
 
 /// Same benchmark but the edit is in the middle of the document.
-/// Tree-sitter's incremental reparse should reuse most subtrees;
-/// the cost should drop from ~200 ms (offset-0 worst case) down to
-/// a fraction. Exact ratio is the whole point of the measurement.
+/// Tree-sitter's incremental reparse should reuse most subtrees, so the
+/// cost drops well below the offset-0 worst case — the ratio is what
+/// this measures.
 fn bench_ts_apply_edit_mid_doc(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_apply_edit_mid_doc_bouten_6mb", |b| {
         let mid = nearest_char_boundary(text, text.len() / 2);

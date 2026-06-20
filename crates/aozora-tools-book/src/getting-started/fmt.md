@@ -46,11 +46,9 @@ prints its path to stderr and exits `1`. Aggregate with `find` /
 The formatter parses the document and re-serialises it through the
 same `Document::parse ∘ AozoraTree::serialize` path the LSP server
 uses for `textDocument/formatting`. The contract is **idempotence**:
-running the formatter twice produces a byte-identical result. A run
-that adds or changes a single character is by definition a normalising
-edit (e.g. an implicit ruby base `日本《にほん》` becomes the
-explicit form `｜日本《にほん》`); no rewrites mutate semantic
-meaning.
+running it twice is byte-identical. Any change is a normalising edit
+(e.g. implicit ruby `日本《にほん》` → explicit `｜日本《にほん》`);
+no rewrite mutates semantic meaning.
 
 See the [Formatting model](../fmt/overview.md) chapter for the full
 canonicalisation rules.

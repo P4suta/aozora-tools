@@ -41,8 +41,8 @@ non-zero test result.
 - **`tsan`** — after a change that touches the lock graph
   (`parking_lot::Mutex`, `ArcSwap`, the debounced reparse task).
   Pairs well with the shuttle randomised model checker behind the
-  `shuttle` feature flag (run both — they catch overlapping but not
-  identical bug classes).
+  `shuttle-tests` feature flag (run both — they catch overlapping
+  but not identical bug classes).
 - **`asan`** — rarely needed for pure Rust but high-signal when
   touching `tree-sitter-aozora`'s C parser surface or any FFI
   boundary. Picks up use-after-free in C code that miri cannot
@@ -50,46 +50,39 @@ non-zero test result.
 
 ## What the harness does **not** do
 
-- It does not run on CI by default. Sanitizers add 10-100×
-  wall-time per workflow, which would break the < 10 min CI budget.
-  Run them on demand before merging changes that touch the
-  unsound-prone surface above.
-- It does not run on Windows or non-x86_64 macOS. miri works
+- It does not run on CI by default — sanitizers' wall-time would
+  break the CI budget. Run them on demand before merging changes
+  that touch the unsound-prone surface above.
+- It does not run on Windows or non-x86_64 macOS. miri is
   cross-platform but tsan/asan are tied to LLVM sanitizer support;
-  the script bails early on unsupported platforms with a clear
-  error.
+  the script bails early on unsupported platforms.
 
 ## Reading sanitizer output
 
 - **miri** — UB reports include the pointer's stacked-borrows
-  history. Read the `Inside ` / `Outside ` markers to find the
-  exact source location of the violating borrow. Most common
-  miri-only failures in `aozora-lsp` are around the `bumpalo`
-  arena boundary; the `Document` cannot escape its `with_tree`
-  closure for exactly this reason.
-- **tsan** — race reports name two stack traces (the conflicting
-  reads/writes). The pattern to look for: a `parking_lot::Mutex`
-  guard dropped on one thread while another reads the data without
-  acquiring the same mutex. The fix is almost always to extend the
-  mutex hold, not to add atomic operations.
-- **asan** — use-after-free reports include both the allocation
-  stack and the deallocation stack. Inside `tree-sitter-aozora`'s C
-  parser these are usually edits to a tree whose subtree was
-  reclaimed.
+  history; the `Inside ` / `Outside ` markers locate the violating
+  borrow. Most miri-only failures in `aozora-lsp` are around the
+  `bumpalo` arena boundary — the `Document` cannot escape its
+  `with_tree` closure for exactly this reason.
+- **tsan** — race reports name the two conflicting stack traces.
+  The usual pattern: a `parking_lot::Mutex` guard dropped on one
+  thread while another reads the data without the same mutex. The
+  fix is almost always to extend the mutex hold, not to add atomics.
+- **asan** — use-after-free reports include both allocation and
+  deallocation stacks. Inside `tree-sitter-aozora`'s C parser these
+  are usually edits to a tree whose subtree was reclaimed.
 
 ## Pairing with the shuttle model checker
 
 The `aozora-lsp` test suite includes a `shuttle`-driven
 randomised-schedule test (`tests/shuttle_doc_state.rs`, gated
-behind the `shuttle` feature):
+behind the `shuttle-tests` feature):
 
 ```sh
-cargo test --features shuttle --test shuttle_doc_state
+cargo test --features shuttle-tests --test shuttle_doc_state
 ```
 
-Shuttle explores arbitrary interleavings of multi-threaded
-operations against the `Arc<DashMap<Url, DocState>>` and pins
-correctness invariants. It is faster than tsan (no instrumentation)
-and catches a subset of the same bug class. Run both: tsan for the
-"is the runtime safe?" question, shuttle for the "does the model
-hold?" question.
+Shuttle explores arbitrary interleavings against the
+`Arc<DashMap<Url, DocState>>` and pins correctness invariants. Run
+both: tsan answers "is the runtime safe?", shuttle answers "does
+the model hold?".

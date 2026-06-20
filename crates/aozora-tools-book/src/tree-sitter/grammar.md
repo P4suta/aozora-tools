@@ -57,8 +57,8 @@ sequence of inline tokens.
 descriptor. `aozora-lsp`'s `did_change` handler builds the edit
 from the LSP `TextDocumentContentChangeEvent` array, applies it to
 the rope buffer, then re-parses with the previous tree as input.
-For an insertion in the middle of a 6 MB document, tree-sitter
-re-parses only the affected region — typically tens of microseconds.
+For an insertion mid-document, tree-sitter re-parses only the
+affected region, not the whole buffer.
 
 The incremental contract holds as long as the edit descriptor's
 byte ranges are accurate. The position-encoding negotiation (UTF-8

@@ -57,15 +57,13 @@ recognises as semantically distinct from the canonical form:
 
 ## When the formatter cannot run
 
-If `Document::parse` produces *any* `Diagnostic::UnclosedBracket` or
+If `Document::parse` produces a `Diagnostic::UnclosedBracket` or
 `Diagnostic::UnmatchedClose`, the formatter still runs — the parser
-does paired-bracket recovery and the recovered tree round-trips
-cleanly — but the rewrite may shuffle text around the offending
-delimiter. `aozora-fmt --check` returns `1` in this case, which is
-the same signal "needs rewrite" mode emits for normalising edits.
-Editors that read diagnostics out of band should suppress automatic
-format-on-save while a `UnclosedBracket` / `UnmatchedClose` diagnostic
-is live.
+does paired-bracket recovery and the recovered tree round-trips —
+but the rewrite may shuffle text around the offending delimiter.
+`aozora-fmt --check` returns `1`, the same signal it emits for
+normalising edits. Editors that read diagnostics out of band should
+suppress format-on-save while such a diagnostic is live.
 
 The CLI never panics on malformed input. Unrecoverable I/O errors
 (missing file, permission denied) exit `2` with a one-line message

@@ -5,11 +5,10 @@
 //!
 //! Tree-sitter's grammar tokenises `［＃…］` as a slug node but does
 //! NOT semantically pair `ここから` / `終わり` markers. The aozora
-//! semantic parser does, but at ~200 ms per 6 MB doc it's too slow
-//! for a per-cursor request like folding ranges. Direct text scanning
-//! against the snapshot's `Arc<str>` is `O(n)` once per request, no
-//! parser invoked, and matches the same byte-then-line conversion
-//! pipeline the rest of the LSP uses.
+//! semantic parser does, but it's too slow for a per-cursor request
+//! like folding ranges. Direct text scanning against the snapshot's
+//! `Arc<str>` is `O(n)` once per request, no parser invoked, and reuses
+//! the same byte-then-line conversion pipeline as the rest of the LSP.
 //!
 //! Two shapes of folds are emitted:
 //!

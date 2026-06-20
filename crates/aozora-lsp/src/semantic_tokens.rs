@@ -4,9 +4,9 @@
 //! ## Why tree-sitter and not the semantic parser
 //!
 //! Tree-sitter gives us a wait-free read against the snapshot's
-//! cheap-cloned [`Tree`]. The semantic parser would re-parse the
-//! whole document on every request (200 ms+ on bouten.afm) — way
-//! beyond the keystroke-rate budget that semantic tokens fire at.
+//! cheap-cloned [`Tree`]. The semantic parser would re-parse the whole
+//! document on every request — beyond the keystroke-rate budget that
+//! semantic tokens fire at.
 //!
 //! ## Token shapes
 //!

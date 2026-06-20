@@ -420,12 +420,9 @@ mod tests {
         };
         // Body text only — no surrounding brackets.
         assert_eq!(edit.new_text, "改ページ");
-        // Regression: the range must NOT cover the existing `］`. An
-        // earlier version aimed `edit.range.end` at `close_end` (the
-        // byte just after `］`), which combined with body-only
-        // new_text silently collapsed the close. The half-open LSP
-        // `TextEdit.range` semantic means end-exclusive; aim end at
-        // the START of `］` to leave the close untouched.
+        // Regression: the range must end at the START of `］`, not after
+        // it. LSP `TextEdit.range` is end-exclusive, so a body-only
+        // new_text with end aimed past `］` silently collapses the close.
         let expected_start_byte = "［＃".len();
         let expected_end_byte = "［＃改".len();
         assert_eq!(

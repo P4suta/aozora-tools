@@ -9,11 +9,11 @@
 - **VS Code extension** — bundles `aozora-lsp` and adds an HTML preview pane
 
 The parser, AST, lexer, encoding and renderer live in the sibling
-[`aozora`](https://github.com/P4suta/aozora) repository on a strict
-release cadence with corpus sweeps; this repository iterates on the
-editor surface (LSP capabilities, VS Code UX, preview WebView, the
-tree-sitter grammar). The split keeps the parser tag stable while the
-authoring tools move quickly.
+[`aozora`](https://github.com/P4suta/aozora) repository, pinned by
+release tag; this repository iterates on the editor surface (LSP
+capabilities, VS Code UX, preview WebView, the tree-sitter grammar).
+The split keeps the parser tag stable while the authoring tools move
+quickly.
 
 ## Who this handbook is for
 

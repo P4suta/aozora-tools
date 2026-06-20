@@ -1,10 +1,6 @@
 [workspace]
 resolver = "3"
-# `members` is an explicit list (no glob) so cargo never picks up
-# `crates/aozora-tools-book/` as an implicit member — the handbook
-# is an mdbook source tree, not a Cargo crate. cargo-deny v0.19+
-# rejects a `[workspace] exclude` entry that names a directory
-# without a Cargo.toml, so explicit-only is the simplest setup.
+# Explicit list (no glob): `crates/aozora-tools-book/` is an mdbook tree, not a crate.
 members = [
     "crates/aozora-fmt",
     "crates/aozora-lsp",
@@ -24,23 +20,13 @@ keywords     = ["aozora", "japanese", "lsp", "formatter", "tree-sitter"]
 categories   = ["development-tools", "command-line-utilities", "text-editors"]
 
 [workspace.dependencies]
-# aozora library surface — top-level façade over the borrowed-AST
-# pipeline (`Document::parse() → AozoraTree<'_>`, structured
-# `Diagnostic`s, `PairLink` side-table, `SLUGS` catalogue,
-# `canonicalise_slug`, `node_at_source`).
-#
-# `aozora-encoding` is needed separately for the `gaiji::resolve`
-# entry the hover handler calls into.
-# Ecosystem policy: pin by immutable commit rev (not tag) so the parser cannot drift. SHA = v0.4.1.
+# Parser ecosystem (sibling repo). Pinned by immutable rev, not tag. rev = v0.4.1.
 aozora          = { version = "0.4.1", git = "https://github.com/P4suta/aozora.git", rev = "a53c632b1d1be4bfcbce7de010ab5b0843e98cc0" }
 aozora-encoding = { version = "0.4.1", git = "https://github.com/P4suta/aozora.git", rev = "a53c632b1d1be4bfcbce7de010ab5b0843e98cc0" }
 
 # Internal workspace members
 aozora-fmt         = { version = "0.1.3", path = "crates/aozora-fmt" }
-# `tree-sitter-aozora` carries an explicit version (matching its
-# `[package].version`) so cargo-deny's `bans.wildcards = "deny"` rule
-# accepts the path dep — a path-only declaration has an implicit
-# wildcard version that the gate refuses.
+# Explicit version (not path-only) so cargo-deny's `bans.wildcards = "deny"` accepts it.
 tree-sitter-aozora = { version = "0.1.0", path = "crates/tree-sitter-aozora" }
 
 # CLI
@@ -53,46 +39,22 @@ tokio              = { version = "1", features = ["rt-multi-thread", "io-std", "
 serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
 dashmap            = "6"
-# `parking_lot::Mutex` for the per-document `BufferState` — std `Mutex`
-# would propagate poisoning every time we acquired it, which we don't
-# want on a writer-only mutex held purely around in-memory text +
-# tree-sitter mutation. parking_lot is also a few percent faster on
-# contention but the API ergonomics are the deciding factor.
-parking_lot        = "0.12"
-# `ArcSwap` — atomic Arc swap for the per-document read snapshot.
-# Reads are wait-free (a single load); writers atomically install a
-# fresh snapshot without invalidating in-flight readers.
-arc-swap           = "1.7"
-# `ropey` — chunked Rope for the editor buffer. O(log n) byte-range
-# splice + cheap clones via the internal Arc<Node>; works as a
-# tree-sitter chunked-input source (parser.parse_with) so the parser
-# never needs a contiguous String materialisation of the buffer.
-ropey              = "1.6"
+parking_lot        = "0.12"  # non-poisoning Mutex for the writer-only BufferState
+arc-swap           = "1.7"   # wait-free read snapshot swap
+ropey              = "1.6"   # chunked Rope; feeds tree-sitter parse_with without a contiguous String
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # Test-only
 proptest = "1"
-# Randomized concurrency model checker. Used in
-# `aozora-lsp/tests/shuttle_doc_state.rs` to explore arbitrary
-# interleavings of multi-threaded `Arc<DashMap<Url, DocState>>`
-# operations without needing a custom sync primitive (where Loom
-# would have been the choice). Gated behind a `shuttle` feature so
-# the dependency is opt-in.
-shuttle = "0.9"
+shuttle  = "0.9"   # randomized concurrency model checker (shuttle feature; see tests/shuttle_doc_state.rs)
 
-# Latency histogram for per-document Metrics. Mean alone hides tail
-# latency (p99 / max); HDRHistogram gives constant-memory percentile
-# tracking with bounded relative error.
-hdrhistogram = { version = "7.5", default-features = false }
+hdrhistogram = { version = "7.5", default-features = false }  # constant-memory percentile tracking for Metrics
 
 [workspace.lints.rust]
-# Hard bans — the compiler rejects these rather than warning.
 unsafe_code      = "forbid"
-# Identifier hygiene: all 日本語 appears as string literals, never as idents.
-non_ascii_idents = "deny"
+non_ascii_idents = "deny"   # 日本語 only as string literals, never idents
 
-# Strong signals that tend to mask real bugs.
 missing_debug_implementations = "warn"
 missing_copy_implementations  = "warn"
 trivial_casts                 = "warn"
@@ -101,31 +63,23 @@ unused_import_braces          = "warn"
 unused_lifetimes              = "warn"
 unused_qualifications         = "warn"
 
-# Lifetime / path hygiene — catches over-broad `pub`, implicit lifetimes
-# in paths, and `'a: 'b` bounds the compiler could infer.
 unreachable_pub                = "warn"
 single_use_lifetimes           = "warn"
 elided_lifetimes_in_paths      = "warn"
 redundant_lifetimes            = "warn"
 explicit_outlives_requirements = "warn"
 
-# Misc quality gates.
-let_underscore_drop         = "warn"  # `let _ = ...` silently drops Drop types
-keyword_idents_2024         = "warn"  # 2024-edition reserved keywords as idents
-variant_size_differences    = "warn"  # large enum variants — push to `Box`
-ambiguous_negative_literals = "warn"  # `-1.pow(2)` precedence traps
+let_underscore_drop         = "warn"
+keyword_idents_2024         = "warn"
+variant_size_differences    = "warn"
+ambiguous_negative_literals = "warn"
 
-# Dead-code policy: the compiler `warn`s by default; CI's
-# `-D warnings` already promotes that to error. Spell `deny` here so a
-# local `cargo build` (which doesn't pass `-D warnings`) still
-# hard-fails on unreferenced items.
+# `deny` (not the default `warn`) so a local `cargo build` without `-D warnings` still fails.
 dead_code = "deny"
 
-# Catch idioms deprecated by the next edition early.
 rust_2024_compatibility = { level = "warn", priority = -1 }
 
 [workspace.lints.rustdoc]
-# Docs are a shipped surface: broken intra-doc links are a defect.
 broken_intra_doc_links       = "deny"
 private_intra_doc_links      = "warn"
 invalid_codeblock_attributes = "warn"
@@ -136,31 +90,17 @@ redundant_explicit_links     = "warn"
 unescaped_backticks          = "warn"
 
 [workspace.lints.clippy]
-# Opt in to the three lint groups mainstream Rust libraries ship with.
-# `priority = -1` lets specific carve-outs below override individual
-# lints inside these groups.
+# `priority = -1` lets the carve-outs below override individual lints in these groups.
 pedantic = { level = "warn", priority = -1 }
 nursery  = { level = "warn", priority = -1 }
 cargo    = { level = "warn", priority = -1 }
 
-# Carve-outs from the cargo group: `multiple_crate_versions` fires on
-# transitive dep version mismatches (e.g. unicode-width 0.1 vs 0.2
-# pulled in by different deps) — those collisions are not our problem
-# to fix locally.
-multiple_crate_versions = "allow"
-
-# `unreachable_pub` (rustc) and `redundant_pub_crate` (clippy::nursery)
-# directly contradict each other: the former wants `pub` items inside
-# private modules narrowed to `pub(crate)`, the latter then complains
-# the `pub(crate)` is "redundant" inside a private module. We pick
-# `unreachable_pub` since narrow visibility is the more useful signal,
-# so the nursery half has to step aside.
+multiple_crate_versions = "allow"  # transitive dep collisions we can't fix locally
+# Contradicts `unreachable_pub`, which we keep; narrow visibility is the better signal.
 redundant_pub_crate = "allow"
 
-# Specific high-value promotions — bugs that routinely slip past default
-# clippy. Tests are exempted from unwrap/expect/panic via `clippy.toml`
-# so these only bite production code paths.
-dbg_macro                  = "warn"  # ban forgotten `dbg!` drops
+# High-value promotions (tests exempt unwrap/expect/panic via clippy.toml).
+dbg_macro                  = "warn"
 todo                       = "warn"
 unimplemented              = "warn"
 clone_on_ref_ptr           = "warn"
@@ -168,35 +108,31 @@ unnecessary_safety_comment = "warn"
 unnecessary_safety_doc     = "warn"
 missing_assert_message     = "warn"
 
-# Restriction group — hand-picked. The full restriction group is
-# deliberately NOT enabled (it contains mutually contradictory lints);
-# each entry below is a considered decision.
-str_to_string                   = "warn"  # prefer `.into()` / `String::from`
-absolute_paths                  = "warn"  # prefer `use`-imported names
-allow_attributes_without_reason = "warn"  # belt-and-braces; every allow must justify itself
+# Hand-picked restriction lints (the full group has mutually contradictory entries).
+str_to_string                   = "warn"
+absolute_paths                  = "warn"
+allow_attributes_without_reason = "warn"  # every allow must carry a reason
 empty_structs_with_brackets     = "warn"
-if_then_some_else_none          = "warn"  # prefer `.then_some` / `.then`
-let_underscore_must_use         = "warn"  # ignoring `#[must_use]` via `let _ =`
+if_then_some_else_none          = "warn"
+let_underscore_must_use         = "warn"
 mixed_read_write_in_expression  = "warn"
 rest_pat_in_fully_bound_structs = "warn"
-same_name_method                = "warn"  # avoid trait/method-name shadowing
-semicolon_outside_block         = "warn"  # `{ … };` over `{ … ; }`
-try_err                         = "warn"  # prefer `?` over `Err(e)?`
-unneeded_field_pattern          = "warn"  # `Foo { a, .. }` over `Foo { a, b: _, c: _ }`
-verbose_file_reads              = "warn"  # prefer `fs::read_to_string` / `fs::read`
-format_push_string              = "warn"  # prefer `write!(s, ...)` over `s.push_str(&format!(...))`
-unnecessary_self_imports        = "warn"  # `use foo;` over `use foo::{self};` when alone
-assertions_on_result_states     = "warn"  # banned: `assert!(r.is_ok())` — use `unwrap()`
-filetype_is_file                = "warn"  # `Path::is_file()` doesn't follow symlinks
-rc_buffer                       = "warn"  # avoid `Rc<String>` / `Rc<Vec<T>>`
-rc_mutex                        = "warn"  # avoid `Rc<Mutex<T>>` (use `Arc`)
-lossy_float_literal             = "warn"  # f32 / f64 literals losing precision
+same_name_method                = "warn"
+semicolon_outside_block         = "warn"
+try_err                         = "warn"
+unneeded_field_pattern          = "warn"
+verbose_file_reads              = "warn"
+format_push_string              = "warn"
+unnecessary_self_imports        = "warn"
+assertions_on_result_states     = "warn"
+filetype_is_file                = "warn"  # doesn't follow symlinks
+rc_buffer                       = "warn"
+rc_mutex                        = "warn"
+lossy_float_literal             = "warn"
 suspicious_xor_used_as_pow      = "warn"  # `2 ^ 8` is xor, not power
 
-# Pedantic-group carve-outs that don't make sense for our codebase
-# shape. Each one mirrors aozora's call.
-module_name_repetitions = "allow"  # noisy when the module name is the domain term (e.g. `paragraph::ParagraphSnapshot`)
-missing_const_for_fn    = "allow"  # forces `const fn` discipline on hot paths where the const-eligibility is incidental
+module_name_repetitions = "allow"  # module name is often the domain term
+missing_const_for_fn    = "allow"
 
 [profile.release]
 lto           = "thin"
@@ -204,15 +140,7 @@ codegen-units = 1
 strip         = "symbols"
 opt-level     = 3
 
-# Distribution profile for binaries shipped to end users — currently
-# `aozora-lsp` bundled inside the VS Code extension `.vsix`. Optimises
-# for *size* over speed (`opt-level = "z"`, `lto = "fat"`,
-# `codegen-units = 1`) because the LSP is mostly request-response over
-# stdio and the steady-state hot path is small; halving the binary on
-# disk + over-network at install time matters more than shaving the
-# already-sub-millisecond per-request CPU. Keeps `panic = "unwind"` so
-# tokio's task isolation still works (a panic in one request doesn't
-# tear down the whole server).
+# Distribution profile (aozora-lsp bundled in the .vsix). Optimises for size over speed.
 [profile.dist]
 inherits      = "release"
 opt-level     = "z"
@@ -220,26 +148,14 @@ lto           = "fat"
 codegen-units = 1
 strip         = "symbols"
 
-# Bench profile inherits release optimisation but keeps debug info so
-# `samply record --` against a `cargo bench --no-run` binary can
-# symbolicate stack frames. Lives next to `[profile.release]` because
-# it intentionally diverges only on those two knobs.
+# Release optimisation plus debug info so `samply` can symbolicate bench binaries.
 [profile.bench]
 inherits = "release"
 strip    = "none"
 debug    = 1
 
-# Dev-mode build tuning. Two wins:
-#   1. `split-debuginfo = "unpacked"` keeps debug info in sibling
-#      `.dwo` files instead of inlining into every `.o`. On Linux/macOS
-#      this halves link wall-time on incremental rebuilds because the
-#      linker doesn't need to copy/relocate large debug sections.
-#   2. `[profile.dev.package."*"]` opt-level = 1 lightly optimises
-#      *dependency* crates only (workspace members keep opt-level = 0
-#      for fast iteration + debuggability). Tests and benches that
-#      spend most of their CPU inside dependencies (proptest,
-#      criterion, tower-lsp) run measurably faster without losing
-#      breakpoint quality on first-party code.
+# `split-debuginfo` speeds incremental link; opt-level=1 on deps only keeps workspace
+# crates at 0 for fast iteration while proptest/criterion/tower-lsp run faster.
 [profile.dev]
 split-debuginfo = "unpacked"
 

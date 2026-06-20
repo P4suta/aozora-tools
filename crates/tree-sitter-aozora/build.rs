@@ -20,9 +20,5 @@ fn main() {
     config.file(&parser_path);
     println!("cargo:rerun-if-changed={}", parser_path.display());
 
-    // No external scanner today. Add a `scanner.c` here if Stage 2+
-    // grammar features (e.g. context-aware kanji-run delimitation)
-    // need one.
-
     config.compile("tree-sitter-aozora");
 }

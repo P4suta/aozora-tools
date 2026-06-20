@@ -1,30 +1,14 @@
 //! Gaiji-span extraction primitives.
 //!
-//! ## Layering
+//! The pure walker that extracts every `※［＃description、mencode］` span
+//! from a single tree-sitter [`Tree`] in local (tree-relative) offsets.
+//! It is deliberately paragraph-agnostic — [`crate::paragraph`] owns the
+//! shift into doc-absolute coordinates.
 //!
-//! This module is the **pure walker** that knows how to extract every
-//! `※［＃description、mencode］` span from a single tree-sitter
-//! [`Tree`] given the text the tree was parsed against. It is
-//! deliberately ignorant of paragraphs / segmentation — the paragraph
-//! layer ([`crate::paragraph`]) handles per-paragraph trees and shifts
-//! the resulting byte offsets into doc-absolute coordinates.
-//!
-//! The split keeps the walker single-purpose (one tree, one text →
-//! local-offset spans) and lets the paragraph snapshot construction
-//! own the doc-vs-local coordinate translation in one place.
-//!
-//! ## Implementation notes
-//!
-//! - **Iterative single-cursor walk** via
-//!   `TreeCursor::goto_first_child` / `goto_next_sibling` /
-//!   `goto_parent`. One cursor is held across the entire walk; a
-//!   recursive form would allocate a fresh `TreeCursor` per
-//!   non-gaiji node and dominate the allocator hot path.
-//! - **`Query` API rejected**: tree-sitter's `(gaiji) @g` capture
-//!   ran ~5× slower than this hand-rolled walk (71 ms → 330 ms on
-//!   the 6 MB bench fixture) because the `QueryCursor`'s general
-//!   pattern-matching automaton has more per-node overhead than a
-//!   single-kind dispatch.
+//! The walk holds one `TreeCursor` across the whole tree (a recursive
+//! form would allocate a cursor per node). The `Query` API is slower
+//! here: its general pattern-matching automaton has more per-node
+//! overhead than this single-kind dispatch.
 
 use std::sync::Arc;
 

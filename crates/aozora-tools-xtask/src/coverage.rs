@@ -50,7 +50,7 @@ const IGNORE_FILENAME_REGEX: &str = r"aozora-tools-xtask/src/.*|aozora-(lsp|fmt)
 #[derive(Args, Debug)]
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "CLI flag struct: each bool maps to one --flag; refactoring into a state-machine enum would lose clap's `--html` / `--no-html` toggle ergonomics"
+    reason = "clap flag struct: each bool is one --flag toggle"
 )]
 pub(crate) struct CoverageArgs {
     /// Emit an HTML report under `target/llvm-cov/html/` (default).

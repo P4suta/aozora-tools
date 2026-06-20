@@ -36,14 +36,11 @@
 //!
 //! Each item carries `filter_text` matching the just-typed char so
 //! VS Code's filter accepts the typed prefix verbatim — same trick
-//! [`crate::completion`] and [`crate::half_width_emmet`] use after
-//! the 2026-04-29 filter-text drift was diagnosed.
+//! [`crate::completion`] and [`crate::half_width_emmet`] use.
 
 #![allow(
     clippy::literal_string_with_formatting_args,
-    reason = "VS Code-style snippet placeholders `${1:base}` collide \
-              syntactically with Rust format args; these strings are \
-              shipped to the editor's snippet engine, not formatted."
+    reason = "snippet placeholders like `${1:base}` are shipped to the editor, not Rust format args"
 )]
 
 use aozora::{SLUGS, SlugFamily};

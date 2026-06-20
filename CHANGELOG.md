@@ -92,41 +92,6 @@ once 1.0 ships.
 
 ### Changed
 
-- handbook `lsp/state-model.md` rewritten to match the
-  paragraph-first refactor in `crate::state` and `crate::paragraph`:
-  `Vec<MutParagraph>` per-paragraph trees, snapshot reuse via
-  `Arc::clone` and `ParagraphSnapshot::shifted_to`, the actual
-  150 ms `PUBLISH_DEBOUNCE_MS` (previously documented as 200 ms),
-  the correct `shuttle-tests` feature name, and the 6 MB /
-  ~33 ns/byte parse-cost numbers behind the design.
-- handbook `vscode/preview.md` rewritten to match `preview.ts`:
-  150 ms client-side debounce (previous text described
-  rebroadcasting `publishDiagnostics` at 200 ms, which is not what
-  the extension does), CSS lives inline in `wrapHtml()` (no
-  separate `media/preview.css`), new writing-mode section.
-- handbook `lsp/extensions.md`: the CHANGELOG cross-reference now
-  points to the actual Keep a Changelog sections (`Changed` /
-  `Removed`) instead of a non-existent "Custom LSP protocol"
-  section.
-- `crates/aozora-lsp/src/incremental.rs` module docstring
-  repositioned: `IncrementalDoc` is now described as the
-  measurement control for `benches/burst.rs`, since production
-  uses the per-paragraph trees in
-  `crate::paragraph::MutParagraph`. The `input_edit` helper
-  continues to be reused by `BufferState`.
-- `crates/aozora-lsp/src/backend.rs`: dropped the `Stage 5` /
-  `Stage 7` development-phase markers from doc comments,
-  replacing them with descriptions of what the code does now.
-- `crates/aozora-tools-xtask/src/main.rs` docstring no longer
-  claims the wrapper passes `--branch` (which is nightly-only);
-  notes that region coverage is the stable analogue.
-- `.github/workflows/ci.yml` coverage-job comments no longer
-  reference `Phase B` / `continue-on-error: true` — that hard-gate
-  rollout already happened, and `continue-on-error` was never
-  introduced into the workflow.
-- `editors/vscode/README.md` and the preview walkthrough
-  (`media/walkthrough/04-preview.md`) document the writing-mode
-  toggle and the new `aozora.preview.writingMode` setting.
 - **`aozora` / `aozora-encoding` dependency bumped `v0.3.0` → `v0.4.0`**,
   picking up the upstream pre-release security hardening (FFI/WASM
   oversized-input rejection, PUA-sentinel neutralisation, parser
@@ -136,18 +101,11 @@ once 1.0 ships.
 
 ### Fixed
 
-- The `coverage` CI job has been silently failing on every main
-  push since it landed in #12 with `error: failed to generate
-  report: failed to create file 'target/llvm-cov/lcov.info': No
-  such file or directory`. The 292 instrumented tests passed, but
-  `cargo llvm-cov report --lcov --output-path …/lcov.info` does
-  not auto-create the parent directory, so the report (and the
-  gate that depends on it) never ran. Auto-merge wasn't blocked
-  because `coverage` was not a required check. Fix: `mkdir -p
-  target/llvm-cov/html` ahead of the report invocations in
-  `.github/workflows/ci.yml`, and `std::fs::create_dir_all` the
-  same path inside `xtask coverage` so local runs surface the
-  same shape.
+- The `coverage` CI job silently failed since #12: `cargo llvm-cov
+  report --lcov` does not create its parent directory, so
+  `target/llvm-cov/lcov.info` was never written and the gate never ran.
+  Fixed by creating the directory ahead of the report in `ci.yml` and
+  in `xtask coverage`.
 
 ## [0.1.3] — 2026-04-28
 

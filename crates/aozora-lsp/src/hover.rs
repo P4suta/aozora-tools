@@ -31,10 +31,6 @@ pub fn hover_at(source: &str, position: Position) -> Option<Hover> {
     let span = find_gaiji_span(source, byte_offset)?;
     let body = &source[span.start + GAIJI_OPEN.len()..span.end - GAIJI_CLOSE.len()];
     let (description, mencode) = parse_gaiji_body(body);
-    // `gaiji::lookup` returns `Option<Resolved>`; `Resolved` carries
-    // either a single Unicode scalar (>99% of hits) or a static
-    // combining sequence (the 25 plane-1 cells like か゚, IPA tone
-    // marks). The hover renderer formats both shapes uniformly.
     let resolved = gaiji::lookup(None, mencode.as_deref(), &description);
     let markdown = render_markdown(&description, mencode.as_deref(), resolved);
     Some(Hover {
@@ -66,12 +62,10 @@ pub fn hover_at(source: &str, position: Position) -> Option<Hover> {
 ///
 /// # Boundary correctness
 ///
-/// An earlier `rfind` version missed cursors sitting exactly on the
-/// `※` byte (the prefix ending at `byte_offset` doesn't yet contain
-/// the trigram). We instead extend the window forward by the same
-/// margin, so the `match_indices` walk catches a `※［＃` whose start
-/// index equals the cursor itself. The walk inside the window stays
-/// `O(window_size)` in the worst case, which is constant.
+/// The window extends forward by the same margin so a `※［＃` whose
+/// start index equals the cursor is still caught (a prefix ending at
+/// `byte_offset` wouldn't yet contain the trigram). The walk inside the
+/// window is `O(window_size)`, i.e. constant.
 const MAX_GAIJI_SPAN_LEN: usize = 512;
 
 fn find_gaiji_span(source: &str, byte_offset: usize) -> Option<ByteRange<usize>> {

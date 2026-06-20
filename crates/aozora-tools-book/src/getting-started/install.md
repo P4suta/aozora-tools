@@ -53,7 +53,7 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked
 
 `--locked` makes cargo honour the workspace `Cargo.lock`, which pins
 the [`aozora`](https://github.com/P4suta/aozora) parser at a known-good
-tag. Skip it only if you are intentionally floating to a newer parser.
+revision. Skip it only if you are intentionally floating to a newer parser.
 
 ## Verify the install
 
@@ -62,4 +62,4 @@ aozora-fmt --version
 aozora-lsp --version
 ```
 
-Both binaries print their semver and the embedded `aozora` parser tag.
+Both binaries print their semver and the embedded `aozora` parser version.

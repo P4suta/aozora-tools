@@ -164,10 +164,8 @@ struct Described {
 }
 
 /// Top-level dispatcher. Unpacks the diagnostic variant and delegates
-/// to a per-variant helper below — splitting them out keeps this
-/// function short enough to drop the previous
-/// `#[allow(clippy::too_many_lines)]` and makes each catalogue entry
-/// independently navigable.
+/// to a per-variant helper below, keeping this function short and each
+/// catalogue entry independently navigable.
 fn describe(d: &AozoraDiagnostic) -> Described {
     match d {
         AozoraDiagnostic::SourceContainsPua {

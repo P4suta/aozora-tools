@@ -20,16 +20,6 @@
 //! Workflow + pre/post pipeline documented in `docs/profiling.md`.
 
 #![forbid(unsafe_code)]
-// `eprintln!` is the right tool for a CLI dev-tool binary's progress
-// + diagnostic output: piping to a `tracing` subscriber would force
-// callers to filter on a target/level the user never asked for, and
-// `cargo` itself uses stderr the same way for build progress that
-// xtask wraps. `clippy::print_stderr` is a `restriction` lint
-// targeted at libraries; for this binary it's by design.
-#![allow(
-    clippy::print_stderr,
-    reason = "xtask is a CLI binary whose entire output contract is human-readable progress + errors on stderr (matches the cargo / samply tools it wraps)"
-)]
 
 use std::{
     env, fs,

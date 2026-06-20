@@ -1,24 +1,20 @@
 # Lint posture
 
 Lint configuration lives in `Cargo.toml`'s `[workspace.lints]` and
-`clippy.toml` at the workspace root. Both apply to every member
-crate by default; per-crate carve-outs are explicit and rare.
+`clippy.toml` at the workspace root, and applies to every member crate.
 
 ## Three principles
 
 1. **Fix the code, don't silence the lint.** `#[allow(...)]` is the
-   last resort. The first try is always to change the code so the
-   lint no longer fires; the second is to argue (in a workspace-wide
-   `[workspace.lints]` change) that the lint is wrong for this
-   repo's idioms. A scattered `#[allow]` decays the gate's value.
+   last resort; prefer changing the code, or arguing the lint wrong
+   for this repo's idioms in a `[workspace.lints]` change. Scattered
+   `#[allow]` decays the gate's value.
 2. **Lints catch bug classes, not stylistic taste.** Each enabled
    restriction lint targets a class of bugs (e.g.
-   `let_underscore_must_use` catches silent `Result` drops). The
-   `[workspace.lints.clippy]` block in `Cargo.toml` lists the
-   bug-class each restriction lint addresses inline.
-3. **The CI gate and the local gate run the same command.** No
-   "looser local rules" — `cargo clippy --all-targets --all-features
-   -- -D warnings` reproduces the CI invocation exactly.
+   `let_underscore_must_use` catches silent `Result` drops), named
+   inline next to the lint in `[workspace.lints.clippy]`.
+3. **The CI gate and the local gate run the same command** —
+   `cargo clippy --all-targets --all-features -- -D warnings`.
 
 ## What is enabled
 
@@ -39,17 +35,13 @@ read the inline comments next to each lint for the rationale.
 ## Carve-outs
 
 - **`module_name_repetitions`** — allowed. Noisy when the module
-  name is the domain term (`paragraph::ParagraphSnapshot`). The
-  refactor cost is not worth the lint's value.
-- **`missing_const_for_fn`** — allowed. Forces `const fn`
-  discipline on hot paths where the const-eligibility is incidental.
-- **`redundant_pub_crate`** — allowed because it directly
-  contradicts `unreachable_pub` from rustc, and the latter (narrow
-  visibility) is the more useful signal.
-- **`multiple_crate_versions`** — allowed in the cargo group
-  because transitive dep version mismatches (e.g. `unicode-width
-  0.1` vs `0.2` pulled in by different deps) are not our problem to
-  fix locally.
+  name is the domain term (`paragraph::ParagraphSnapshot`).
+- **`missing_const_for_fn`** — allowed. Forces `const fn` discipline
+  where const-eligibility is incidental.
+- **`redundant_pub_crate`** — allowed; it contradicts rustc's
+  `unreachable_pub`, and narrow visibility is the more useful signal.
+- **`multiple_crate_versions`** — allowed in the cargo group;
+  transitive dep version mismatches are not ours to fix locally.
 
 ## Clippy thresholds
 
@@ -65,15 +57,10 @@ read the inline comments next to each lint for the rationale.
 
 ## Per-crate exceptions
 
-Only one crate has an `[lints.rust]` override:
-
-- **`tree-sitter-aozora`** — `unused = "allow"` for the generated
-  `parser.c` warnings. The override is scoped to this crate so
-  hand-written code in `bindings/rust/` keeps the workspace
-  defaults.
-
-That is the entire exception list. Other members inherit the
-workspace lints exactly.
+None — every workspace member inherits the workspace lints exactly.
+The generated `parser.c` in `tree-sitter-aozora` is C, not Rust; its
+clang warnings are silenced by `-Wno-*` flags in that crate's
+`build.rs`.
 
 ## Adding a new lint
 

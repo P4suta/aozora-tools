@@ -1,26 +1,16 @@
 //! tower-lsp `LanguageServer` implementation for aozora documents.
 //!
-//! # State model
+//! Each open document is an `Arc<DocState>` in a [`DashMap`]: a
+//! writer-side `BufferState` behind a `parking_lot::Mutex` and a
+//! reader-side `Snapshot` in an `ArcSwap` (see [`crate::state`] for the
+//! lock graph). Handlers read via `state.snapshot()` — a single atomic
+//! load, wait-free, so the debounced reparse never blocks them.
 //!
-//! Each open document is held inside a [`DashMap`] as
-//! `Arc<DocState>`. [`DocState`] is split into a writer-side
-//! `BufferState` behind a `parking_lot::Mutex` and a reader-side
-//! `Snapshot` swapped atomically into an `ArcSwap`; see the
-//! [`crate::state`] module for the architecture rationale and lock
-//! graph. Every LSP request handler acquires its data via
-//! `state.snapshot()` (a single atomic load + Arc clone — wait-free).
-//! The 200 ms tree-sitter incremental reparse on a 6 MB document no
-//! longer blocks concurrent readers.
-//!
-//! # Sync mode
-//!
-//! `text_document_sync` is [`TextDocumentSyncKind::INCREMENTAL`].
-//! `did_change` resolves each `TextDocumentContentChangeEvent`
-//! against the latest snapshot, applies the byte-range edits via
-//! `DocState::apply_changes`, and schedules a debounced semantic
-//! re-parse + diagnostic publish. The semantic reparse runs inside
-//! `tokio::task::spawn_blocking` so concurrent hover / inlay /
-//! codeAction requests on the async runtime never stall.
+//! `text_document_sync` is [`TextDocumentSyncKind::INCREMENTAL`]:
+//! `did_change` applies byte-range edits via `DocState::apply_changes`
+//! and schedules a debounced semantic re-parse + diagnostic publish on
+//! `spawn_blocking`, so async hover / inlay / codeAction requests don't
+//! stall.
 
 use std::slice;
 use std::sync::Arc;
@@ -554,11 +544,6 @@ impl LanguageServer for Backend {
             .insert(uri.clone(), DocState::new(p.text_document.text));
         self.publish(uri).await;
     }
-
-    // (`did_open` returns a `DocState::new(...)` which is already an
-    // `Arc<DocState>`; the `DashMap<Url, Arc<DocState>>` insert above
-    // moves the Arc directly. Subsequent reads `lookup` return a
-    // cheap `Arc::clone`.)
 
     #[tracing::instrument(
         skip_all,

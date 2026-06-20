@@ -55,12 +55,9 @@ appropriate class.
 ## CSS
 
 The stylesheet lives inline inside `wrapHtml()` in `preview.ts`. It
-intentionally pins a stable warm-tone background (`#fdf6e3`) and a
-serif (`Hiragino Mincho ProN` / `Yu Mincho`) regardless of the active
-editor theme — 青空文庫 prose reads best on a consistent typeset-book
-surface. Theme-tracking is a follow-on if contributors prefer the
-preview to match the editor's colour scheme; the trade-off is losing
-that fixed reading background.
+pins a fixed warm-tone background (`#fdf6e3`) and a serif
+(`Hiragino Mincho ProN` / `Yu Mincho`) regardless of the active
+editor theme, for a consistent typeset-book reading surface.
 
 ## Limitations
 

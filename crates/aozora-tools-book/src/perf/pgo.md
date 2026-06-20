@@ -16,9 +16,9 @@ strip         = "symbols"
 opt-level     = 3
 ```
 
-`thin` LTO with one codegen unit gives ~95 % of the wall-time win
-of `lto = "fat"` for ~30 % less link wall-time, which matters because
-the profile is also what `cargo install` end-users run.
+`thin` LTO with one codegen unit captures most of the `lto = "fat"`
+win for much less link time, which matters because this profile is
+also what `cargo install` end-users run.
 
 ## `[profile.dist]`
 
@@ -34,9 +34,8 @@ strip         = "symbols"
 ```
 
 Why size: the `aozora-lsp` bundled inside a `.vsix` is downloaded
-once on extension install and runs as a long-lived subprocess.
-Halving the on-disk + over-network size matters more than shaving
-the already-sub-millisecond per-request CPU. The full `lto = "fat"`
+once on install and runs as a long-lived subprocess, so on-disk and
+over-network size matters more than per-request CPU. `lto = "fat"`
 gives the size win that `thin` can't reach.
 
 `panic = "unwind"` is preserved (no `panic = "abort"`) so tokio's
@@ -55,13 +54,10 @@ debug    = 1
 ```
 
 `debug = 1` (`line-tables-only`) is the minimum that gives `samply
-analyze` resolvable function names; full `debug = 2` would inflate
-binary size without buying the profiler anything new.
+analyze` resolvable function names; `debug = 2` would inflate binary
+size without buying the profiler anything.
 
 ## `[profile.dev]` tuning
-
-Two wins applied to the dev profile (matches the sibling `aozora`
-baseline):
 
 ```toml
 [profile.dev]
@@ -72,16 +68,15 @@ opt-level = 1
 ```
 
 `split-debuginfo = "unpacked"` keeps debug info in sibling `.dwo`
-files instead of inlining it into every `.o`. On Linux/macOS this
-halves link wall-time on incremental rebuilds because the linker
-no longer copies/relocates large debug sections.
+files instead of inlining it into every `.o`, which shortens link
+time on incremental rebuilds.
 
 `[profile.dev.package."*"] opt-level = 1` lightly optimises
 *dependency* crates only — workspace members keep `opt-level = 0`
 for fast iteration and breakpoint quality. Tests and benches that
 spend most of their CPU inside dependencies (proptest, criterion,
-tower-lsp) run measurably faster without losing source-level
-debugger fidelity on first-party code.
+tower-lsp) run faster without losing debugger fidelity on
+first-party code.
 
 ## Profile-Guided Optimisation (PGO)
 
@@ -99,8 +94,7 @@ Optional fourth phase (Linux x86_64 only): **llvm-bolt** post-link
 layout optimisation. Detected automatically; skipped with a hint
 when `llvm-bolt` is not on `$PATH`.
 
-Expected gain: 10-15 % additional throughput per LLVM project's
-published numbers. Verify on your hardware with:
+Verify any gain on your own hardware with:
 
 ```sh
 hyperfine --warmup 3 \

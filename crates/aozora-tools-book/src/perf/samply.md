@@ -1,9 +1,7 @@
 # Profiling with samply
 
-Data-driven optimisation — capture, symbolicate, summarise, diff.
-Every measurement that informs an optimisation is re-runnable in a
-single command, and the post-processing produces text that diffs
-cleanly against past runs.
+Capture, symbolicate, summarise, diff. The post-processing produces
+text that diffs cleanly against past runs.
 
 ## One-liner workflow
 
@@ -21,8 +19,8 @@ samply load /tmp/aozora-lsp-burst-<id>.json.gz
 ## Pre-flight: trust the trace
 
 `xtask samply lsp-burst` runs four environment checks before
-spawning samply. They catch the four most common sources of
-**measurement noise that silently invalidates the trace**:
+spawning samply, catching the common sources of measurement noise
+that silently invalidate a trace:
 
 | Check                       | Hard failure (abort)               | Warn-only                          |
 |-----------------------------|------------------------------------|------------------------------------|
@@ -32,10 +30,7 @@ spawning samply. They catch the four most common sources of
 | loadavg-1m / cpu-count      | —                                  | warn if > 50 % (background work)   |
 
 Hard fixes are printed inline (`echo 1 | sudo tee /proc/sys/...`).
-Warnings don't block, but reading them every time is the point —
-"my flame graph put `mmap` at the top" is exactly the moment you
-remember "oh, I had Chrome compiling in the background and the
-trace is mostly page-fault noise."
+Warnings don't block.
 
 ## Capture: what the runner does
 
@@ -59,14 +54,13 @@ trace is mostly page-fault noise."
    - `--profile-time <SECONDS>` is criterion's "spin each bench in
      a tight loop" flag — keeps the trace dominated by the
      measurement code, not by criterion's setup/teardown.
-   - `4 kHz` sampling → ~120 k samples per 30 s capture.
 
 ## Post-processing: `samply analyze`
 
-The Firefox Profiler GUI is the right tool for **shape** —
-"what calls what." For **delta detection** ("did this commit move
-3 ms of self-time off this function?") we want a plain-text top-N
-that two runs can `diff` against. That's `xtask samply analyze`.
+The Firefox Profiler GUI is the right tool for **shape** — what
+calls what. For **delta detection** — did this commit move self-time
+off this function? — use the plain-text top-N that two runs can
+`diff` against, from `xtask samply analyze`.
 
 Pipeline:
 
@@ -120,12 +114,11 @@ diff -y --width=200 /tmp/baseline.txt /tmp/variant.txt | less
 ```
 
 Numbers shifting > 5 % between runs are real; smaller shifts may be
-noise — re-run a couple of times and look for the consistent
-direction.
+noise — re-run and look for the consistent direction.
 
 ## CI bench-diff (criterion baseline)
 
-`samply` itself is impractical on GitHub-hosted runners (default
+`samply` is impractical on GitHub-hosted runners (default
 `perf_event_paranoid >= 2` blocks user-mode profiling). The PR
 gate uses **criterion's built-in `--save-baseline` /
 `--baseline`** flow, which captures wall-time deltas without any
@@ -145,9 +138,7 @@ kernel privilege:
   regressed ≥ 5 % notable / ≥ 15 % warning / ≥ 25 % failure. Noise
   (p ≥ 0.05) is reported as such instead of being scored.
 
-The local `samply` workflow above is still the right tool for
-deeper investigation. Use bench-diff to spot the regression,
-samply to find its root cause.
+Use bench-diff to spot the regression, samply to find its root cause.
 
 ## When the trace looks wrong
 
@@ -178,5 +169,4 @@ enum SamplyTarget {
 mirrors `samply_lsp_burst`'s shape: preflight, build the bench
 binary, spawn samply with `--unstable-presymbolicate`, call
 `print_post_run_help`. The analyzer is target-agnostic — it works
-on any `.json.gz` from `samply record` regardless of what was
-profiled.
+on any `.json.gz` from `samply record`.

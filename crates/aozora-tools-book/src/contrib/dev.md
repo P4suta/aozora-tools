@@ -1,7 +1,5 @@
 # Development loop
 
-The fast path through a contributor day.
-
 ## Once per machine
 
 ```sh
@@ -24,8 +22,7 @@ lefthook install
 
 ## Edit-build-test loop
 
-The recommended local loop is `bacon`, which watches the workspace
-and re-runs the chosen job on save:
+`bacon` watches the workspace and re-runs the chosen job on save:
 
 ```sh
 bacon            # default: cargo check

@@ -16,11 +16,9 @@ the LSP uses.
 Custom requests follow the same semver contract as the rest of the
 library: a backwards-compatible field addition is a minor bump, a
 removal or rename is a major bump. The JSON shapes in the linked
-chapters are the wire contract and changes there are flagged in
-`CHANGELOG.md` — additive evolution under **Changed**, breaking
-renames or drops under **Removed**, with the affected method name
-(`aozora/renderHtml`, `aozora/gaijiSpans`, `aozora.canonicalizeSlug`)
-called out explicitly in the entry.
+chapters are the wire contract; changes are flagged in `CHANGELOG.md`
+(additive under **Changed**, breaking under **Removed**) with the
+affected method name called out.
 
 ## Discovery
 
