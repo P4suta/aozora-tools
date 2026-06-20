@@ -1,0 +1,47 @@
+# Editor-agnostic baseline for aozora-tools. rustfmt / biome remain the
+# real formatters; this is the cross-editor floor (Zed, Neovim, IntelliJ,
+# …). Rust values mirror rustfmt.toml; TS/JS/JSON mirror editors/vscode/
+# biome.json.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# Rust — rustfmt.toml: tab_spaces = 4, hard_tabs = false, Unix newlines.
+[*.rs]
+indent_size = 4
+
+# TS/JS/JSON under editors/vscode — biome.json: indentWidth 2, lineEnding lf.
+[*.{ts,tsx,js,jsx,mjs,cjs,json,jsonc}]
+indent_size = 2
+
+# TOML — 4-space convention matching the hand-aligned config files.
+[*.toml]
+indent_size = 4
+
+# Markdown — keep trailing whitespace (two trailing spaces = hard break).
+[*.md]
+trim_trailing_whitespace = false
+indent_size = 2
+
+# aozora corpus fixtures are byte-sensitive (esp. the 6.5 MB bouten.afm):
+# editors must not silently trim or append a newline.
+[*.afm]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+# Generated tree-sitter artifacts — never hand-edit or reformat.
+[crates/tree-sitter-aozora/src/{parser.c,grammar.json,node-types.json}]
+trim_trailing_whitespace = false
+insert_final_newline = false
+indent_style = unset
+indent_size = unset
+
+# Lockfiles — generated, leave alone.
+[{Cargo.lock,*.lock,bun.lock}]
+trim_trailing_whitespace = false
+insert_final_newline = false

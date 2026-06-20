@@ -1,0 +1,30 @@
+{
+  // Recommended extensions for the aozora-tools Rust workspace, surfaced
+  // when you open the repository root. Keep this list in sync with
+  // `.devcontainer/devcontainer.json` (customizations.vscode.extensions).
+  "recommendations": [
+    // Rust IDE: completion, go-to-def, inline diagnostics. The whole
+    // `rust-analyzer.*` block in settings.json targets this extension.
+    "rust-lang.rust-analyzer",
+    // Native (LLDB) debugger for the aozora-fmt / aozora-lsp launch
+    // configs; `${command:pickProcess}` (LSP attach) needs it.
+    "vadimcn.vscode-lldb",
+    // TOML IDE for Cargo.toml / clippy.toml / rustfmt.toml / deny.toml.
+    "tamasfe.even-better-toml",
+    // Lint + format for the editors/vscode TypeScript/JSON sources;
+    // honours editors/vscode/biome.json exactly.
+    "biomejs.biome",
+    // Enforces the repo .editorconfig in editors that need a plugin.
+    "editorconfig.editorconfig",
+    // The project's own aozora language extension — dogfood .afm editing.
+    "yasunobu-sakashita.aozora-vscode",
+    // Inline spell-check matching the `typos` / _typos.toml CI gate.
+    "tekumara.typos-vscode"
+  ],
+  "unwantedRecommendations": [
+    // Conflicts with biome as the editors/vscode formatter — pick one.
+    "esbenp.prettier-vscode",
+    // Legacy RLS extension; superseded by rust-analyzer.
+    "rust-lang.rust"
+  ]
+}

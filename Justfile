@@ -1,9 +1,10 @@
 # aozora-tools developer recipes.
 #
-# Host toolchain (no Docker) — mirrors the recipe *surface* of the
-# upstream aozora repo's Justfile so muscle memory carries across the
-# sibling repos. `just` is optional: every recipe is a thin wrapper over
-# cargo / xtask you can also run by hand.
+# Works in the recommended dev container *and* on a host toolchain;
+# mirrors the recipe *surface* of the upstream aozora repo's Justfile so
+# muscle memory carries across the sibling repos. `just` is optional:
+# every recipe is a thin wrapper over cargo / xtask you can also run by
+# hand.
 
 set shell := ["bash", "-c"]
 
@@ -17,6 +18,100 @@ default:
 bootstrap:
     mise install
     lefthook install
+
+# Report dev-environment health: tools, toolchain pin, native deps, hooks.
+doctor:
+    #!/usr/bin/env bash
+    # The *reporter* (`just bootstrap` is the *fixer*): checks every pinned
+    # dev tool + native dep and suggests the next command for any gap.
+    # Exits non-zero only when a hard-required tool is missing (mise/just,
+    # rustup/cargo, cargo-nextest, lefthook, bun, a C compiler); optional
+    # tools (mold, cargo-deny/llvm-cov, typos/committed/actionlint) warn.
+    set -uo pipefail
+
+    ok=0; warn=0; bad=0
+    green() { printf '  \033[32mOK\033[0m   %-16s %s\n' "$1" "$2"; ok=$((ok+1)); }
+    warng() { printf '  \033[33mWARN\033[0m %-16s %s\n' "$1" "$2"; warn=$((warn+1)); }
+    nope()  { printf '  \033[31mNG\033[0m   %-16s %s\n' "$1" "$2"; bad=$((bad+1)); }
+
+    # check NAME BIN VERSION-CMD HINT REQUIRED(req|opt)
+    check() {
+        local name="$1" bin="$2" vcmd="$3" hint="$4" required="$5" v
+        if command -v "$bin" >/dev/null 2>&1; then
+            v="$(eval "$vcmd" 2>/dev/null | head -n1)"
+            green "$name" "${v:-present}"
+        elif [[ "$required" == "req" ]]; then
+            nope "$name" "missing — $hint"
+        else
+            warng "$name" "optional, missing — $hint"
+        fi
+    }
+
+    echo "aozora-tools doctor"
+    echo
+    echo "Provisioners:"
+    check mise just 'mise --version'   'install mise: https://mise.run' req
+    check just just 'just --version'   '`mise install`'                 req
+
+    echo
+    echo "Rust toolchain (rust-toolchain.toml pins the channel):"
+    check rustup rustup 'rustup --version' 'install rustup: https://rustup.rs' req
+    check cargo  cargo  'cargo --version'  'install rustup; then `rustup show`' req
+    if command -v rustc >/dev/null 2>&1; then
+        active="$(rustc --version 2>/dev/null | awk '{print $2}')"
+        pinned="$(awk -F'"' '/^[[:space:]]*channel/ { print $2; exit }' rust-toolchain.toml)"
+        if [[ -n "$pinned" && "$active" == "$pinned" ]]; then
+            green rustc "$active (matches pin)"
+        else
+            warng rustc "$active != pinned ${pinned:-?} — run \`rustup show\`"
+        fi
+    else
+        nope rustc "missing — run \`rustup show\`"
+    fi
+
+    echo
+    echo "Dev tools (mise-provisioned):"
+    check cargo-nextest  cargo-nextest  'cargo-nextest --version'  '`mise install`' req
+    check cargo-deny     cargo-deny     'cargo-deny --version'     '`mise install`' opt
+    check cargo-llvm-cov cargo-llvm-cov 'cargo-llvm-cov --version' '`mise install`' opt
+    check lefthook       lefthook       'lefthook version'         '`mise install`' req
+    check typos          typos          'typos --version'          '`mise install`' opt
+    check committed      committed      'committed --version'      '`mise install`' opt
+    check actionlint     actionlint     'actionlint --version'     '`mise install`' opt
+    check bun            bun            'bun --version'            '`mise install`' req
+
+    echo
+    echo "Native deps:"
+    if command -v cc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1; then
+        green "C compiler" "$( { cc --version 2>/dev/null || clang --version 2>/dev/null; } | head -n1)"
+    else
+        nope "C compiler" "needed for tree-sitter parser.c — apt install build-essential clang"
+    fi
+    check mold mold 'mold --version' 'optional fast linker — apt install mold' opt
+
+    echo
+    echo "Git hooks:"
+    hookdir="$(git rev-parse --git-path hooks 2>/dev/null)"
+    if [[ -n "${hookdir:-}" ]] && grep -ql lefthook "${hookdir}/pre-commit" 2>/dev/null; then
+        green "lefthook hooks" "installed in ${hookdir}"
+    else
+        nope "lefthook hooks" "not installed — run \`lefthook install\`"
+    fi
+
+    echo
+    echo "JS deps:"
+    if [[ -d editors/vscode/node_modules ]]; then
+        green "vscode deps" "node_modules present"
+    else
+        warng "vscode deps" "run \`cd editors/vscode && bun install --frozen-lockfile\`"
+    fi
+
+    echo
+    printf 'doctor: %d ok, %d warn, %d missing\n' "$ok" "$warn" "$bad"
+    if [[ "$bad" -gt 0 ]]; then
+        echo 'doctor: required tools missing — run `just bootstrap`' >&2
+        exit 1
+    fi
 
 # --- core gates --------------------------------------------------------------
 

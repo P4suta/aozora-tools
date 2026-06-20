@@ -1,0 +1,99 @@
+{
+  "version": "2.0.0",
+  // Every command resolves via PATH (mise shims provide just/bacon/bun/
+  // cargo). No absolute paths — unlike editors/vscode/.vscode/tasks.json,
+  // these must also work inside the dev container.
+  "tasks": [
+    {
+      "label": "just: ci (full local gate)",
+      "type": "shell",
+      "command": "just",
+      "args": ["ci"],
+      "problemMatcher": ["$rustc"],
+      "group": "build"
+    },
+    {
+      "label": "just: clippy",
+      "type": "shell",
+      "command": "just",
+      "args": ["clippy"],
+      "problemMatcher": ["$rustc"],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "just: test",
+      "type": "shell",
+      "command": "just",
+      "args": ["test"],
+      "problemMatcher": ["$rustc"],
+      "group": { "kind": "test", "isDefault": true }
+    },
+    {
+      "label": "just: fmt",
+      "type": "shell",
+      "command": "just",
+      "args": ["fmt"],
+      "problemMatcher": []
+    },
+    {
+      "label": "just: cov",
+      "type": "shell",
+      "command": "just",
+      "args": ["cov"],
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "just: vscode-check",
+      "type": "shell",
+      "command": "just",
+      "args": ["vscode-check"],
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "just: doctor (environment check)",
+      "type": "shell",
+      "command": "just",
+      "args": ["doctor"],
+      "problemMatcher": []
+    },
+    {
+      "label": "xtask: coverage --html (open report)",
+      "type": "shell",
+      "command": "cargo",
+      "args": ["run", "-p", "aozora-tools-xtask", "--", "coverage", "--html", "--open"],
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "bacon (watch)",
+      "type": "shell",
+      "command": "bacon",
+      "args": [],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "rust",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^(warning|error)(?:\\[(.*)\\])?: (.*)$",
+          "severity": 1,
+          "code": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": ".*"
+        }
+      },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "vscode: compile extension",
+      "type": "shell",
+      "command": "bun",
+      "args": ["run", "compile"],
+      "options": { "cwd": "${workspaceFolder}/editors/vscode" },
+      "problemMatcher": ["$tsc"],
+      "presentation": { "reveal": "silent", "close": true }
+    }
+  ]
+}

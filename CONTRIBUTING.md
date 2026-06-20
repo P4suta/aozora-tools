@@ -5,9 +5,14 @@ the [`aozora`](https://github.com/P4suta/aozora) parser ecosystem.
 
 ## Ground rules
 
-1. **Host toolchain, not Docker.** `cargo`, `bun`, `typos` etc. run
-   directly. `rust-toolchain.toml` pins Rust 1.95.0 — `rustup` or
-   `dtolnay/rust-toolchain` picks it up automatically.
+1. **Dev container recommended; host toolchain fully supported.** The
+   fastest way in is the dev container / Codespaces — it provisions the
+   pinned toolchain and installs the git hooks for you. Working on your
+   own machine is equally first-class: `cargo`, `bun`, `typos` etc. run
+   directly, provisioned by `mise` (`just bootstrap`). Either way Rust is
+   pinned by `rust-toolchain.toml` (1.95.0) — `rustup` /
+   `dtolnay/rust-toolchain` picks it up automatically, and `just doctor`
+   reports any gaps.
 2. **Justify every suppression.** A `#[allow(...)]` must carry a
    `reason = "..."` (enforced by `clippy::allow_attributes_without_reason`)
    and is reserved for upstream / protocol constraints. `dead_code = "deny"`
@@ -23,16 +28,34 @@ the [`aozora`](https://github.com/P4suta/aozora) parser ecosystem.
 
 ## Setup and workflow
 
+**Dev container / Codespaces:** open the repo and the toolchain + hooks
+are set up for you — skip straight to `bacon`. On a host machine:
+
 ```sh
-rustup show        # reads rust-toolchain.toml (Rust 1.95.0)
-lefthook install   # installs the git hooks (pre-commit, commit-msg, pre-push gate)
+just bootstrap     # mise install (pinned tools) + lefthook install
+just doctor        # OK/NG report; prints the next command for any gap
 cargo test --workspace --all-targets
 ```
+
+`just bootstrap` runs `mise install` (which provisions Rust per
+`rust-toolchain.toml` plus every tool in `mise.toml` /
+`.config/mise/config.toml`) and `lefthook install`. Prefer to drive Rust
+yourself? `rustup show` reads `rust-toolchain.toml` and materialises the
+pinned channel.
 
 The pre-push hook runs the CI gate: `fmt --check`, clippy `-D warnings`,
 tests, `bench --no-run`, doc build, `typos`, and the VS Code `bun run check`.
 For the bacon edit loop, profiling, and sanitizers see
 [`contrib/dev.md`](./crates/aozora-tools-book/src/contrib/dev.md).
+
+Opening the repo root in VS Code picks up `.vscode/` (recommended
+extensions, rust-analyzer wired to clippy, and one-click debug for
+`aozora-fmt` and `aozora-lsp`). `aozora-lsp` is a stdio server, so the
+"Attach to aozora-lsp" config attaches to the process the Extension Dev
+Host spawns: launch the *Dev Host + attach aozora-lsp* compound, open a
+`.afm` file to start the server, then pick its PID. On Linux, attaching
+to a non-child process may need `ptrace_scope` relaxed
+(`/proc/sys/kernel/yama/ptrace_scope`).
 
 VS Code extension:
 
