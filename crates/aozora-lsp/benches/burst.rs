@@ -27,9 +27,9 @@ use std::hint::black_box;
 use std::path::Path;
 use std::sync::Arc;
 
-use aozora_lsp::{
-    DocState, GaijiSpan, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits, inlay_hints,
-    input_edit,
+use aozora_lsp::internals::{
+    DocState, GaijiSpan, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits,
+    extract_gaiji_spans_from_tree, inlay_hints, input_edit,
 };
 use criterion::measurement::WallTime;
 use criterion::{BatchSize, BenchmarkGroup, Criterion, criterion_group, criterion_main};
@@ -180,7 +180,7 @@ fn bench_gaiji_span_extract(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
             },
             |doc| {
                 let spans = doc
-                    .with_tree(|tree| aozora_lsp::extract_gaiji_spans_for_bench(tree, text))
+                    .with_tree(|tree| extract_gaiji_spans_from_tree(tree, text))
                     .unwrap_or_else(|| Arc::from(Vec::new()));
                 black_box(spans);
             },

@@ -1,14 +1,14 @@
 //! Bug-pattern regression suite for the LSP concurrency surface.
 //!
 //! `aozora::Document` is `!Sync` (bumpalo arena interior), so the
-//! shared concurrent state lives in `aozora_lsp::segment_cache::SegmentCache`.
+//! shared concurrent state lives in `aozora_lsp::internals::SegmentCache`.
 //! These tests pin the invariant set the cache must hold under
 //! concurrent reparses from multiple threads.
 
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use aozora_lsp::segment_cache::SegmentCache;
+use aozora_lsp::internals::SegmentCache;
 
 /// Invariant: a `SegmentCache` shared via `Arc<Mutex<_>>` between
 /// threads never deadlocks across rapid concurrent reparses.

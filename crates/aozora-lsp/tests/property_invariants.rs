@@ -24,8 +24,9 @@
 //!    input with no gap and no overlap; concatenating the slices
 //!    reconstructs the source byte-for-byte.
 
-use aozora_lsp::{
-    LineIndex, LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset,
+use aozora_lsp::internals::{
+    DocState, LineIndex, LocalTextEdit, apply_edits, byte_offset_to_position,
+    position_to_byte_offset,
 };
 use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
@@ -143,7 +144,7 @@ proptest! {
     /// shape (zero, one, or many `\n\n` boundaries).
     #[test]
     fn doc_state_round_trips_arbitrary_text(text in realistic_text_strategy()) {
-        let state = aozora_lsp::DocState::new(text.clone());
+        let state = DocState::new(text.clone());
         let snap = state.snapshot();
         prop_assert_eq!(&**snap.doc_text(), text.as_str());
     }

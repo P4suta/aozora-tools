@@ -31,7 +31,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
 use aozora_fmt::format_source;
-use aozora_lsp::{
+use aozora_lsp::internals::{
     DocState, LineIndex, LocalTextEdit, byte_offset_to_position, completion_at,
     compute_diagnostics, document_symbols, emmet_completions, folding_ranges, format_edits,
     format_on_type, hover_at, linked_editing_at, position_to_byte_offset, snippet_completions,

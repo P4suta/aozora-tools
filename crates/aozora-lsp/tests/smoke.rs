@@ -3,7 +3,7 @@
 //! a tokio runtime with stdin/stdout plumbing and is cheaper to cover
 //! by spawning the binary from an editor smoketest on demand.
 
-use aozora_lsp::{compute_diagnostics, format_edits, hover_at};
+use aozora_lsp::internals::{compute_diagnostics, format_edits, hover_at};
 use tower_lsp::lsp_types::{DiagnosticSeverity, HoverContents, Position};
 
 #[test]

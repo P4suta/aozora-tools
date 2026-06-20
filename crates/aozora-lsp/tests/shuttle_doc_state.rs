@@ -43,7 +43,7 @@
 use std::collections::HashMap;
 use std::env;
 
-use aozora_lsp::{LocalTextEdit, apply_edits};
+use aozora_lsp::internals::{LocalTextEdit, apply_edits};
 use shuttle::sync::{Arc, Mutex as ShuttleMutex};
 use shuttle::thread;
 use tower_lsp::lsp_types::Url;

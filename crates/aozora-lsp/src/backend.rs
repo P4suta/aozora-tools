@@ -23,7 +23,10 @@ use tokio::time::sleep;
 use crate::code_actions::{quick_fix_actions, wrap_selection_actions};
 use crate::commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 use crate::completion::completion_at;
+use crate::diagnostics::compute_diagnostics_from_parsed;
+use crate::formatting::format_edits;
 use crate::half_width_emmet::emmet_completions;
+use crate::hover::hover_at;
 use crate::linked_editing::linked_editing_at;
 use crate::metrics::ParseSample;
 use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
@@ -31,7 +34,6 @@ use crate::segment_cache::MAX_DOCUMENT_BYTES;
 use crate::state::DocState;
 use crate::structured_snippets::snippet_completions;
 use crate::text_edit::LocalTextEdit;
-use crate::{compute_diagnostics_from_parsed, format_edits, hover_at};
 use tower_lsp::jsonrpc::{Error as JsonRpcError, Result};
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,

@@ -16,7 +16,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use aozora_lsp::{LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset};
+use aozora_lsp::internals::{LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset};
 
 fuzz_target!(|data: &[u8]| {
     let text = String::from_utf8_lossy(data).into_owned();

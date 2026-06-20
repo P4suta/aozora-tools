@@ -54,16 +54,60 @@ proptest  = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
 
 [[bench]]
-name    = "burst"
-path    = "benches/burst.rs"
-harness = false
+name             = "burst"
+path             = "benches/burst.rs"
+harness          = false
+required-features = ["internals"]
+
+# Integration tests, benches, and examples live in their own crates and so can
+# only reach `pub` items — never `pub(crate)`. They consume the internal API
+# through the `internals` module, so every one of them is gated on the
+# `internals` feature: a plain `cargo test` (no feature) skips them and runs
+# only the in-crate unit tests; CI runs `cargo test --features internals`.
+[[test]]
+name             = "guardian"
+required-features = ["internals"]
+
+[[test]]
+name             = "smoke"
+required-features = ["internals"]
+
+[[test]]
+name             = "property_invariants"
+required-features = ["internals"]
+
+[[test]]
+name             = "fuzz_regressions"
+required-features = ["internals"]
+
+[[test]]
+name             = "concurrent_lsp"
+required-features = ["internals"]
+
+[[test]]
+name             = "concurrency_regressions"
+required-features = ["internals"]
+
+[[test]]
+name             = "shuttle_doc_state"
+required-features = ["internals", "shuttle-tests"]
+
+[[example]]
+name             = "measure_incremental"
+required-features = ["internals"]
 
 [features]
 default       = []
+# Exposes the `internals` module (internal API for the crate's own tests,
+# benches, examples, and fuzz targets). `#[doc(hidden)]` and carries NO semver
+# guarantee — see the module docs. Off by default so the stable surface stays
+# `Cli` + `run()`.
+internals     = []
 # Opt-in: enables the `shuttle_doc_state` randomized-schedule test
 # (the only test that depends on the shuttle crate). Gating it
 # behind a feature keeps the default `cargo test` fast and avoids
 # pulling shuttle into the dependency graph for routine builds.
+# Run it with `cargo test --features internals,shuttle-tests`.
 shuttle-tests = ["dep:shuttle"]
 
 [package.metadata.cargo-shear]

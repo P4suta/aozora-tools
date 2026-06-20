@@ -23,7 +23,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use aozora_lsp::{DocState, LocalTextEdit};
+use aozora_lsp::internals::{DocState, LocalTextEdit};
 
 /// Synthesise a gaiji-rich document by repeating a `※[#…]` block.
 /// `count` blocks → roughly `count * 60` bytes of gaiji content +

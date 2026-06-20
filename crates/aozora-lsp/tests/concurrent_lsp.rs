@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use aozora_lsp::segment_cache::SegmentCache;
+use aozora_lsp::internals::SegmentCache;
 
 #[test]
 fn concurrent_reparse_two_independent_caches_completes_without_deadlock() {

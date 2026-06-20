@@ -8,7 +8,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use aozora_lsp::{LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset};
+use aozora_lsp::internals::{
+    LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset,
+};
 
 #[test]
 fn promoted_fuzz_artifacts_replay_cleanly() {
