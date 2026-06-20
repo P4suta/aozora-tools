@@ -16,7 +16,7 @@
 //! The stable public surface is intentionally tiny: [`Cli`] (so `xtask`
 //! can generate the shell completions and man page) and [`run`], the
 //! daemon entry point. The internal building blocks the handlers are made
-//! of are re-exported behind the `#[doc(hidden)]` [`internals`] module —
+//! of are re-exported behind the `#[doc(hidden)]` `internals` module —
 //! for the crate's own tests, benches, examples, and fuzz targets only,
 //! with no semver guarantee.
 
