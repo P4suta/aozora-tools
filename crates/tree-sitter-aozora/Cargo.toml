@@ -6,7 +6,24 @@ description = "Tree-sitter grammar for aozora-flavored markdown — used by aozo
 version.workspace = true
 edition     = "2024"
 license     = "Apache-2.0 OR MIT"
-publish     = false
+# Publishable to crates.io: `aozora-lsp` depends on it by path, so it has to be
+# a published crate for `aozora-lsp` itself to publish. Metadata mirrors the
+# other members (repository/homepage/authors) for a clean crates.io listing.
+authors.workspace      = true
+repository.workspace   = true
+homepage.workspace     = true
+readme      = "README.md"
+keywords    = ["tree-sitter", "aozora", "japanese", "grammar", "parsing"]
+categories  = ["parser-implementations", "text-editors"]
+# Keep the published package small: ship only what the build needs (the grammar
+# is committed as generated C, so no node toolchain is required downstream).
+include = [
+    "bindings/rust/**",
+    "src/**",
+    "build.rs",
+    "grammar.js",
+    "README.md",
+]
 
 [lib]
 path = "bindings/rust/lib.rs"

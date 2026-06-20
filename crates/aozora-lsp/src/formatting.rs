@@ -6,14 +6,20 @@
 //! That lets LSP clients short-circuit "already formatted" buffers
 //! without applying a no-op edit.
 
+use aozora::Document;
 use tower_lsp::lsp_types::{Position, Range, TextEdit};
 
 use crate::position::byte_offset_to_position;
 
 /// Compute the list of `TextEdit`s that canonicalise `source`.
+///
+/// Runs the same `parse ∘ serialize` round-trip as `aozora-fmt` — the
+/// canonical form is defined by `aozora` itself, so calling it directly
+/// keeps the server's output byte-identical to the formatter without
+/// depending on the `aozora-fmt` crate (and its CLI-only dependencies).
 #[must_use]
 pub fn format_edits(source: &str) -> Vec<TextEdit> {
-    let formatted = aozora_fmt::format_source(source);
+    let formatted = Document::new(source).parse().serialize();
     if formatted == source {
         return Vec::new();
     }

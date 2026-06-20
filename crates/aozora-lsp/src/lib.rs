@@ -6,9 +6,9 @@
 //! - `textDocument/publishDiagnostics` — every `aozora::Diagnostic`
 //!   variant is mapped to an LSP `Diagnostic` with a byte-range span
 //!   converted into line/UTF-16-column coordinates.
-//! - `textDocument/formatting` — runs `parse ∘ serialize` (via
-//!   `aozora_fmt::format_source`) and returns a single document-replace
-//!   `TextEdit`.
+//! - `textDocument/formatting` — runs the `aozora` `parse ∘ serialize`
+//!   round-trip (the same canonical form `aozora-fmt` produces) and
+//!   returns a single document-replace `TextEdit`.
 //! - `textDocument/hover` — when the cursor sits inside a
 //!   `※［＃…］` gaiji reference, resolves via `aozora_encoding::gaiji`
 //!   and returns a Markdown explanation.

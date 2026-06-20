@@ -22,7 +22,6 @@ path = "src/lib.rs"
 [dependencies]
 aozora             = { workspace = true }
 aozora-encoding    = { workspace = true }
-aozora-fmt         = { workspace = true }
 tree-sitter-aozora = { workspace = true }
 tree-sitter        = "0.26"
 
@@ -50,6 +49,10 @@ toml  = { workspace = true }   # parse Cargo.lock for the aozora rev
 serde = { workspace = true }
 
 [dev-dependencies]
+# Dev-only: the formatter is no longer a runtime dependency (the handler calls
+# `aozora` directly), but `tests/guardian.rs` cross-checks the server's output
+# against `aozora_fmt::format_source`, so it stays in the test graph only.
+aozora-fmt = { workspace = true }
 proptest  = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
 
