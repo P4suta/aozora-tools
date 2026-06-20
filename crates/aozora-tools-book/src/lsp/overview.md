@@ -17,14 +17,14 @@ generic LSP clients still get every standard capability.
 
 Three decisions shape the rest of this section:
 
-1. **Snapshot reads are wait-free.** Each open document holds a
-   read-side `Snapshot` behind an `ArcSwap`; every request handler
+1. **DocSnapshot reads are wait-free.** Each open document holds a
+   read-side `DocSnapshot` behind an `ArcSwap`; every request handler
    resolves the document via a single atomic load. No request stalls
    on a parse, even mid-keystroke.
 2. **Writes go through one mutex per document.** The editor-driven
    `did_change` path acquires a `parking_lot::Mutex` around a
-   `BufferState` (the rope buffer + tree-sitter state), applies the
-   text edits, and atomically swaps a fresh `Snapshot` into the
+   `DocBuffer` (the rope buffer + tree-sitter state), applies the
+   text edits, and atomically swaps a fresh `DocSnapshot` into the
    `ArcSwap`. Readers see the new snapshot on their next load.
 3. **The semantic re-parse is debounced and runs off the request
    thread.** A 150 ms debounce coalesces keystroke bursts; the

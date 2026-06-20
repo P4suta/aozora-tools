@@ -58,9 +58,8 @@ editors get every other capability through the standard LSP surface.
   - `aozora/renderHtml` — VS Code preview WebView consumes this.
   - `aozora/gaijiSpans` — every resolvable gaiji span in the
     document; the VS Code extension uses it to drive inline-fold
-    decorations (resolved glyph next to `※［＃…］`). Generic LSP
-    clients can opt into the same data via the
-    `aozora_lsp::inlay_hints` library entry instead.
+    decorations (resolved glyph next to `※［＃…］`). Any LSP client
+    can consume `aozora/gaijiSpans` directly for the same data.
 
 See the [handbook](https://p4suta.github.io/aozora-tools/) for the
 LSP capability surface, custom protocol extensions, and the

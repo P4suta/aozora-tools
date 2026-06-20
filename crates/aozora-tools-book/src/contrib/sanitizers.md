@@ -35,7 +35,7 @@ non-zero test result.
 ## When to run them
 
 - **`miri`** — after any change to `aozora-lsp`'s state model
-  (`DocState`, `BufferState`, `Snapshot`), to the rope buffer
+  (`OpenDocument`, `DocBuffer`, `DocSnapshot`), to the rope buffer
   integration, or to anything involving `Arc<DashMap>`. miri is the
   tool that catches the unsoundness `cargo test` cannot.
 - **`tsan`** — after a change that touches the lock graph
@@ -83,6 +83,6 @@ cargo test --features shuttle-tests --test shuttle_doc_state
 ```
 
 Shuttle explores arbitrary interleavings against the
-`Arc<DashMap<Url, DocState>>` and pins correctness invariants. Run
+`Arc<DashMap<Url, OpenDocument>>` and pins correctness invariants. Run
 both: tsan answers "is the runtime safe?", shuttle answers "does
 the model hold?".

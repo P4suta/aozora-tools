@@ -22,13 +22,13 @@ editor (Neovim, Helix, Emacs, Zed, …).
 | `textDocument/semanticTokens`    | Syntax-aware highlighting derived from the tree-sitter tree. |
 | `workspace/executeCommand`       | `aozora.canonicalizeSlug` — canonicalise the slug at a given range. |
 | `aozora/renderHtml` *(custom)*   | Returns HTML for the active document. Drives the VS Code preview pane. |
-| `aozora/gaijiSpans` *(custom)*   | Every resolvable gaiji in the document with `range` + resolved glyph; the VS Code extension uses it for inline-fold decorations. Plain-LSP clients can call `aozora_lsp::inlay_hints` from a library context for the same data. |
+| `aozora/gaijiSpans` *(custom)*   | Every resolvable gaiji in the document with `range` + resolved glyph; the VS Code extension uses it for inline-fold decorations. Any LSP client can consume this request directly for the same data. |
 
 `textDocument/inlayHint` is intentionally **not** advertised — the VS
 Code extension already renders the resolved-gaiji glyph through
 `aozora/gaijiSpans`-driven decorations, and adding an LSP inlay layer
-duplicated the visual. Editors that want the same data over standard
-LSP can call `aozora_lsp::inlay_hints` from a library context.
+duplicated the visual. Editors that want the same data consume the
+`aozora/gaijiSpans` custom request.
 
 ## Architecture (one-liner)
 

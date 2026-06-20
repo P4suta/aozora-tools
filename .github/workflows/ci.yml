@@ -97,14 +97,15 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: nextest
-        # `--features aozora-lsp/shuttle-tests` enables the
-        # randomized-schedule concurrency checker
-        # (`crates/aozora-lsp/tests/shuttle_doc_state.rs`). Without it
-        # that test would only execute inside the `coverage` job (which
-        # uses `--all-features`), so a coverage-side regression could
-        # mask a shuttle failure. The default 1,000 iterations finish
-        # in a few seconds; nightly cron raises `AOZORA_SHUTTLE_ITERS`.
-        run: cargo nextest run --workspace --all-targets --features aozora-lsp/shuttle-tests --locked
+        # `--all-features` turns on both `aozora-lsp` test gates:
+        #  * `internals` — required by the integration tests, benches, and
+        #    examples that reach the internal API (guardian, smoke, …).
+        #    Without it nextest SILENTLY SKIPS them (`required-features`).
+        #  * `shuttle-tests` — the randomized-schedule concurrency checker
+        #    in `crates/aozora-lsp/tests/shuttle_doc_state.rs`.
+        # The default 1,000 shuttle iterations finish in a few seconds;
+        # nightly cron raises `AOZORA_SHUTTLE_ITERS`.
+        run: cargo nextest run --workspace --all-targets --all-features --locked
 
       - name: doc test
         run: cargo test --doc --workspace --locked

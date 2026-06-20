@@ -116,6 +116,28 @@ once 1.0 ships.
 
 ### Changed
 
+- **`aozora-lsp` public API reduced to `Cli` + `run()`.** The crate used to
+  re-export ~50 internal types and functions at its root purely so its own
+  tests and benches could reach them. They now live behind a
+  `#[doc(hidden)]` `internals` module (no semver guarantee), gated for the
+  test/bench/example targets by a new `internals` Cargo feature. Internal
+  names were tidied too: `Snapshot`→`DocSnapshot`,
+  `MutParagraph`→`ParagraphBuffer`, `BufferState`→`DocBuffer`,
+  `DocState`→`OpenDocument`, `LocalTextEdit`→`ByteEdit`,
+  `IncrementalDoc`→`TreeSitterDoc`, `Backend`→`AozoraLanguageServer`,
+  `SegmentCache`→`ParseCache`, and the three `compute_diagnostics*`
+  functions collapsed to `diagnostics_for_source` + `diagnostics_from_aozora`.
+- **Workspace version unified with the `aozora` parser (`0.1.3` → `0.4.1`).**
+  The tools printed a confusing `0.1.3 (aozora … / v0.4.1)` mismatch; every
+  crate now mirrors the pinned parser version and is bumped in lockstep with
+  the `aozora` rev. `tree-sitter-aozora` inherits the workspace version (the
+  npm grammar package matches); the VS Code extension keeps its independent
+  Marketplace version.
+- **`aozora-lsp` dropped its runtime dependency on `aozora-fmt`** — the
+  formatting handler calls `aozora` directly (byte-identical output),
+  removing `aozora-fmt` + `similar`/`walkdir`/`anyhow` from the server's
+  dependency tree. `tree-sitter-aozora` is now publishable, so the whole
+  workspace can ship to crates.io.
 - **`aozora` / `aozora-encoding` dependency bumped `v0.3.0` → `v0.4.0`**,
   picking up the upstream pre-release security hardening (FFI/WASM
   oversized-input rejection, PUA-sentinel neutralisation, parser

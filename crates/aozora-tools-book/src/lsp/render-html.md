@@ -12,7 +12,7 @@ Returns rendered HTML for an open document.
   "params": {
     "uri": "file:///path/to/doc.aozora",
     // Optional: pin to a specific document version. If omitted, the
-    // server uses the latest published Snapshot.
+    // server uses the latest published DocSnapshot.
     "version": 42
   }
 }

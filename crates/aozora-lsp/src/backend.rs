@@ -427,8 +427,7 @@ impl LanguageServer for AozoraLanguageServer {
                 // VS Code extension renders gaiji inlines via
                 // decoration in `gaijiFold.ts`, and adding an LSP
                 // inlay layer on top duplicated the `→ X` glyph.
-                // Editors that consume inlay hints over LSP can opt
-                // in via the `crate::inlay_hints` library entry.
+                // Clients that want the data use `aozora/gaijiSpans`.
                 linked_editing_range_provider: Some(LinkedEditingRangeServerCapabilities::Simple(
                     true,
                 )),
@@ -697,10 +696,10 @@ impl LanguageServer for AozoraLanguageServer {
     // behaviour because the LSP can't know the cursor; trying to
     // emit blanket inlays on the server side and hide them on the
     // client would be impossible (decorations cannot suppress
-    // inlays). The library function `crate::inlay_hints::inlay_hints`
-    // is kept exported for editor integrations that prefer the
-    // server-side path (helix, neovim) and don't run our VS Code
-    // extension.
+    // inlays). `crate::inlay_hints` stays as an internal helper
+    // (exercised by tests/benches) in case we later advertise
+    // `inlayHint`; clients that want the data today consume the
+    // `aozora/gaijiSpans` custom request.
 
     #[tracing::instrument(
         skip_all,
