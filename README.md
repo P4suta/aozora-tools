@@ -94,11 +94,13 @@ before any push lands.
 
 ## Install
 
-Pre-built `aozora-fmt` + `aozora-lsp` binaries for **Linux x86_64**,
-**macOS arm64**, and **Windows x86_64** are attached to every GitHub
-Release — see [the releases page](https://github.com/P4suta/aozora-tools/releases)
-and pick a `aozora-tools-vX.Y.Z-<target>.{tar.gz,zip}`. SHA256 sums
-are published as `SHA256SUMS` next to the archives.
+Pre-built `aozora-fmt` + `aozora-lsp` binaries are attached to every
+GitHub Release for five targets — **Linux** (x86_64, arm64), **macOS**
+(Intel, Apple silicon), and **Windows** (x86_64) — built by
+[cargo-dist](https://opensource.axo.dev/cargo-dist/). Grab an archive
+from [the releases page](https://github.com/P4suta/aozora-tools/releases),
+or run the `shell` / `powershell` installer script published with each
+release. Checksums are attached alongside.
 
 Or build from source:
 
