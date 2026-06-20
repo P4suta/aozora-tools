@@ -14,7 +14,7 @@ aozora-lsp [OPTIONS]
 |---|---|
 | `--stdio`         | Speak LSP over stdio. Accepted for editor compatibility; it's the only transport, so the flag is a no-op. |
 | `-h`, `--help`    | Print help (including the environment variables below) and exit. |
-| `-V`, `--version` | Print the server's semver and the pinned `aozora` parser rev/tag, e.g. `aozora-lsp 0.1.3 (aozora a53c632 / v0.4.1)`, and exit. |
+| `-V`, `--version` | Print the server's semver and the pinned `aozora` parser rev/tag, e.g. `aozora-lsp 0.4.1 (aozora a53c632 / v0.4.1)`, and exit. |
 
 `--help` and `--version` print and exit **before** the server opens the
 stdio stream, so they never interfere with the protocol. An unknown flag

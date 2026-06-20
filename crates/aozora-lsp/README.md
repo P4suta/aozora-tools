@@ -80,7 +80,7 @@ Profiling pipeline (samply) is documented in the
 ## Install
 
 ```sh
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-lsp
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-lsp
 ```
 
 Or grab a pre-built binary from

@@ -67,7 +67,7 @@ body:
     attributes:
       label: aozora-tools version
       description: "Paste the full `aozora-fmt --version` / `aozora-lsp --version` line — it includes the pinned `aozora` parser rev, which is essential for triage."
-      placeholder: "aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)"
+      placeholder: "aozora-fmt 0.4.1 (aozora a53c632 / v0.4.1)"
     validations:
       required: true
 

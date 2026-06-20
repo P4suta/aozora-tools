@@ -134,8 +134,8 @@ for where to drop the completions and man pages.
 Or build from source:
 
 ```sh
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-fmt
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-lsp
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-fmt
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-lsp
 ```
 
 ## Versioning and release

@@ -123,7 +123,7 @@ dependencies = [
 
 [[package]]
 name = "aozora-fmt"
-version = "0.1.3"
+version = "0.4.1"
 dependencies = [
  "anstream",
  "anstyle",
@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "aozora-lsp"
-version = "0.1.3"
+version = "0.4.1"
 dependencies = [
  "aozora",
  "aozora-encoding",
@@ -231,7 +231,7 @@ dependencies = [
 
 [[package]]
 name = "aozora-tools-xtask"
-version = "0.1.3"
+version = "0.4.1"
 dependencies = [
  "aozora-fmt",
  "aozora-lsp",
@@ -2175,7 +2175,7 @@ dependencies = [
 
 [[package]]
 name = "tree-sitter-aozora"
-version = "0.1.0"
+version = "0.4.1"
 dependencies = [
  "cc",
  "tree-sitter",

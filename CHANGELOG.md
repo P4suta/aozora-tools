@@ -46,7 +46,7 @@ once 1.0 ships.
   0/1/2 exit contract is preserved (`crates/aozora-fmt/src/{cli,discover,process,report}.rs`).
 - **`--version` reports the embedded `aozora` parser.** Both binaries
   print `<semver> (aozora <rev> / <tag>)`, e.g.
-  `aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)`, reading the pinned rev
+  `aozora-fmt 0.4.1 (aozora a53c632 / v0.4.1)`, reading the pinned rev
   from `Cargo.lock` at build time (`crates/aozora-{fmt,lsp}/build.rs`).
 - **`aozora-lsp` argv handling.** The daemon now answers `--version`
   and `--help` (which also documents `RUST_LOG` and
