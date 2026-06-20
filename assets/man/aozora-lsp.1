@@ -1,0 +1,25 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH aozora-lsp 1  "aozora-lsp 0.1.3 (aozora a53c632 / v0.4.1)" 
+.SH NAME
+aozora\-lsp \- Language Server for aozora\-flavored\-markdown (speaks LSP over stdio)
+.SH SYNOPSIS
+\fBaozora\-lsp\fR [\fB\-\-stdio\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] 
+.SH DESCRIPTION
+Language Server for aozora\-flavored\-markdown. Speaks LSP over stdio: stdout carries the JSON\-RPC wire protocol and logs go to stderr.
+.PP
+Environment variables:
+  RUST_LOG                  tracing filter, e.g. `aozora_lsp=debug` (default: warn).
+  AOZORA_LSP_SLOW_PARSE_US  per\-parse latency in microseconds above which a slow\-parse warning is logged (default: 100000).
+.SH OPTIONS
+.TP
+\fB\-\-stdio\fR
+Speak LSP over stdio. Accepted for editor compatibility; this is the only supported transport, so the flag is a no\-op
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH VERSION
+v0.1.3 (aozora a53c632 / v0.4.1)

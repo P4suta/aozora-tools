@@ -54,8 +54,8 @@ TUI with `c` / `t` / `d`.
 (`cargo fmt --all` writes; `bun run check:fix` writes), `cargo
 clippy`, `typos`. The pre-push hook is **strict**: `cargo fmt
 --check`, full `clippy --all-features`, the workspace test suite,
-`cargo bench --no-run`, `cargo doc`, `typos`, and the VS Code
-extension `bun run check`.
+`cargo bench --no-run`, `cargo doc`, `typos`, `gen-assets --check`,
+and the VS Code extension `bun run check`.
 
 `jj` colocated repos bypass git hooks. The pre-push hook is the
 hard gate — it runs whether you commit through `git` or `jj`.
@@ -71,10 +71,28 @@ cargo nextest run --workspace --all-targets --locked
 cargo test --doc --workspace --locked
 cargo doc --workspace --no-deps --document-private-items --locked
 cargo check --benches --workspace --locked
+cargo run -p aozora-tools-xtask --locked -- gen-assets --check
 cargo deny --all-features --manifest-path Cargo.toml check
 typos
 (cd editors/vscode && bun run check)
 ```
+
+`just ci` runs the same set in one shot.
+
+## Generated assets (completions + man pages)
+
+The shell completions and man pages under `assets/` are **generated**
+from the clap CLIs, committed, and bundled into release archives by
+cargo-dist. After any change to a binary's arguments, regenerate and
+commit them:
+
+```sh
+just gen-assets        # rewrites assets/completions/ + assets/man/
+```
+
+`just ci`, the CI `assets up to date` step, and the lefthook pre-push
+hook all run `gen-assets --check`, which fails if the committed tree has
+drifted from the current CLIs.
 
 The handbook itself has an additional gate:
 
@@ -108,6 +126,7 @@ lychee --config crates/aozora-tools-book/lychee.toml \
 │   └── aozora-tools-book/ ← this handbook (excluded from workspace)
 ├── editors/
 │   └── vscode/            ← VS Code extension (TypeScript + esbuild)
+├── assets/                ← generated completions + man pages (just gen-assets)
 ├── samples/               ← hand-written .afm test inputs
 ├── scripts/
 │   ├── pgo-build.sh       ← PGO + optional BOLT release builds

@@ -1,0 +1,36 @@
+#compdef aozora-lsp
+
+autoload -U is-at-least
+
+_aozora-lsp() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--stdio[Speak LSP over stdio. Accepted for editor compatibility; this is the only supported transport, so the flag is a no-op]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+}
+
+(( $+functions[_aozora-lsp_commands] )) ||
+_aozora-lsp_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora-lsp commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_aozora-lsp" ]; then
+    _aozora-lsp "$@"
+else
+    compdef _aozora-lsp aozora-lsp
+fi

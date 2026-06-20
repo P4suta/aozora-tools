@@ -28,6 +28,7 @@
 - [ ] `cargo doc --workspace --no-deps --document-private-items` builds with `RUSTDOCFLAGS=-D warnings`.
 - [ ] `bun run check` in `editors/vscode/` passes (if VS Code extension touched).
 - [ ] `cargo bench --workspace --no-run` builds (if benches touched).
+- [ ] If a binary's CLI arguments changed: ran `just gen-assets` and committed the updated `assets/` (CI runs `gen-assets --check`).
 - [ ] Added or updated tests that exercise the change (proptest, integration, or LSP-protocol level).
 - [ ] Updated `CHANGELOG.md` under `[Unreleased]` (or stated why it doesn't need a changelog entry).
 - [ ] Commit messages follow Conventional Commits (commit-msg hook enforces).

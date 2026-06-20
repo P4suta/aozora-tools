@@ -32,6 +32,7 @@ use clap::{Args, Parser, Subcommand};
 
 mod analyze;
 mod coverage;
+mod gen_assets;
 mod preflight;
 mod vsix;
 
@@ -60,6 +61,19 @@ enum Cmd {
     /// HTML / lcov / summary reports with an optional gate. Mirrors
     /// the CI `coverage` job so local + CI numbers are comparable.
     Coverage(coverage::CoverageArgs),
+    /// (Re)generate the committed shell completions + man pages under
+    /// `assets/` from the live clap definitions. The release archives
+    /// bundle that tree, so it must track the CLIs; `--check` verifies it
+    /// is current instead of writing (wired into `just ci`).
+    GenAssets(GenAssetsArgs),
+}
+
+#[derive(Args)]
+struct GenAssetsArgs {
+    /// Verify `assets/` is up to date instead of regenerating it. Exits
+    /// non-zero (with a hint to run `just gen-assets`) if it has drifted.
+    #[arg(long)]
+    check: bool,
 }
 
 #[derive(Args)]
@@ -127,6 +141,7 @@ fn main() -> ExitCode {
         },
         Cmd::VsixAll(args) => vsix::run_vsix_all(args.jobs, args.target.as_deref()),
         Cmd::Coverage(args) => coverage::run(&args),
+        Cmd::GenAssets(args) => gen_assets::run(args.check),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

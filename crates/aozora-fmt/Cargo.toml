@@ -23,6 +23,16 @@ path = "src/lib.rs"
 aozora     = { workspace = true }
 clap       = { workspace = true }
 anyhow     = { workspace = true }
+similar    = { workspace = true }   # unified diff for --diff
+walkdir    = { workspace = true }   # directory recursion
+anstream   = { workspace = true }   # TTY-aware stdout for coloured diffs
+anstyle    = { workspace = true }   # diff colour styling
+serde      = { workspace = true }   # --json report
+serde_json = { workspace = true }
+
+[build-dependencies]
+toml  = { workspace = true }   # parse Cargo.lock for the aozora rev
+serde = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

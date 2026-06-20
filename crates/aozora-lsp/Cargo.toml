@@ -26,6 +26,8 @@ aozora-fmt         = { workspace = true }
 tree-sitter-aozora = { workspace = true }
 tree-sitter        = "0.26"
 
+clap               = { workspace = true }   # --version/--help/--stdio argv handling
+
 tower-lsp          = { workspace = true }
 tokio              = { workspace = true }
 serde              = { workspace = true }
@@ -42,6 +44,10 @@ thiserror          = "2"
 # randomized-schedule check in tests/shuttle_doc_state.rs. Off by
 # default so routine `cargo test` doesn't pull in the shuttle dep.
 shuttle            = { workspace = true, optional = true }
+
+[build-dependencies]
+toml  = { workspace = true }   # parse Cargo.lock for the aozora rev
+serde = { workspace = true }
 
 [dev-dependencies]
 proptest  = { workspace = true }

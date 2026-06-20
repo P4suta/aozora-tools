@@ -9,6 +9,7 @@
 - [Install](getting-started/install.md)
 - [LSP quickstart (any editor)](getting-started/lsp.md)
 - [Formatter quickstart](getting-started/fmt.md)
+- [Troubleshooting](getting-started/troubleshooting.md)
 
 # aozora-fmt (formatter)
 
@@ -18,6 +19,7 @@
 # aozora-lsp (language server)
 
 - [Overview](lsp/overview.md)
+- [Invocation & environment](lsp/invocation.md)
 - [State model](lsp/state-model.md)
 - [Standard LSP capabilities](lsp/capabilities.md)
 - [Custom protocol extensions](lsp/extensions.md)

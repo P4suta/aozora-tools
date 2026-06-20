@@ -35,7 +35,35 @@ sha256sum --check SHA256SUMS
 ```
 
 The archive contains `aozora-fmt`, `aozora-lsp`, `LICENSE-APACHE`,
-`LICENSE-MIT`, and `README.md`. Drop the binaries anywhere on `$PATH`.
+`LICENSE-MIT`, `README.md`, plus a `completions/` directory (shell
+completions) and `man/` (man pages — see below). Drop the binaries
+anywhere on `$PATH`.
+
+## Shell completions and man pages
+
+Every archive ships completions for bash, zsh, fish, PowerShell, and
+Nushell under `completions/`, and man pages under `man/`. The installer
+scripts only place the **binaries**; the completions and man pages are
+bundled for you to install where your shell expects them:
+
+```sh
+# bash
+install -Dm644 completions/aozora-fmt.bash ~/.local/share/bash-completion/completions/aozora-fmt
+install -Dm644 completions/aozora-lsp.bash ~/.local/share/bash-completion/completions/aozora-lsp
+
+# zsh (a directory on your $fpath, before `compinit`)
+install -Dm644 completions/_aozora-fmt ~/.zfunc/_aozora-fmt
+
+# fish
+install -Dm644 completions/aozora-fmt.fish ~/.config/fish/completions/aozora-fmt.fish
+
+# man pages
+install -Dm644 man/aozora-fmt.1 ~/.local/share/man/man1/aozora-fmt.1
+install -Dm644 man/aozora-lsp.1 ~/.local/share/man/man1/aozora-lsp.1
+```
+
+PowerShell users dot-source `completions/_aozora-fmt.ps1` from their
+profile; Nushell users `source` `completions/aozora-fmt.nu`.
 
 ## From source
 

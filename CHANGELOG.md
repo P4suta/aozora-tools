@@ -31,10 +31,34 @@ once 1.0 ships.
   by a `catch_unwind` (a parser panic exits 2 cleanly and never writes)
   and a fixed-point check (`format(format(x)) == format(x)`), so a
   non-idempotent or panicking parse can no longer corrupt the file
-  (`crates/aozora-fmt/src/main.rs`).
+  (`crates/aozora-fmt/src/process.rs`).
 
 ### Added
 
+- **`aozora-fmt` multi-file, directory, and diff support.** The
+  formatter now accepts any number of paths and recurses directories
+  for `*.afm` / `*.aozora` / `*.aozora.txt` (deterministic, sorted,
+  de-duplicated; `target/` and dotted entries skipped). New `--diff`
+  (coloured unified diff, `--color auto|always|never`), `-l`/`--list`
+  (gofmt-style path listing, combinable with `-w`), and `--json`
+  (machine-readable `--check` report) modes. `--check` over many files
+  reports every offending file and never aborts early; the documented
+  0/1/2 exit contract is preserved (`crates/aozora-fmt/src/{cli,discover,process,report}.rs`).
+- **`--version` reports the embedded `aozora` parser.** Both binaries
+  print `<semver> (aozora <rev> / <tag>)`, e.g.
+  `aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)`, reading the pinned rev
+  from `Cargo.lock` at build time (`crates/aozora-{fmt,lsp}/build.rs`).
+- **`aozora-lsp` argv handling.** The daemon now answers `--version`
+  and `--help` (which also documents `RUST_LOG` and
+  `AOZORA_LSP_SLOW_PARSE_US`) and accepts the conventional `--stdio`
+  flag, all before the JSON-RPC stream opens (`crates/aozora-lsp/src/cli.rs`).
+- **Shell completions + man pages in every release archive.**
+  `xtask gen-assets` renders bash/zsh/fish/PowerShell/Nushell
+  completions and man pages from the clap CLIs into a committed
+  `assets/` tree, which cargo-dist bundles (`dist-workspace.toml`).
+  `just gen-assets-check` (wired into `just ci`, CI, and the pre-push
+  hook) fails if they drift from the CLIs
+  (`crates/aozora-tools-xtask/src/gen_assets.rs`).
 - **CI `coverage` job** (`.github/workflows/ci.yml`) runs
   `cargo llvm-cov nextest --workspace --all-features` and hard-gates
   on **line ≥ 80% / region ≥ 70%**. Region coverage is the stable-
