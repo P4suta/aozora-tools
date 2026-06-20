@@ -11,3 +11,7 @@ rust = "1.95.0"
 "cargo:cargo-nextest" = "latest"
 "cargo:cargo-deny" = "latest"
 "cargo:cargo-llvm-cov" = "latest"
+# Unused-dependency detector. `dead_code` catches unreachable code but is
+# blind to crates declared in Cargo.toml yet never used; cargo-shear closes
+# that gap. Surfaced via `just shear`, the pre-push hook, and the CI shear job.
+"cargo:cargo-shear" = "latest"

@@ -16,7 +16,11 @@ the [`aozora`](https://github.com/P4suta/aozora) parser ecosystem.
 2. **Justify every suppression.** A `#[allow(...)]` must carry a
    `reason = "..."` (enforced by `clippy::allow_attributes_without_reason`)
    and is reserved for upstream / protocol constraints. `dead_code = "deny"`
-   is intentional — fix the real issue instead of hiding it.
+   is intentional — fix the real issue instead of hiding it. Unused
+   *dependencies* are the blind spot `dead_code` can't see, so `cargo shear`
+   (`just shear`) gates them too: drop the crate, or record a deliberate
+   exception under `[workspace.metadata.cargo-shear]` /
+   `[package.metadata.cargo-shear] ignored` with a comment explaining why.
 3. **Aozora parser pinning.** The workspace pins `aozora` and
    `aozora-encoding` to an immutable commit rev on the public sibling
    repo. Do **not** point them at `main` or a branch in a PR; rev
@@ -25,6 +29,11 @@ the [`aozora`](https://github.com/P4suta/aozora) parser ecosystem.
    first, fix after. The proptest sweep + the `金庫番` guardian suite
    (`crates/aozora-lsp/tests/guardian.rs`) cover panic-resistance,
    idempotence, and concurrency invariants you should not regress.
+5. **Docs stay truthful to the code.** `aozora-fmt`'s README Rust
+   example is compiled and run as a doctest (`#[doc = include_str!(...)]`
+   in its `lib.rs`), so a documented API that drifts fails CI. Prose docs
+   — the handbook, the LSP capability lists — are not machine-checked, so
+   update them in the same PR that changes the behaviour they describe.
 
 ## Setup and workflow
 
@@ -43,9 +52,12 @@ cargo test --workspace --all-targets
 yourself? `rustup show` reads `rust-toolchain.toml` and materialises the
 pinned channel.
 
-The pre-push hook runs the CI gate: `fmt --check`, clippy `-D warnings`,
-tests, `bench --no-run`, doc build, `typos`, and the VS Code `bun run check`.
-For the bacon edit loop, profiling, and sanitizers see
+The pre-push hook runs the full CI gate: `fmt --check`, clippy
+`-D warnings`, tests (workspace `--all-targets` **plus** doctests),
+`bench --no-run`, doc build, `typos`, `cargo deny`, `cargo shear`
+(unused dependencies — see ground rule 2), the `gen-assets --check`
+drift check, and the VS Code `bun run check`. `just ci` runs the same
+set in one shot. For the bacon edit loop, profiling, and sanitizers see
 [`contrib/dev.md`](./crates/aozora-tools-book/src/contrib/dev.md).
 
 Opening the repo root in VS Code picks up `.vscode/` (recommended

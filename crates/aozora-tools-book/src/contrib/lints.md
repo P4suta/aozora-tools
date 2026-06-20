@@ -62,6 +62,21 @@ The generated `parser.c` in `tree-sitter-aozora` is C, not Rust; its
 clang warnings are silenced by `-Wno-*` flags in that crate's
 `build.rs`.
 
+## Unused dependencies
+
+`dead_code = "deny"` flags unreachable *code*, but it cannot see a crate
+declared in `Cargo.toml` that nothing imports. `cargo-shear` closes that
+gap: it parses every source file for actual `use` sites and reports any
+dependency with none. It runs as the CI `shear` job, in the pre-push
+hook, through `just shear`, and inside `just ci`.
+
+A genuine false positive — a dependency reached only through a macro, a
+`cfg`-gated path, or a feature-gated optional dep — is recorded under
+`[workspace.metadata.cargo-shear]` or a crate's
+`[package.metadata.cargo-shear] ignored`, with a comment stating why
+(see `aozora-lsp`'s `shuttle` entry). Dropping the crate is always
+preferred over an ignore entry.
+
 ## Adding a new lint
 
 1. Add the entry to `[workspace.lints.*]` in the workspace

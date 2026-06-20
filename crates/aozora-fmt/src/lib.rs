@@ -24,6 +24,15 @@ mod report;
 
 pub use cli::Cli;
 
+/// Compiles and runs the fenced Rust example in this crate's `README.md` as a
+/// doctest, so the documented public API (`format_source`) can't silently
+/// drift from the code. `#[cfg(doctest)]` means the item exists only while
+/// rustdoc collects doctests — it never reaches a normal build, so neither
+/// `dead_code` nor `missing_debug_implementations` fire on it.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 use cli::{CheckReport, ColorChoice, Mode};
 use discover::{Input, Resolved};
 use report::Outcome;

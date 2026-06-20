@@ -66,5 +66,14 @@ default       = []
 # pulling shuttle into the dependency graph for routine builds.
 shuttle-tests = ["dep:shuttle"]
 
+[package.metadata.cargo-shear]
+# `shuttle` is an *intentional* optional dependency: it is only used by the
+# feature-gated `shuttle_doc_state` test, and `shuttle-tests = ["dep:shuttle"]`
+# (above) is the standard way to make a test-only dep opt-in without compiling
+# it for routine `cargo test`. cargo-shear flags this as a "misplaced optional
+# dependency" and suggests `[dev-dependencies]`, but that would force shuttle
+# into every test build — exactly what the feature gate exists to avoid.
+ignored = ["shuttle"]
+
 [lints]
 workspace = true

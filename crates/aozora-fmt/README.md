@@ -45,7 +45,10 @@ reformat, `2` any other error.
 The single public entry point is `aozora_fmt::format_source`:
 
 ```rust
-let canonical = aozora_fmt::format_source(input);
+// Canonicalise an aozora document. The round-trip is a fixed point, so a
+// second pass is byte-identical to the first.
+let canonical = aozora_fmt::format_source("｜青梅《おうめ》へ");
+assert_eq!(canonical, aozora_fmt::format_source(&canonical));
 ```
 
 `aozora-lsp`'s `textDocument/formatting` handler calls into the
