@@ -41,7 +41,7 @@ pub(crate) const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 /// Per-call statistics emitted by [`SegmentCache::reparse`].
 ///
 /// The caller (typically the LSP backend's `DocState`) feeds these
-/// into the per-document [`crate::metrics::Metrics`] so parse latency
+/// into the per-document `Metrics` so parse latency
 /// and cache fields are observable from a third party reading the
 /// log. `cache_hits` / `cache_misses` are set to `0` / `1` for every
 /// call — every reparse is a "miss" under the whole-document model.

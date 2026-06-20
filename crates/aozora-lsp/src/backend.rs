@@ -67,7 +67,7 @@ use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_fu
 /// clone — `Client` is a channel handle and `docs` is
 /// `Arc<DashMap<...>>`.
 #[derive(Debug, Clone)]
-pub struct Backend {
+pub(crate) struct Backend {
     client: Client,
     docs: Arc<DashMap<Url, Arc<DocState>>>,
 }
@@ -124,7 +124,7 @@ impl Backend {
     /// `FnOnce(Client) -> Backend` requirement, so users call this
     /// as `LspService::new(Backend::new)`.
     #[must_use]
-    pub fn new(client: Client) -> Self {
+    pub(crate) fn new(client: Client) -> Self {
         Self {
             client,
             docs: Arc::new(DashMap::new()),
@@ -262,7 +262,7 @@ impl Backend {
     ///
     /// Returns [`JsonRpcError::invalid_params`] if no open document
     /// matches `params.uri`.
-    pub async fn render_html(&self, params: RenderHtmlParams) -> Result<RenderHtmlResult> {
+    pub(crate) async fn render_html(&self, params: RenderHtmlParams) -> Result<RenderHtmlResult> {
         // Wait-free snapshot — reads never contend with the writer
         // hot path. The Arc<str> clone is a single atomic bump.
         let state = self
@@ -304,7 +304,7 @@ impl Backend {
     /// # Errors
     /// Returns [`JsonRpcError::invalid_params`] if no document at
     /// `params.uri` is open.
-    pub async fn gaiji_spans(&self, params: GaijiSpansParams) -> Result<GaijiSpansResult> {
+    pub(crate) async fn gaiji_spans(&self, params: GaijiSpansParams) -> Result<GaijiSpansResult> {
         // tower-lsp's `custom_method` macro requires an async fn, but
         // the body is purely sync: the gaiji span list is pre-built
         // by `DocState`, lookup is lock-free, no I/O happens. Make
@@ -347,14 +347,14 @@ impl Backend {
 /// Parameters for the `aozora/renderHtml` custom LSP request.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RenderHtmlParams {
-    pub uri: Url,
+pub(crate) struct RenderHtmlParams {
+    pub(crate) uri: Url,
 }
 
 /// Result for the `aozora/renderHtml` custom LSP request.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct RenderHtmlResult {
-    pub html: String,
+pub(crate) struct RenderHtmlResult {
+    pub(crate) html: String,
 }
 
 /// Parameters for the `aozora/gaijiSpans` custom LSP request — the
@@ -365,8 +365,8 @@ pub struct RenderHtmlResult {
 /// enters the span.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GaijiSpansParams {
-    pub uri: Url,
+pub(crate) struct GaijiSpansParams {
+    pub(crate) uri: Url,
 }
 
 /// One gaiji span exposed to the editor for visual collapse.
@@ -374,11 +374,11 @@ pub struct GaijiSpansParams {
 /// is the rendered glyph (may be a single char or a 2-codepoint
 /// combining sequence).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GaijiSpanView {
-    pub range: Range,
-    pub resolved: String,
-    pub description: String,
-    pub mencode: Option<String>,
+pub(crate) struct GaijiSpanView {
+    pub(crate) range: Range,
+    pub(crate) resolved: String,
+    pub(crate) description: String,
+    pub(crate) mencode: Option<String>,
 }
 
 /// Result for `aozora/gaijiSpans` — every resolvable gaiji in the
@@ -386,8 +386,8 @@ pub struct GaijiSpanView {
 /// `U+XXXX` form) are omitted because the editor has nothing to
 /// substitute in their place.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct GaijiSpansResult {
-    pub spans: Vec<GaijiSpanView>,
+pub(crate) struct GaijiSpansResult {
+    pub(crate) spans: Vec<GaijiSpanView>,
 }
 
 /// JSON shape of the `aozora.canonicalizeSlug` `execute_command`

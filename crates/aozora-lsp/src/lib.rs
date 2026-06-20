@@ -14,11 +14,11 @@
 //!   and returns a Markdown explanation.
 //!
 //! The stable public surface is intentionally tiny: [`Cli`] (so `xtask`
-//! can generate the shell completions and man page) and the [`Backend`]
-//! the daemon wires into tower-lsp. The internal building blocks the
-//! handlers are made of are re-exported behind the `#[doc(hidden)]`
-//! [`internals`] module — for the crate's own tests, benches, examples,
-//! and fuzz targets only, with no semver guarantee.
+//! can generate the shell completions and man page) and [`run`], the
+//! daemon entry point. The internal building blocks the handlers are made
+//! of are re-exported behind the `#[doc(hidden)]` [`internals`] module —
+//! for the crate's own tests, benches, examples, and fuzz targets only,
+//! with no semver guarantee.
 
 #![forbid(unsafe_code)]
 
@@ -48,8 +48,55 @@ mod state;
 mod structured_snippets;
 mod text_edit;
 
-pub use backend::Backend;
+use std::io;
+
+use tokio::io::{stdin, stdout};
+use tower_lsp::{LspService, Server};
+use tracing_subscriber::EnvFilter;
+
+use crate::backend::Backend;
+
 pub use cli::Cli;
+
+/// Run the `aozora-lsp` daemon: parse argv, install the stderr tracing
+/// subscriber, then serve LSP over stdio until the client disconnects.
+///
+/// argv is handled first so clap prints and exits for `--version` /
+/// `--help` (and on a usage error) *before* the JSON-RPC stream opens, so
+/// nothing pollutes the protocol channel on stdout. `--stdio` is accepted
+/// (and ignored) for editor compatibility.
+pub async fn run() {
+    let _cli = Cli::parse_args();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),
+        )
+        .with_writer(io::stderr)
+        .init();
+
+    let stdin = stdin();
+    let stdout = stdout();
+    // Custom requests `aozora/renderHtml` and `aozora/gaijiSpans` are wired
+    // here at `LspService` build-time because tower-lsp's `LanguageServer`
+    // trait only covers spec-defined methods; custom methods go on the
+    // builder.
+    let (service, socket) = LspService::build(Backend::new)
+        .custom_method("aozora/renderHtml", Backend::render_html)
+        .custom_method("aozora/gaijiSpans", Backend::gaiji_spans)
+        .finish();
+    // tower-lsp's default concurrency cap is 4. After a didChange, VS Code
+    // routinely fires 5+ concurrent requests (codeAction, inlayHint,
+    // renderHtml, plus repeat codeActions either side of the cursor); the
+    // 5th+ would queue behind the first four and surface as latency on
+    // otherwise µs handlers. 32 keeps every realistic burst inside the
+    // parallel window, and none of our handlers hold an executor thread
+    // beyond their own work, so the higher cap is essentially free.
+    Server::new(stdin, stdout, socket)
+        .concurrency_level(32)
+        .serve(service)
+        .await;
+}
 
 /// Internal API surface — re-exported here **only** for the crate's own
 /// integration tests, benches, examples, and fuzz targets, which compile as
@@ -58,7 +105,7 @@ pub use cli::Cli;
 /// This module is `#[doc(hidden)]` and is **not** part of the public API: it
 /// carries no semver guarantee and anything in it may change or vanish in any
 /// release. Public-surface tools (`cargo public-api`, `cargo semver-checks`)
-/// skip `#[doc(hidden)]` items, so the stable surface stays [`Cli`] + [`Backend`].
+/// skip `#[doc(hidden)]` items, so the stable surface stays [`Cli`] + [`run`].
 ///
 /// The targets that consume it are gated on the `internals` Cargo feature
 /// (see `Cargo.toml`), so a plain `cargo test` skips them; CI runs
