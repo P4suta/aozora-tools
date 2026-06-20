@@ -1,17 +1,29 @@
 # Formatter quickstart
 
-`aozora-fmt` follows the `rustfmt` / `prettier` CLI shape. Three modes:
+`aozora-fmt` follows the `rustfmt` / `prettier` / `gofmt` CLI shape:
 
 ```sh
-# Print the canonicalised form to stdout (default).
+# Print the canonicalised form to stdout (default, single input).
 aozora-fmt path/to/doc.aozora
 
-# Verify; non-zero exit if the file would change.
+# Verify; non-zero exit if anything would change.
 aozora-fmt --check path/to/doc.aozora
 
 # Rewrite in place.
 aozora-fmt --write path/to/doc.aozora    # or -w
 ```
+
+It also takes **many paths and directories** at once (directories are
+searched recursively for `.afm` / `.aozora` / `.aozora.txt`):
+
+```sh
+aozora-fmt --write .                 # format the whole tree
+aozora-fmt --check --diff src/       # show what would change, in colour
+aozora-fmt --list .                  # just the unformatted paths (gofmt -l)
+aozora-fmt --check --json . > r.json # machine-readable status
+```
+
+See the [CLI reference](../fmt/cli.md) for every flag.
 
 ## Pipe-friendly
 
@@ -33,13 +45,14 @@ echo '日本《にほん》' | aozora-fmt
 ## CI usage
 
 ```sh
-# Bail the build if any file is not canonical.
-find . -name '*.aozora' -print0 | xargs -0 -n1 aozora-fmt --check
+# Bail the build if anything in the tree is not canonical.
+aozora-fmt --check .
 ```
 
-The mode mirrors `rustfmt --check` exactly: any rewrite-needed file
-prints its path to stderr and exits `1`. Aggregate with `find` /
-`fd` and `xargs` for multi-file runs.
+`--check` mirrors `rustfmt --check`: every rewrite-needed file prints
+its path to stderr and the run exits `1`. Because directory recursion
+is built in, a single `aozora-fmt --check .` replaces the old
+`find … | xargs` pipeline — though that still works if you prefer it.
 
 ## What "canonical" means
 

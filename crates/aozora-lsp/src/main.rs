@@ -14,6 +14,12 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
+    // Handle argv before touching stdout: clap prints and exits for
+    // `--version`/`--help` (and on a usage error) here, before the JSON-RPC
+    // stream is opened, so nothing pollutes the protocol channel. `--stdio`
+    // is accepted (and ignored) for editor compatibility.
+    let _cli = aozora_lsp::Cli::parse_args();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),

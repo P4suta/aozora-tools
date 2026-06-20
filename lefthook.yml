@@ -90,6 +90,11 @@ pre-push:
     # Spell check (same config as pre-commit, but mandatory here).
     typos:
       run: typos
+    # Generated assets/ (shell completions + man pages) must track the
+    # clap CLIs — they're bundled into release archives. Mirrors the CI
+    # `assets up to date` step; regenerate with `just gen-assets`.
+    gen-assets-check:
+      run: cargo run -p aozora-tools-xtask -- gen-assets --check
     # VS Code TypeScript: biome (no writes) + tsc type-check.
     vscode-check:
       run: cd editors/vscode && bun run check

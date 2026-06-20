@@ -149,8 +149,17 @@ cov *ARGS:
 vscode-check:
     cd editors/vscode && bun install && bun run check
 
+# Regenerate the committed shell completions + man pages under assets/ from
+# the live clap CLIs. Run after any change to a binary's arguments.
+gen-assets:
+    cargo run -p aozora-tools-xtask -- gen-assets
+
+# Fail if the committed assets/ have drifted from the current CLIs (CI parity).
+gen-assets-check:
+    cargo run -p aozora-tools-xtask -- gen-assets --check
+
 # The full local gate — mirrors CI. Run before pushing.
-ci: fmt-check clippy test doc deny
+ci: fmt-check clippy test doc deny gen-assets-check
     @echo "ci: all gates passed"
 
 # --- fuzzing -----------------------------------------------------------------

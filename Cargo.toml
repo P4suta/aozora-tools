@@ -26,12 +26,28 @@ aozora-encoding = { version = "0.4.1", git = "https://github.com/P4suta/aozora.g
 
 # Internal workspace members
 aozora-fmt         = { version = "0.1.3", path = "crates/aozora-fmt" }
+# Used by xtask (gen-assets) to reach `Cli::command()` for completions/man.
+aozora-lsp         = { version = "0.1.3", path = "crates/aozora-lsp" }
 # Explicit version (not path-only) so cargo-deny's `bans.wildcards = "deny"` accepts it.
 tree-sitter-aozora = { version = "0.1.0", path = "crates/tree-sitter-aozora" }
 
 # CLI
 clap   = { version = "4.6.1", features = ["derive", "wrap_help"] }
 anyhow = "1.0"
+
+# CLI ergonomics (aozora-fmt: multi-file/diff/colour output)
+similar  = { version = "2.7", default-features = false, features = ["text"] }  # unified diff engine (Apache-2.0)
+walkdir  = "2.5"   # deterministic, symlink-loop-safe directory recursion
+anstream = "1.0"   # TTY-aware stdout wrapper (already in-graph via clap)
+anstyle  = "1.0"   # styling primitives for diff colouring
+
+# CLI asset generation (xtask): shell completions + man pages
+clap_complete         = "4.6"
+clap_complete_nushell = "4.6"
+clap_mangen           = "0.3"
+
+# Build-time: read the locked `aozora` parser rev for `--version`.
+toml = "0.8"
 
 # LSP runtime
 tower-lsp          = "0.20"

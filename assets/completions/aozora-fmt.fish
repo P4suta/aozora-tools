@@ -1,0 +1,10 @@
+complete -c aozora-fmt -l color -d 'When to colourise --diff output' -r -f -a "auto\t'Colour when stdout is a terminal (honours `NO_COLOR`)'
+always\t'Always colour, even when piped'
+never\t'Never colour'"
+complete -c aozora-fmt -l check -d 'Verify inputs are already formatted; exit 1 if any would change'
+complete -c aozora-fmt -s w -l write -d 'Rewrite files in place (no-op when already canonical)'
+complete -c aozora-fmt -l diff -d 'Print a unified diff for every file that would change. Implies --check'
+complete -c aozora-fmt -s l -l list -d 'List only the paths that would change (gofmt -l). Combine with -w'
+complete -c aozora-fmt -l json -d 'Emit the --check result as machine-readable JSON. Implies --check'
+complete -c aozora-fmt -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c aozora-fmt -s V -l version -d 'Print version'

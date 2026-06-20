@@ -120,6 +120,12 @@ jobs:
       - name: check benches (compile-only)
         run: cargo check --benches --workspace --locked
 
+      # The committed assets/ (shell completions + man pages) are generated
+      # from the clap CLIs and bundled into release archives. Fail if a CLI
+      # change landed without regenerating them via `just gen-assets`.
+      - name: assets up to date (completions + man)
+        run: cargo run -p aozora-tools-xtask --locked -- gen-assets --check
+
   # MSRV gate. The workspace declares `rust-version = "1.95.0"` in
   # `Cargo.toml` and pins the same channel in `rust-toolchain.toml`;
   # this job verifies that the codebase actually compiles on that

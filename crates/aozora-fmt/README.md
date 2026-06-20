@@ -17,12 +17,25 @@ aozora-fmt path/to/doc.afm
 # Read from stdin
 cat doc.afm | aozora-fmt -
 
-# Verify the file is already canonical (exit 1 otherwise — `rustfmt --check` style)
-aozora-fmt --check path/to/doc.afm
+# Verify (exit 1 otherwise — `rustfmt --check` style); recurses directories
+aozora-fmt --check path/to/docs/
 
-# Rewrite in place (no-op when already canonical)
-aozora-fmt --write path/to/doc.afm
+# Show what would change, in colour
+aozora-fmt --check --diff path/to/doc.afm
+
+# List unformatted files (gofmt -l), or emit JSON for tooling
+aozora-fmt --list .
+aozora-fmt --check --json .
+
+# Rewrite in place (no-op when already canonical); accepts many paths
+aozora-fmt --write path/to/doc.afm other.afm
 ```
+
+Multiple files and directories are accepted; directories are searched
+recursively for `.afm` / `.aozora` / `.aozora.txt` sources. See
+`aozora-fmt --help` or the
+[CLI reference](https://p4suta.github.io/aozora-tools/fmt/cli.html)
+for the full surface.
 
 Exit codes: `0` success or check-clean, `1` `--check` would
 reformat, `2` any other error.

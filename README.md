@@ -125,6 +125,12 @@ from [the releases page](https://github.com/P4suta/aozora-tools/releases),
 or run the `shell` / `powershell` installer script published with each
 release. Checksums are attached alongside.
 
+Each archive also bundles shell completions (bash, zsh, fish, PowerShell,
+Nushell) under `completions/` and man pages under `man/`. The installer
+scripts place only the binaries; see the
+[handbook install guide](https://p4suta.github.io/aozora-tools/getting-started/install.html#shell-completions-and-man-pages)
+for where to drop the completions and man pages.
+
 Or build from source:
 
 ```sh

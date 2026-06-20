@@ -21,6 +21,7 @@
 #![forbid(unsafe_code)]
 
 mod backend;
+mod cli;
 mod code_actions;
 mod commands;
 mod completion;
@@ -46,6 +47,7 @@ mod structured_snippets;
 mod text_edit;
 
 pub use backend::Backend;
+pub use cli::Cli;
 pub use code_actions::wrap_selection_actions;
 pub use commands::{COMMAND_CANONICALIZE_SLUG, canonicalize_slug_edit};
 pub use completion::completion_at;
