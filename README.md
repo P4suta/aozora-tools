@@ -146,6 +146,13 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked
 - The VS Code extension (`editors/vscode/package.json`) is versioned
   independently on its Marketplace cadence; it bundles whatever
   `aozora-lsp` build is current at release time.
+- **crates.io publish order** (verified with `cargo publish --dry-run`):
+  `tree-sitter-aozora` and `aozora-fmt` first, then `aozora-lsp` (it
+  depends on both — `tree-sitter-aozora` as a normal dep, `aozora-fmt` as
+  a dev-dep). `aozora-tools-xtask` is `publish = false`. The
+  `aozora` / `aozora-encoding` git pins resolve to their crates.io
+  `0.4.x` releases on publish — cargo drops the `git` / `rev` and keeps
+  the `version`, so no git dependency reaches the published manifest.
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for what shipped when.
 
