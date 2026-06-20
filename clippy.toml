@@ -26,7 +26,7 @@ max-fn-params-bools = 1          # ≥2 bool params: use an enum
 enum-variant-name-threshold = 2
 enum-variant-size-threshold = 256
 
-msrv = "1.95.0"  # matches rust-toolchain.toml
+msrv = "1.96.0"  # matches rust-toolchain.toml
 
 # Tests may use unwrap/expect/panic as diagnostic shortcuts; production stays strict.
 allow-unwrap-in-tests = true

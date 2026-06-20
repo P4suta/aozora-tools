@@ -7,7 +7,7 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
   <a href="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml"><img alt="docs deploy" src="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml/badge.svg"></a>
   <a href="https://github.com/P4suta/aozora-tools/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/P4suta/aozora-tools?display_name=tag&sort=semver"></a>
   <a href="./LICENSE-APACHE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue"></a>
-  <a href="./rust-toolchain.toml"><img alt="msrv" src="https://img.shields.io/badge/rust-1.95%2B-orange"></a>
+  <a href="./rust-toolchain.toml"><img alt="msrv" src="https://img.shields.io/badge/rust-1.96%2B-orange"></a>
 </p>
 
 <p align="center">
@@ -75,7 +75,7 @@ you land in a ready workspace. Run `just doctor` any time to confirm.
 
 **Host toolchain (also fully supported).** Prefer your own machine? You
 need [`rustup`](https://rustup.rs/) (reads `rust-toolchain.toml` → Rust
-1.95.0), a C compiler (for the tree-sitter grammar), and
+1.96.0), a C compiler (for the tree-sitter grammar), and
 [`mise`](https://mise.jdx.dev/) for the rest of the pinned tools:
 
 ```sh
@@ -92,7 +92,7 @@ Both paths are documented in full in
 
 The workspace pins [`aozora`](https://github.com/P4suta/aozora) at an
 immutable commit rev (v0.4.1), so a fresh clone needs only a matching
-Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
+Rust toolchain (1.96.0, see `rust-toolchain.toml`) and
 [`bun`](https://bun.sh/) for the VS Code extension.
 
 ```sh

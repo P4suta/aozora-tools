@@ -80,6 +80,8 @@ doctor:
     check committed      committed      'committed --version'      '`mise install`' opt
     check actionlint     actionlint     'actionlint --version'     '`mise install`' opt
     check bun            bun            'bun --version'            '`mise install`' req
+    check mdbook         mdbook         'mdbook --version'         '`mise install` (for `just book`)' opt
+    check mdbook-mermaid mdbook-mermaid 'mdbook-mermaid --version' '`mise install` (for `just book`)' opt
 
     echo
     echo "Native deps:"
@@ -137,6 +139,18 @@ clippy:
 # Build rustdoc with intra-doc-link breakage denied.
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items
+
+# Build the mdbook handbook (mirrors the docs.yml CI job). `mdbook-mermaid
+# install` writes the gitignored mermaid.min.js / mermaid-init.js assets the
+# book.toml references, then mdbook renders ```mermaid blocks as SVG.
+book:
+    mdbook-mermaid install crates/aozora-tools-book
+    mdbook build crates/aozora-tools-book
+
+# Serve the handbook with live reload at http://localhost:3000.
+book-serve:
+    mdbook-mermaid install crates/aozora-tools-book
+    mdbook serve crates/aozora-tools-book
 
 # Supply-chain audit: licenses, advisories, bans, sources.
 deny:

@@ -94,7 +94,7 @@ once 1.0 ships.
   a shuttle failure.
 - **CI `msrv` job** — `cargo check --workspace --all-features
   --all-targets --locked` against the declared
-  `rust-version = "1.95.0"`. Catches MSRV regressions that the
+  `rust-version = "1.96.0"`. Catches MSRV regressions that the
   canonical-toolchain `rust` job would miss.
 - **Fuzzing** (`just fuzz-*`, `.github/workflows/fuzz.yml`): cargo-fuzz
   harnesses `aozora-fmt/format_idempotent` and
@@ -116,6 +116,9 @@ once 1.0 ships.
 
 ### Changed
 
+- **MSRV / pinned toolchain bumped `1.95.0` → `1.96.0`** across
+  `rust-toolchain.toml`, the `rust-version`, `clippy.toml` `msrv`, the mise
+  manifest, and the CI MSRV gate.
 - **`aozora-lsp` public API reduced to `Cli` + `run()`.** The crate used to
   re-export ~50 internal types and functions at its root purely so its own
   tests and benches could reach them. They now live behind a

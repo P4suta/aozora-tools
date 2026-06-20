@@ -15,7 +15,7 @@ members = [
 # this version too; only the VS Code extension versions independently (Marketplace).
 version      = "0.4.1"
 edition      = "2024"
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 license      = "Apache-2.0 OR MIT"
 authors      = ["aozora-tools contributors"]
 repository   = "https://github.com/P4suta/aozora-tools"

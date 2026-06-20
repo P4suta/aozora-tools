@@ -68,7 +68,7 @@ profile; Nushell users `source` `completions/aozora-fmt.nu`.
 ## From source
 
 Requires the Rust toolchain pinned in [`rust-toolchain.toml`](https://github.com/P4suta/aozora-tools/blob/main/rust-toolchain.toml)
-(currently 1.95.0).
+(currently 1.96.0).
 
 ```sh
 # Both binaries:

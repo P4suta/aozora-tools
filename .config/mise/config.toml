@@ -7,7 +7,7 @@
 # cargo-fuzz is intentionally absent: it needs the nightly toolchain and
 # is provisioned by the dedicated fuzz workflow, not the default dev set.
 [tools]
-rust = "1.95.0"
+rust = "1.96.0"
 "cargo:cargo-nextest" = "latest"
 "cargo:cargo-deny" = "latest"
 "cargo:cargo-llvm-cov" = "latest"
@@ -15,3 +15,9 @@ rust = "1.95.0"
 # blind to crates declared in Cargo.toml yet never used; cargo-shear closes
 # that gap. Surfaced via `just shear`, the pre-push hook, and the CI shear job.
 "cargo:cargo-shear" = "latest"
+# Handbook toolchain: mdbook + the mermaid preprocessor that renders the
+# architecture diagrams (see crates/aozora-tools-book/book.toml). Lets
+# `just book` / `just book-serve` build the handbook locally, matching the
+# docs.yml CI job, instead of needing a manual `cargo install`.
+"cargo:mdbook" = "latest"
+"cargo:mdbook-mermaid" = "latest"

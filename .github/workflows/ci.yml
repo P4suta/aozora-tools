@@ -127,7 +127,7 @@ jobs:
       - name: assets up to date (completions + man)
         run: cargo run -p aozora-tools-xtask --locked -- gen-assets --check
 
-  # MSRV gate. The workspace declares `rust-version = "1.95.0"` in
+  # MSRV gate. The workspace declares `rust-version = "1.96.0"` in
   # `Cargo.toml` and pins the same channel in `rust-toolchain.toml`;
   # this job verifies that the codebase actually compiles on that
   # exact toolchain. Without it, a contributor (or a future channel
@@ -139,16 +139,16 @@ jobs:
   # type / borrow checker. The `rust` job above covers the actual
   # test run on the canonical channel.
   msrv:
-    name: msrv (Rust 1.95.0 cargo check)
+    name: msrv (Rust 1.96.0 cargo check)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.95.0
+      - name: Install Rust 1.96.0
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1
