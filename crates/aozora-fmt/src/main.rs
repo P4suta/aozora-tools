@@ -79,12 +79,8 @@ fn run(cli: &Cli) -> Result<ExitCode> {
             bail!("--write requires a file path, not stdin");
         };
         if changed {
-            // Safety net before clobbering the file in place. `format_source`
-            // is contractually idempotent — `format(format(x)) == format(x)`.
-            // If a second pass changes the output, the round-trip is not a
-            // fixed point for this input, so writing would persist something
-            // the next run would immediately rewrite. Refuse rather than risk
-            // corrupting the user's file.
+            // `format_source` is contractually idempotent; refuse to write
+            // if a second pass changes the output rather than corrupt the file.
             let reformatted = format_guarded(&formatted)?;
             if reformatted != formatted {
                 bail!(
@@ -104,20 +100,13 @@ fn run(cli: &Cli) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Format `source`, turning an unexpected parser panic into a clean
-/// error rather than a process abort.
-///
-/// [`format_source`] is infallible by type, but it delegates to the
-/// upstream `aozora` parser. A panic there (e.g. on adversarial input)
-/// would otherwise crash the CLI with exit code 101 and a backtrace —
-/// and, worse, in `--write` mode could leave the file half-written.
-/// The workspace builds with `panic = "unwind"`, so `catch_unwind`
-/// turns that into a controlled exit-2 and guarantees no file is
-/// touched after a panic.
+/// Format `source`, converting an upstream parser panic into a clean
+/// exit-2 error instead of a process abort (via `panic = "unwind"` and
+/// `catch_unwind`). In `--write` mode this guarantees no file is touched
+/// after a panic.
 fn format_guarded(source: &str) -> Result<String> {
-    // Silence the default panic hook for the guarded call so a caught
-    // panic does not also dump "thread 'main' panicked …" to stderr —
-    // we report it ourselves below.
+    // Silence the default hook so a caught panic doesn't also print
+    // "thread 'main' panicked …"; we report it ourselves below.
     let prev_hook = take_hook();
     set_hook(Box::new(|_| {}));
     let result = catch_unwind(AssertUnwindSafe(|| format_source(source)));

@@ -31,7 +31,7 @@
 - [ ] Added or updated tests that exercise the change (proptest, integration, or LSP-protocol level).
 - [ ] Updated `CHANGELOG.md` under `[Unreleased]` (or stated why it doesn't need a changelog entry).
 - [ ] Commit messages follow Conventional Commits (commit-msg hook enforces).
-- [ ] If bumping the `aozora` parser pin: aligned `tag = "vX.Y.Z"` and `version = "X.Y.Z"` in both `aozora` and `aozora-encoding` workspace deps; the matching CHANGELOG entry calls out which parser features unlocked.
+- [ ] If bumping the `aozora` parser pin: aligned `rev = "..."` and `version = "X.Y.Z"` in both `aozora` and `aozora-encoding` workspace deps; the matching CHANGELOG entry calls out which parser features unlocked.
 
 ## How to test
 

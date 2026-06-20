@@ -21,10 +21,9 @@ The LSP server runs **two parsers per document**:
   surface (linked editing, paragraph fold ranges, the per-keystroke
   `did_change` work).
 
-Splitting this way gives `aozora-lsp` constant-time editor responsiveness
-on a 6 MB document. The full pipeline running on every keystroke would
-add tens of milliseconds of jitter at p99; the incremental tree-sitter
-parse measures in tens of microseconds.
+Splitting this way keeps editor responsiveness independent of
+document size: the full pipeline runs only on the debounced path,
+while the incremental tree-sitter parse handles every keystroke.
 
 ## When the tree-sitter parse alone is not enough
 

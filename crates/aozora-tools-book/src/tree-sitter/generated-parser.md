@@ -7,12 +7,10 @@ to build the crate.
 
 ## Why it is committed
 
-Tree-sitter generates `parser.c` from `grammar.js` via the
-`tree-sitter` CLI, which itself depends on Node.js. Asking every
-downstream consumer to install Node + `tree-sitter` to regenerate
-a file the upstream maintainer can vouch for is the wrong friction
-trade. A committed `parser.c` is the convention every published
-tree-sitter grammar follows for the same reason.
+`tree-sitter generate` produces `parser.c` from `grammar.js` via a
+Node.js-based CLI. Committing the output spares every downstream
+consumer from installing Node + `tree-sitter`, and is the convention
+published tree-sitter grammars follow.
 
 ## When to regenerate
 
@@ -30,29 +28,17 @@ tree-sitter generate
 regenerated file as part of the same change that touched the
 grammar source.
 
-## Lint suppression
+## Compiler warnings
 
-Generated `parser.c` carries assorted clang warnings (unused
-function arguments, signedness comparisons) that the workspace's
-`-D warnings` policy would otherwise reject. The crate's
-`Cargo.toml` opts the `unused` lint group to `allow` *for this
-crate only*:
-
-```toml
-[lints.rust]
-unused = "allow"
-```
-
-Hand-written code in `bindings/rust/` keeps the workspace defaults.
-The narrow allow is the recommended pattern for vendored
-machine-generated code; widening it to other crates would defeat
-the bug-detector value of the workspace lint policy.
+Generated `parser.c` carries assorted clang warnings (unused function
+arguments, signedness comparisons). `build.rs` silences them with
+`-Wno-unused-parameter` / `-Wno-unused-but-set-variable` /
+`-Wno-trigraphs`, so the C build stays clean without relaxing any Rust
+lint. Hand-written code in `bindings/rust/` keeps the workspace defaults.
 
 ## Security review
 
-The committed `parser.c` is reviewed at the `tree-sitter generate`
-boundary by reading the diff against the previous version. When
-CodeQL or another scanner flags an alert in the generated source,
-the recommended workflow is to adjust `grammar.js` so the offending
-pattern no longer appears, regenerate `parser.c`, and commit the
-two together.
+Review the committed `parser.c` by reading the diff against the
+previous version at the `tree-sitter generate` boundary. When a
+scanner (CodeQL etc.) flags the generated source, adjust `grammar.js`
+so the pattern no longer appears, regenerate, and commit both.

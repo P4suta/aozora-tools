@@ -1,53 +1,15 @@
 //! Per-document state — paragraph-first model.
 //!
-//! ## Why paragraph-first
+//! Tree-sitter parse is `O(doc-size)`, so the document is segmented into
+//! `\n\n`-bounded paragraphs and only the edited paragraph is re-parsed;
+//! rope text, line index, and gaiji spans are per-paragraph too.
 //!
-//! Bench data drove the architecture: tree-sitter's parse on the
-//! aozora grammar is `O(doc-size)` (~33 ns/byte) regardless of edit
-//! position, so any whole-document parse path tops out at ~220 ms
-//! per keystroke on a 6 MB document. The fix isn't a smarter
-//! incremental algorithm — it's segmenting the document into
-//! `\n\n`-bounded paragraphs and only re-parsing the paragraph
-//! containing each edit.
-//!
-//! Once the parser is paragraph-local, the **rest** of the per-edit
-//! cost (rope materialisation, line-index build, gaiji-span walk)
-//! also wants to be paragraph-local — otherwise each edit still
-//! pays a doc-size memcpy + `LineIndex` SIMD scan even though only
-//! one paragraph changed. So this module makes paragraph-shape
-//! pervasive:
-//!
-//! - [`BufferState`] (writers): `Vec<MutParagraph>` + a single
-//!   `Parser`. Each `MutParagraph` owns its `Rope` text and
-//!   tree-sitter `Tree`.
-//! - [`Snapshot`] (readers): `Arc<[Arc<ParagraphSnapshot>]>`. Each
-//!   `ParagraphSnapshot` carries doc-absolute byte ranges + per-
-//!   paragraph text / line-index / gaiji spans.
-//! - **Doc-level views** ([`Snapshot::doc_text`],
-//!   [`Snapshot::doc_line_index`], [`Snapshot::doc_gaiji_spans`])
-//!   are lazily materialised once per snapshot via `OnceLock`.
-//!   Handlers that still want a flat `&str` view pay one
-//!   materialisation per snapshot generation; handlers that can
-//!   iterate paragraphs directly skip it entirely.
-//!
-//! ## Edit flow
-//!
-//! `apply_changes(edits)` walks each edit, resolves it to a
-//! paragraph index via binary search on cumulative byte offsets,
-//! mutates that paragraph's rope, calls `MutParagraph::apply_edit`
-//! to reparse just that paragraph. Cross-paragraph edits trigger a
-//! merge-and-reparse of the affected paragraph range; oversized
-//! paragraphs (> [`MAX_PARAGRAPH_BYTES`]) trigger a re-segment of
-//! that paragraph's content.
-//!
-//! ## Reader / writer decoupling
-//!
-//! The `BufferState` mutex protects writers; readers go through
-//! `Snapshot` via `ArcSwap` for wait-free loads. Per-paragraph
-//! snapshots add another layer: unchanged paragraphs across snapshot
-//! generations are `Arc::clone`d (single atomic increment), so a
-//! snapshot rebuild after a small edit costs
-//! `O(1 paragraph rebuilt + N - 1 Arc-bumps)` rather than `O(doc)`.
+//! - [`BufferState`] (writers): `Vec<MutParagraph>` behind a
+//!   `parking_lot::Mutex`, each owning its `Rope` and tree-sitter `Tree`.
+//! - [`Snapshot`] (readers): `Arc<[Arc<ParagraphSnapshot>]>` swapped via
+//!   `ArcSwap` for wait-free loads. Unchanged paragraphs are `Arc::clone`d
+//!   across generations, so a small edit rebuilds one paragraph, not the
+//!   doc. Doc-level `&str` / line-index / gaiji views are lazy via `OnceLock`.
 
 use std::collections::BTreeMap;
 use std::env;

@@ -35,9 +35,8 @@ flowchart LR
      present in published `.vsix` builds.
   3. `aozora-lsp` on `$PATH`.
 
-The bundled-binary path is the one that fires on a Marketplace install;
-the `serverPath` override exists for contributors running an unpublished
-LSP build.
+The bundled-binary path fires on a Marketplace install; `serverPath`
+overrides it for contributors running an unpublished LSP build.
 
 ## Commands
 
@@ -68,17 +67,14 @@ bun run compile     # esbuild production bundle → out/extension.js
 bun run check       # biome lint + tsc type-check (no writes)
 ```
 
-The `compile` script bundles the TypeScript source into a single
-`out/extension.js` that VS Code loads on activation. The bundle is
-a CommonJS module (VS Code's extension host is Node, not ESM
+`compile` bundles the TypeScript source into a single CommonJS
+`out/extension.js` (VS Code's extension host is Node, not an ESM
 runtime).
 
 ## Why bun
 
-The repo uses [`bun`](https://bun.sh/) instead of npm / pnpm for
-two reasons: it installs `node_modules/` in 1-2 seconds versus 30+
-for npm on a cold cache, and `bun.lock` is the single lockfile (no
-parallel `package-lock.json` / `pnpm-lock.yaml`). Lefthook's
-`post-merge` and `post-checkout` hooks run `bun install
---frozen-lockfile` quietly so contributors are never out of sync
-after a branch swap.
+The repo uses [`bun`](https://bun.sh/) instead of npm / pnpm: faster
+installs and a single `bun.lock` lockfile (no parallel
+`package-lock.json` / `pnpm-lock.yaml`). Lefthook's `post-merge` and
+`post-checkout` hooks run `bun install --frozen-lockfile` so
+contributors stay in sync after a branch swap.

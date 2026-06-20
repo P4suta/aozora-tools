@@ -132,10 +132,10 @@ impl SegmentCache {
         &self.diagnostics
     }
 
-    /// Install diagnostics produced by an out-of-band parse (Stage 5
-    /// debounced background task). Replaces the prior diagnostic
-    /// vector wholesale; the caller has already verified that this
-    /// parse corresponds to the current text version.
+    /// Install diagnostics produced by an out-of-band parse (the
+    /// debounced background task). Replaces the prior diagnostic vector
+    /// wholesale; the caller has verified this parse matches the current
+    /// text version.
     pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>) {
         self.diagnostics = diagnostics;
     }

@@ -130,13 +130,11 @@ fn build_symbol(
     } else {
         title
     };
-    // `lsp_types::DocumentSymbol` keeps the deprecated
-    // `deprecated: Option<bool>` field for LSP <3.15 wire-format
-    // compat; every constructor must name it. We pass `None` and use
-    // the modern `tags` field instead.
+    // `lsp_types::DocumentSymbol` keeps a deprecated `deprecated` field
+    // for LSP <3.15 compat; we pass `None` and use `tags` instead.
     #[allow(
         deprecated,
-        reason = "lsp_types::DocumentSymbol::deprecated retained upstream for LSP <3.15 backward-compat"
+        reason = "upstream lsp_types field retained for LSP <3.15 compat"
     )]
     DocumentSymbol {
         name,

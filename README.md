@@ -20,11 +20,6 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
 The parser / AST / lexer / encoding crates live in the sibling
 [`aozora`](https://github.com/P4suta/aozora) repository; this
 repository hosts the editor-surface tooling that consumes them.
-The parser is a long-lived correctness artefact released on a
-strict cadence with corpus sweeps; the editor surface here moves
-faster (LSP capabilities, VS Code UX, preview WebView, tree-sitter
-grammar). Splitting the repos keeps the parser tag stable while
-this repo iterates.
 
 ## Crates
 
@@ -73,9 +68,9 @@ preview wire format.
 
 ## Build and run
 
-The workspace pins [`aozora`](https://github.com/P4suta/aozora) at the
-public `v0.2.3` tag, so a fresh clone needs nothing more than a
-matching Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
+The workspace pins [`aozora`](https://github.com/P4suta/aozora) at an
+immutable commit rev (v0.4.1), so a fresh clone needs only a matching
+Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
 [`bun`](https://bun.sh/) for the VS Code extension.
 
 ```sh
@@ -116,9 +111,8 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked
 
 - `aozora-tools` follows [SemVer 2.0.0](https://semver.org/) with the
   0.x major-zero contract (any `0.MINOR` bump may break API).
-- `aozora` parser pin is updated as a deliberate workspace bump, never
-  silently — it shows up in `Cargo.toml` as a one-line `tag = "..."`
-  diff plus the corresponding `CHANGELOG.md` entry.
+- The `aozora` parser pin is bumped deliberately — a one-line `rev = "..."`
+  diff in `Cargo.toml` plus a `CHANGELOG.md` entry, never silently.
 - The VS Code extension (`editors/vscode/package.json`) is versioned
   independently on its Marketplace cadence; it bundles whatever
   `aozora-lsp` build is current at release time.

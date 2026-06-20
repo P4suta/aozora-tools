@@ -33,10 +33,8 @@ For each matrix entry:
 1. Install the Rust toolchain pinned in `rust-toolchain.toml` plus
    the matrix target.
 2. `cargo build --release --target <triple> --package aozora-lsp`
-   — the workspace `[profile.dist]` is **not** used here; the LSP
-   bundles still want the full `[profile.release]` for runtime
-   speed since the `.vsix` size is bandwidth-trivial compared to
-   the editor itself.
+   — uses `[profile.release]`, not `[profile.dist]`: runtime speed
+   wins over the bandwidth-trivial `.vsix` size delta.
 3. `cd editors/vscode && bun run package` — `vsce` produces a
    `.vsix` with the extension JS + the LSP binary at
    `server/aozora-lsp(.exe)`.

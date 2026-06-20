@@ -1,19 +1,10 @@
 //! `aozora-fmt` library: the single public entry [`format_source`] runs
 //! the `parse ∘ serialize` round-trip that produces an idempotent,
-//! canonicalised aozora document.
-//!
-//! Wraps `aozora::Document::parse` + `AozoraTree::serialize` so every
-//! consumer — the `aozora-fmt` binary, the `aozora-lsp` formatting
-//! handler, downstream CI gates — reaches the same canonical form.
-//! The round-trip is guaranteed to be a fixed point on the second
-//! pass; the aozora repo's corpus sweep I3 invariant hard-gates the
-//! contract across the full Aozora Bunko corpus.
+//! canonicalised aozora document. Every consumer — the binary, the
+//! `aozora-lsp` formatting handler, CI gates — reaches the same canonical
+//! form; the round-trip is a fixed point on the second pass.
 
 #![forbid(unsafe_code)]
-// The public surface here is a single function; keep it (and anything
-// added later) documented. The `aozora-lsp` library deliberately does
-// not opt in — it re-exports many internals purely for in-crate test
-// visibility, where doc stubs would be noise rather than signal.
 #![warn(missing_docs)]
 
 use aozora::Document;

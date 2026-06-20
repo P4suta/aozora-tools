@@ -1,21 +1,11 @@
 //! Byte-offset ↔ LSP `Position` conversion.
 //!
-//! LSP 3.17 `Position` is `{ line: u32, character: u32 }` where
-//! `character` is measured in **UTF-16 code units** relative to the
-//! start of the line. The aozora lexer works in byte offsets. These
-//! helpers bridge the two coordinate systems.
-//!
-//! # Performance
-//!
-//! Both conversions are `O(byte_offset)` in the worst case (line
-//! counting + UTF-16 column). The byte-level newline scans below use
-//! `str::matches('\n')` / `str::rfind('\n')` / `str::match_indices`,
-//! which the standard library lowers to `memchr`/`memrchr` for
-//! single-byte ASCII patterns — that gives SIMD-accelerated scanning
-//! over the prefix without pulling in an extra dependency. The UTF-16
-//! column count walks only the current line slice, so the total
-//! per-call cost is dominated by the SIMD newline scan over the
-//! prefix plus a short char-by-char walk on the trailing line.
+//! LSP 3.17 `Position` is `{ line, character }` with `character` in
+//! **UTF-16 code units** from the start of the line; the aozora lexer
+//! works in byte offsets. Conversions are `O(byte_offset)`: the newline
+//! scans use `str::matches('\n')` / `rfind('\n')` / `match_indices`,
+//! which lower to memchr/memrchr SIMD, plus a short UTF-16 walk of the
+//! current line.
 
 use tower_lsp::lsp_types::Position;
 
@@ -29,10 +19,6 @@ use tower_lsp::lsp_types::Position;
 pub fn byte_offset_to_position(source: &str, byte_offset: usize) -> Position {
     let byte_offset = byte_offset.min(source.len());
     let prefix = &source[..byte_offset];
-    // `str::matches(char)` / `rfind(char)` use `memchr`/`memrchr`
-    // for single-byte ASCII patterns, so both calls scan with SIMD
-    // rather than the iterator-byte-byte loop the previous version
-    // used.
     let line = u32::try_from(prefix.matches('\n').count()).unwrap_or(u32::MAX);
     let line_start = prefix.rfind('\n').map_or(0, |idx| idx + 1);
     let col =
