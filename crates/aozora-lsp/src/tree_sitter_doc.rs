@@ -1,12 +1,12 @@
 //! Document-level tree-sitter wrapper. Kept as the control group for
 //! the editor-burst microbenchmarks (`crates/aozora-lsp/benches/burst.rs`)
 //! and as the home of the `input_edit` helper that
-//! [`crate::state::BufferState`] reuses.
+//! [`crate::state::DocBuffer`] reuses.
 //!
 //! ## Production state lives in `crate::paragraph`, not here
 //!
 //! Each open document is split at `\n\n` boundaries into a
-//! `Vec<MutParagraph>`, where every [`crate::paragraph::MutParagraph`]
+//! `Vec<ParagraphBuffer>`, where every [`crate::paragraph::ParagraphBuffer`]
 //! owns its own `Rope` text and tree-sitter `Tree`. Edits reparse only
 //! the paragraph they hit. The reason is operational: tree-sitter's
 //! parse on the aozora grammar is `O(doc-size)` (~33 ns/byte), so a
@@ -14,7 +14,7 @@
 //! slow for keystroke responsiveness. See [`crate::state`] for the
 //! split-buffer architecture and the snapshot rebuild reuse story.
 //!
-//! ## What `IncrementalDoc` is for
+//! ## What `TreeSitterDoc` is for
 //!
 //! The struct below predates the paragraph-first refactor. It is now
 //! retained as the **measurement control** for the design decision:
@@ -32,7 +32,7 @@
 //! incremental contract — 1-shot parse ≡ initial parse + `apply_edit`,
 //! the chunked-Rope parse path, char-boundary handling — invariants
 //! the per-paragraph production code reuses through
-//! [`crate::paragraph::MutParagraph::apply_edit`].
+//! [`crate::paragraph::ParagraphBuffer::apply_edit`].
 //!
 //! ## Semantic vs syntactic split
 //!
@@ -53,10 +53,10 @@ use tree_sitter::{InputEdit, Parser, Point, Tree};
 ///
 /// `Mutex` because [`Parser`] is `!Sync` (it carries internal
 /// stacks). Wrapped in a single struct so the LSP backend's
-/// `DocState` doesn't have to synchronise the parser and tree
+/// `OpenDocument` doesn't have to synchronise the parser and tree
 /// independently. Lock contention is negligible at LSP rates: each
 /// edit takes microseconds on the incremental path.
-pub struct IncrementalDoc {
+pub struct TreeSitterDoc {
     inner: Mutex<Inner>,
 }
 
@@ -65,13 +65,13 @@ struct Inner {
     tree: Option<Tree>,
 }
 
-impl fmt::Debug for IncrementalDoc {
+impl fmt::Debug for TreeSitterDoc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("IncrementalDoc").finish_non_exhaustive()
+        f.debug_struct("TreeSitterDoc").finish_non_exhaustive()
     }
 }
 
-impl IncrementalDoc {
+impl TreeSitterDoc {
     /// Build a fresh per-document parser. The tree-sitter language
     /// is set once; subsequent calls reuse the parser.
     ///
@@ -180,7 +180,7 @@ impl IncrementalDoc {
     }
 }
 
-impl Default for IncrementalDoc {
+impl Default for TreeSitterDoc {
     fn default() -> Self {
         Self::new()
     }
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn full_parse_then_query() {
-        let doc = IncrementalDoc::new();
+        let doc = TreeSitterDoc::new();
         doc.parse_full("｜青空《あおぞら》");
         let kind = doc
             .with_tree(|tree| tree.root_node().named_child(0).map(|n| n.kind().to_owned()))
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn incremental_edit_keeps_tree_in_sync() {
-        let doc = IncrementalDoc::new();
+        let doc = TreeSitterDoc::new();
         let initial = "｜青空《あおぞら》";
         doc.parse_full(initial);
 
@@ -269,14 +269,14 @@ mod tests {
 
     #[test]
     fn empty_doc_yields_none_for_with_tree_until_parse() {
-        let doc = IncrementalDoc::new();
+        let doc = TreeSitterDoc::new();
         let result = doc.with_tree(|_| 42);
         assert_eq!(result, None);
     }
 
     #[test]
     fn full_replace_after_initial_parse_drops_old_tree() {
-        let doc = IncrementalDoc::new();
+        let doc = TreeSitterDoc::new();
         doc.parse_full("plain text");
         doc.parse_full("｜青空《あおぞら》");
         let kind = doc
@@ -288,10 +288,10 @@ mod tests {
     #[test]
     fn default_constructs_a_usable_parser() {
         // `Default::default()` should produce a parser equivalent to
-        // `IncrementalDoc::new()` — the explicit `Default` impl exists
+        // `TreeSitterDoc::new()` — the explicit `Default` impl exists
         // for derive-friendly callers, so a regression that drops the
         // language binding would surface here.
-        let doc = IncrementalDoc::default();
+        let doc = TreeSitterDoc::default();
         doc.parse_full("｜空《そら》");
         let has_tree = doc.with_tree(|tree| tree.root_node().child_count() > 0);
         assert_eq!(has_tree, Some(true));
@@ -303,9 +303,9 @@ mod tests {
         // refactor that exposes the parser / tree fields directly
         // would change the formatted output. Pin the current shape so
         // such a regression is loud.
-        let doc = IncrementalDoc::new();
+        let doc = TreeSitterDoc::new();
         let s = format!("{doc:?}");
-        assert!(s.starts_with("IncrementalDoc"), "got {s:?}");
+        assert!(s.starts_with("TreeSitterDoc"), "got {s:?}");
         assert!(
             s.contains(".."),
             "expected non_exhaustive marker, got {s:?}"
@@ -323,9 +323,9 @@ mod tests {
     #[test]
     fn parse_full_rope_matches_string_parse() {
         let text = "｜青空《あおぞら》\n\n本文";
-        let by_string = IncrementalDoc::new();
+        let by_string = TreeSitterDoc::new();
         by_string.parse_full(text);
-        let by_rope = IncrementalDoc::new();
+        let by_rope = TreeSitterDoc::new();
         by_rope.parse_full_rope(&Rope::from_str(text));
 
         let s_kinds = by_string.with_tree(collect_kinds).expect("tree");
@@ -344,11 +344,11 @@ mod tests {
             reading_start + "そら".len(),
         );
 
-        let via_str = IncrementalDoc::new();
+        let via_str = TreeSitterDoc::new();
         via_str.parse_full(initial);
         via_str.apply_edit(after, edit);
 
-        let via_rope = IncrementalDoc::new();
+        let via_rope = TreeSitterDoc::new();
         via_rope.parse_full_rope(&Rope::from_str(initial));
         via_rope.apply_edit_rope(&Rope::from_str(after), edit);
 
@@ -489,11 +489,11 @@ mod tests {
         after.push_str(inserted);
         after.push_str(&initial[edit_at + removed_len..]);
 
-        let full = IncrementalDoc::new();
+        let full = TreeSitterDoc::new();
         full.parse_full(&after);
         let full_kinds = full.with_tree(collect_kinds).expect("full tree");
 
-        let inc = IncrementalDoc::new();
+        let inc = TreeSitterDoc::new();
         inc.parse_full(initial);
         let edit = input_edit(edit_at, edit_at + removed_len, edit_at + inserted.len());
         inc.apply_edit(&after, edit);

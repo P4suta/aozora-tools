@@ -1,13 +1,13 @@
 //! tower-lsp `LanguageServer` implementation for aozora documents.
 //!
-//! Each open document is an `Arc<DocState>` in a [`DashMap`]: a
-//! writer-side `BufferState` behind a `parking_lot::Mutex` and a
-//! reader-side `Snapshot` in an `ArcSwap` (see [`crate::state`] for the
+//! Each open document is an `Arc<OpenDocument>` in a [`DashMap`]: a
+//! writer-side `DocBuffer` behind a `parking_lot::Mutex` and a
+//! reader-side `DocSnapshot` in an `ArcSwap` (see [`crate::state`] for the
 //! lock graph). Handlers read via `state.snapshot()` — a single atomic
 //! load, wait-free, so the debounced reparse never blocks them.
 //!
 //! `text_document_sync` is [`TextDocumentSyncKind::INCREMENTAL`]:
-//! `did_change` applies byte-range edits via `DocState::apply_changes`
+//! `did_change` applies byte-range edits via `OpenDocument::apply_changes`
 //! and schedules a debounced semantic re-parse + diagnostic publish on
 //! `spawn_blocking`, so async hover / inlay / codeAction requests don't
 //! stall.
@@ -31,9 +31,9 @@ use crate::linked_editing::linked_editing_at;
 use crate::metrics::ParseSample;
 use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
 use crate::parse_cache::MAX_DOCUMENT_BYTES;
-use crate::state::DocState;
+use crate::state::OpenDocument;
 use crate::structured_snippets::snippet_completions;
-use crate::text_edit::LocalTextEdit;
+use crate::text_edit::ByteEdit;
 use tower_lsp::jsonrpc::{Error as JsonRpcError, Result};
 use tower_lsp::lsp_types::{
     CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
@@ -67,9 +67,9 @@ use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_fu
 /// clone — `Client` is a channel handle and `docs` is
 /// `Arc<DashMap<...>>`.
 #[derive(Debug, Clone)]
-pub(crate) struct Backend {
+pub(crate) struct AozoraLanguageServer {
     client: Client,
-    docs: Arc<DashMap<Url, Arc<DocState>>>,
+    docs: Arc<DashMap<Url, Arc<OpenDocument>>>,
 }
 
 /// Quiet-period before the slow Rust parse + `publishDiagnostics`
@@ -119,10 +119,10 @@ fn oversize_html_notice(byte_len: usize) -> String {
     )
 }
 
-impl Backend {
+impl AozoraLanguageServer {
     /// Build a new backend. Signature matches `LspService::new`'s
-    /// `FnOnce(Client) -> Backend` requirement, so users call this
-    /// as `LspService::new(Backend::new)`.
+    /// `FnOnce(Client) -> AozoraLanguageServer` requirement, so users call this
+    /// as `LspService::new(AozoraLanguageServer::new)`.
     #[must_use]
     pub(crate) fn new(client: Client) -> Self {
         Self {
@@ -218,7 +218,7 @@ impl Backend {
 
         // Re-check version so a parse that just missed the cutoff
         // doesn't overwrite a newer one. Diagnostics installation is
-        // a brief `BufferState` mutex acquisition.
+        // a brief `DocBuffer` mutex acquisition.
         if state.edit_version() != target_version {
             return;
         }
@@ -239,11 +239,11 @@ impl Backend {
             .await;
     }
 
-    /// Lookup helper — returns an `Arc<DocState>` clone so the caller
+    /// Lookup helper — returns an `Arc<OpenDocument>` clone so the caller
     /// can drop the dashmap shard reference immediately and operate
     /// on a wait-free snapshot. The dashmap shard read is microseconds;
     /// the Arc clone is a single atomic increment.
-    fn lookup(&self, uri: &Url) -> Option<Arc<DocState>> {
+    fn lookup(&self, uri: &Url) -> Option<Arc<OpenDocument>> {
         self.docs.get(uri).map(|entry| Arc::clone(&*entry))
     }
 
@@ -299,7 +299,7 @@ impl Backend {
     ///
     /// Reads run lock-free against the pre-extracted
     /// [`crate::gaiji_spans::GaijiSpan`] list maintained by
-    /// `DocState`; no parser is invoked.
+    /// `OpenDocument`; no parser is invoked.
     ///
     /// # Errors
     /// Returns [`JsonRpcError::invalid_params`] if no document at
@@ -307,7 +307,7 @@ impl Backend {
     pub(crate) async fn gaiji_spans(&self, params: GaijiSpansParams) -> Result<GaijiSpansResult> {
         // tower-lsp's `custom_method` macro requires an async fn, but
         // the body is purely sync: the gaiji span list is pre-built
-        // by `DocState`, lookup is lock-free, no I/O happens. Make
+        // by `OpenDocument`, lookup is lock-free, no I/O happens. Make
         // the async signature *real* by yielding once to the tokio
         // runtime — that turns "fake async with `clippy::unused_async`"
         // into a genuine cooperative yield point, which is also what
@@ -402,24 +402,21 @@ struct CanonicalizeArgs {
 }
 
 /// Convert an LSP `TextDocumentContentChangeEvent` into a
-/// [`LocalTextEdit`] against `source`. Returns `None` when the event
+/// [`ByteEdit`] against `source`. Returns `None` when the event
 /// has no range (caller handles full-replacement separately) or when
 /// either Position fails to resolve to a valid byte offset.
-fn lsp_change_to_edit(
-    source: &str,
-    change: &TextDocumentContentChangeEvent,
-) -> Option<LocalTextEdit> {
+fn lsp_change_to_edit(source: &str, change: &TextDocumentContentChangeEvent) -> Option<ByteEdit> {
     let range = change.range?;
     let start = position_to_byte_offset(source, range.start)?;
     let end = position_to_byte_offset(source, range.end)?;
     if end < start {
         return None;
     }
-    Some(LocalTextEdit::new(start..end, change.text.clone()))
+    Some(ByteEdit::new(start..end, change.text.clone()))
 }
 
 #[tower_lsp::async_trait]
-impl LanguageServer for Backend {
+impl LanguageServer for AozoraLanguageServer {
     async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
@@ -543,7 +540,7 @@ impl LanguageServer for Backend {
     async fn did_open(&self, p: DidOpenTextDocumentParams) {
         let uri = p.text_document.uri;
         self.docs
-            .insert(uri.clone(), DocState::new(p.text_document.text));
+            .insert(uri.clone(), OpenDocument::new(p.text_document.text));
         self.publish(uri).await;
     }
 
@@ -897,7 +894,7 @@ mod tests {
     //! 1. **Conversion** — `lsp_change_to_edit` handles every well-formed
     //!    LSP `Range` correctly (ASCII, multibyte, multi-line, surrogate
     //!    pairs, edge offsets) and rejects ill-formed ones.
-    //! 2. **`DocState` mechanics** — `apply_changes` / `replace_text`
+    //! 2. **`OpenDocument` mechanics** — `apply_changes` / `replace_text`
     //!    move the buffer through the right transitions including
     //!    failure recovery.
     //! 3. **Batch semantics** — multiple `TextDocumentContentChangeEvent`
@@ -925,7 +922,7 @@ mod tests {
     /// "what the editor thinks the buffer looks like" without booting
     /// tower-lsp.
     fn replay_lsp_changes(initial: &str, changes: &[TextDocumentContentChangeEvent]) -> String {
-        let state = DocState::new(initial.to_owned());
+        let state = OpenDocument::new(initial.to_owned());
         for change in changes {
             let snap = state.snapshot();
             match lsp_change_to_edit(snap.doc_text(), change) {
@@ -990,12 +987,12 @@ mod tests {
     }
 
     // ---------------------------------------------------------------
-    // 2. DocState mechanics
+    // 2. OpenDocument mechanics
     // ---------------------------------------------------------------
 
     #[test]
     fn doc_state_new_populates_cache() {
-        let state = DocState::new("hello".to_owned());
+        let state = OpenDocument::new("hello".to_owned());
         // Plain text emits zero diagnostics — the cache surfaces an
         // empty slice but is *populated* (no longer "first reparse"
         // pending).
@@ -1007,16 +1004,16 @@ mod tests {
 
     #[test]
     fn doc_state_apply_changes_updates_text() {
-        let state = DocState::new("hello world".to_owned());
-        let edit = LocalTextEdit::new(6..11, "rust".to_owned());
+        let state = OpenDocument::new("hello world".to_owned());
+        let edit = ByteEdit::new(6..11, "rust".to_owned());
         state.apply_changes(&[edit]);
         assert_eq!(&**state.snapshot().doc_text(), "hello rust");
     }
 
     #[test]
     fn doc_state_apply_changes_rejects_invalid_edit_keeps_text() {
-        let state = DocState::new("hi".to_owned());
-        let edit = LocalTextEdit::new(0..99, "x".to_owned());
+        let state = OpenDocument::new("hi".to_owned());
+        let edit = ByteEdit::new(0..99, "x".to_owned());
         let result = state.apply_changes(&[edit]);
         assert!(result.is_none(), "out-of-bounds edit must be rejected");
         assert_eq!(&**state.snapshot().doc_text(), "hi");
@@ -1024,8 +1021,8 @@ mod tests {
 
     #[test]
     fn doc_state_apply_changes_rejects_non_char_boundary_edit() {
-        let state = DocState::new("あ".to_owned()); // 3 bytes
-        let edit = LocalTextEdit::new(1..2, "x".to_owned());
+        let state = OpenDocument::new("あ".to_owned()); // 3 bytes
+        let edit = ByteEdit::new(1..2, "x".to_owned());
         let result = state.apply_changes(&[edit]);
         assert!(result.is_none(), "cross-boundary edit must be rejected");
         assert_eq!(
@@ -1037,7 +1034,7 @@ mod tests {
 
     #[test]
     fn doc_state_replace_text_updates_buffer() {
-        let state = DocState::new("hello".to_owned());
+        let state = OpenDocument::new("hello".to_owned());
         state.replace_text("｜青梅《おうめ》".to_owned());
         assert_eq!(&**state.snapshot().doc_text(), "｜青梅《おうめ》");
     }
@@ -1083,8 +1080,8 @@ mod tests {
 
     #[test]
     fn edit_inserting_aozora_trigger_reparses() {
-        let state = DocState::new("plain text".to_owned());
-        let edit = LocalTextEdit::new(5..6, "｜青梅《おうめ》".to_owned());
+        let state = OpenDocument::new("plain text".to_owned());
+        let edit = ByteEdit::new(5..6, "｜青梅《おうめ》".to_owned());
         state.apply_changes(&[edit]);
         // `apply_changes` is the fast path — text + TS edit only. The
         // semantic re-parse runs in a debounced background task in
@@ -1103,8 +1100,8 @@ mod tests {
 
     #[test]
     fn pua_collision_edit_surfaces_diagnostic() {
-        let state = DocState::new("plain".to_owned());
-        let edit = LocalTextEdit::new(0..0, "\u{E001}".to_owned());
+        let state = OpenDocument::new("plain".to_owned());
+        let edit = ByteEdit::new(0..0, "\u{E001}".to_owned());
         state.apply_changes(&[edit]);
         // See note in `edit_inserting_aozora_trigger_reparses` — the
         // semantic re-parse is deferred to the debounced background
@@ -1125,9 +1122,9 @@ mod tests {
 
     #[test]
     fn sequence_of_incremental_edits_converges_to_full_text() {
-        let state = DocState::new(String::new());
+        let state = OpenDocument::new(String::new());
         for (i, ch) in "hello world".chars().enumerate() {
-            let edit = LocalTextEdit::new(i..i, ch.to_string());
+            let edit = ByteEdit::new(i..i, ch.to_string());
             state.apply_changes(&[edit]);
         }
         assert_eq!(&**state.snapshot().doc_text(), "hello world");
@@ -1142,7 +1139,7 @@ mod tests {
         initial: &str,
         changes: &[TextDocumentContentChangeEvent],
     ) -> String {
-        let state = DocState::new(initial.to_owned());
+        let state = OpenDocument::new(initial.to_owned());
         for change in changes {
             let snap = state.snapshot();
             match lsp_change_to_edit(snap.doc_text(), change) {
@@ -1194,9 +1191,9 @@ mod tests {
     }
 
     /// The same batch driven through the *production* code path with
-    /// `Backend::did_change` would also need the in-batch rebuild;
+    /// `AozoraLanguageServer::did_change` would also need the in-batch rebuild;
     /// pin a mid-batch insert that's only valid against the
-    /// post-1st-change text, exercised through `DocState` directly.
+    /// post-1st-change text, exercised through `OpenDocument` directly.
     #[test]
     fn multi_change_batch_dependent_offsets_round_trip_via_doc_state() {
         // Initial: "本文" (6 bytes). Change 0 inserts "｜" (3 bytes)
@@ -1219,7 +1216,7 @@ mod tests {
         assert_eq!(final_text, "｜X本文");
     }
 
-    /// Snapshot rebuild between iterations must be a no-op for
+    /// `DocSnapshot` rebuild between iterations must be a no-op for
     /// single-change batches — we don't want to pay the rebuild cost
     /// when the next iteration won't run. Pin that the rebuild path
     /// produces the same final state as the no-rebuild path for a

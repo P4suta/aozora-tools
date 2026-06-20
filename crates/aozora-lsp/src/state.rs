@@ -4,9 +4,9 @@
 //! `\n\n`-bounded paragraphs and only the edited paragraph is re-parsed;
 //! rope text, line index, and gaiji spans are per-paragraph too.
 //!
-//! - [`BufferState`] (writers): `Vec<MutParagraph>` behind a
+//! - [`DocBuffer`] (writers): `Vec<ParagraphBuffer>` behind a
 //!   `parking_lot::Mutex`, each owning its `Rope` and tree-sitter `Tree`.
-//! - [`Snapshot`] (readers): `Arc<[Arc<ParagraphSnapshot>]>` swapped via
+//! - [`DocSnapshot`] (readers): `Arc<[Arc<ParagraphSnapshot>]>` swapped via
 //!   `ArcSwap` for wait-free loads. Unchanged paragraphs are `Arc::clone`d
 //!   across generations, so a small edit rebuilds one paragraph, not the
 //!   doc. Doc-level `&str` / line-index / gaiji views are lazy via `OnceLock`.
@@ -28,20 +28,20 @@ use tokio::task::{AbortHandle, spawn_blocking};
 use tree_sitter::Parser;
 
 use crate::gaiji_spans::GaijiSpan;
-use crate::incremental::input_edit;
 use crate::line_index::LineIndex;
 use crate::metrics::{Metrics, ParseSample};
 use crate::paragraph::{
-    MAX_PARAGRAPH_BYTES, MutParagraph, ParagraphSnapshot, build_paragraph_snapshot,
+    MAX_PARAGRAPH_BYTES, ParagraphBuffer, ParagraphSnapshot, build_paragraph_snapshot,
     paragraph_byte_ranges,
 };
 use crate::parse_cache::ParseCache;
-use crate::text_edit::{EditError, LocalTextEdit};
+use crate::text_edit::{ByteEdit, EditError};
+use crate::tree_sitter_doc::input_edit;
 
 /// Slice `source` at `range`, build a new owned `Rope` from that
 /// slice, and reparse it via `parser`. Used by every code path that
-/// constructs a `MutParagraph` from a substring of a larger Rope —
-/// `BufferState::new`, `replace`, `apply_across_paragraphs`,
+/// constructs a `ParagraphBuffer` from a substring of a larger Rope —
+/// `DocBuffer::new`, `replace`, `apply_across_paragraphs`,
 /// `maybe_resegment_around`. Centralised so the
 /// `byte_slice → Rope::from → reparse` sequence lives in exactly one
 /// place.
@@ -49,18 +49,18 @@ fn paragraph_from_rope_slice(
     source: &Rope,
     range: Range<usize>,
     parser: &mut Parser,
-) -> MutParagraph {
+) -> ParagraphBuffer {
     let slice = source.byte_slice(range);
-    let mut paragraph = MutParagraph::new(Rope::from(slice));
+    let mut paragraph = ParagraphBuffer::new(Rope::from(slice));
     paragraph.reparse(parser);
     paragraph
 }
 
 // =====================================================================
-// Mutable side: BufferState
+// Mutable side: DocBuffer
 // =====================================================================
 
-/// Mutable per-document state. Held behind `DocState::buffer`.
+/// Mutable per-document state. Held behind `OpenDocument::buffer`.
 ///
 /// `paragraphs` is the only source-of-truth field. Doc-absolute
 /// byte offsets and the total byte length are derived on demand by
@@ -68,7 +68,7 @@ fn paragraph_from_rope_slice(
 /// document size). At LSP keystroke rates with paragraph counts in
 /// the low hundreds this is comfortably under a microsecond per
 /// `apply_one_edit` call. The reader-side
-/// [`Snapshot::paragraph_starts`] keeps the cumulative-offset table
+/// [`DocSnapshot::paragraph_starts`] keeps the cumulative-offset table
 /// for handlers that need binary-search-by-byte; we don't carry a
 /// separate copy here so the writer side stays slim and there's a
 /// single place where `paragraph_starts` is recomputed (snapshot
@@ -77,21 +77,21 @@ fn paragraph_from_rope_slice(
 /// The tree-sitter `Parser` lives here (one per doc) — paragraphs
 /// share it serially. Parsers are cheap to keep around but `!Sync`,
 /// so we don't spin up one per paragraph.
-pub struct BufferState {
-    pub paragraphs: Vec<MutParagraph>,
+pub struct DocBuffer {
+    pub paragraphs: Vec<ParagraphBuffer>,
     pub parser: Parser,
     pub parse_cache: ParseCache,
 }
 
-impl fmt::Debug for BufferState {
+impl fmt::Debug for DocBuffer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BufferState")
+        f.debug_struct("DocBuffer")
             .field("paragraphs", &self.paragraphs.len())
             .finish_non_exhaustive()
     }
 }
 
-impl BufferState {
+impl DocBuffer {
     fn new(text: String) -> Self {
         let mut parser = Parser::new();
         parser
@@ -99,14 +99,14 @@ impl BufferState {
             .expect("tree-sitter-aozora language is compiled in");
         let rope = Rope::from(text);
         let ranges = paragraph_byte_ranges(&rope);
-        let mut paragraphs: Vec<MutParagraph> = ranges
+        let mut paragraphs: Vec<ParagraphBuffer> = ranges
             .into_iter()
             .map(|range| paragraph_from_rope_slice(&rope, range, &mut parser))
             .collect();
         if paragraphs.is_empty() {
             // Empty document — keep one empty paragraph so the
             // rest of the code can assume non-empty `paragraphs`.
-            paragraphs.push(MutParagraph::new(Rope::new()));
+            paragraphs.push(ParagraphBuffer::new(Rope::new()));
         }
         Self {
             paragraphs,
@@ -130,7 +130,7 @@ impl BufferState {
     /// invariants; per-edit application happens in REVERSE source
     /// order so each edit's pre-shift offsets stay valid against
     /// the still-pre-edit prefix.
-    fn apply_edits(&mut self, edits: &[LocalTextEdit]) -> Option<()> {
+    fn apply_edits(&mut self, edits: &[ByteEdit]) -> Option<()> {
         if let Err(err) = self.validate_edits(edits) {
             tracing::warn!(
                 error = %err,
@@ -145,7 +145,7 @@ impl BufferState {
         Some(())
     }
 
-    fn validate_edits(&self, edits: &[LocalTextEdit]) -> Result<(), EditError> {
+    fn validate_edits(&self, edits: &[ByteEdit]) -> Result<(), EditError> {
         let len = self.total_bytes();
         let mut prev_end = 0usize;
         for edit in edits {
@@ -225,11 +225,11 @@ impl BufferState {
         }
         // Unreachable in practice — the `idx == last` arm always
         // matches in the loop above. Kept defensive for the
-        // empty-doc case that BufferState::new pre-fills.
+        // empty-doc case that DocBuffer::new pre-fills.
         (0, 0)
     }
 
-    fn apply_one_edit(&mut self, edit: &LocalTextEdit) {
+    fn apply_one_edit(&mut self, edit: &ByteEdit) {
         let start = self.locate_byte(edit.range.start);
         let end = self.locate_byte(edit.range.end);
         if start.0 == end.0 {
@@ -252,7 +252,7 @@ impl BufferState {
         }
         let new_end_local = local.start + new_text.len();
         // The `InputEdit`'s byte offsets are paragraph-local — that's
-        // what `MutParagraph::apply_edit` expects.
+        // what `ParagraphBuffer::apply_edit` expects.
         let ts_edit = input_edit(local.start, local.end, new_end_local);
         paragraph.apply_edit(&mut self.parser, ts_edit);
     }
@@ -294,12 +294,12 @@ impl BufferState {
         ));
 
         let ranges = paragraph_byte_ranges(&merged);
-        let mut replacement: Vec<MutParagraph> = ranges
+        let mut replacement: Vec<ParagraphBuffer> = ranges
             .into_iter()
             .map(|range| paragraph_from_rope_slice(&merged, range, &mut self.parser))
             .collect();
         if replacement.is_empty() {
-            replacement.push(MutParagraph::new(Rope::new()));
+            replacement.push(ParagraphBuffer::new(Rope::new()));
         }
         self.paragraphs.splice(start_para..=end_para, replacement);
     }
@@ -326,7 +326,7 @@ impl BufferState {
             self.paragraphs[idx].reparse(&mut self.parser);
             return;
         }
-        let replacement: Vec<MutParagraph> = ranges
+        let replacement: Vec<ParagraphBuffer> = ranges
             .into_iter()
             .map(|range| paragraph_from_rope_slice(&text_rope, range, &mut self.parser))
             .collect();
@@ -336,25 +336,25 @@ impl BufferState {
     fn replace(&mut self, new_text: String) {
         let rope = Rope::from(new_text);
         let ranges = paragraph_byte_ranges(&rope);
-        let mut paragraphs: Vec<MutParagraph> = ranges
+        let mut paragraphs: Vec<ParagraphBuffer> = ranges
             .into_iter()
             .map(|range| paragraph_from_rope_slice(&rope, range, &mut self.parser))
             .collect();
         if paragraphs.is_empty() {
-            paragraphs.push(MutParagraph::new(Rope::new()));
+            paragraphs.push(ParagraphBuffer::new(Rope::new()));
         }
         self.paragraphs = paragraphs;
     }
 }
 
 // =====================================================================
-// Read side: Snapshot
+// Read side: DocSnapshot
 // =====================================================================
 
-/// Immutable read view of a document. Built from a [`BufferState`]
-/// snapshot and atomically swapped into [`DocState::snapshot`]. Reads
+/// Immutable read view of a document. Built from a [`DocBuffer`]
+/// snapshot and atomically swapped into [`OpenDocument::snapshot`]. Reads
 /// are wait-free (one `ArcSwap::load_full` + Arc clones).
-pub struct Snapshot {
+pub struct DocSnapshot {
     pub paragraphs: Arc<[Arc<ParagraphSnapshot>]>,
     /// `paragraph_starts[i]` = doc-absolute byte where paragraph `i`
     /// begins. Sorted ascending. Lets handlers binary-search a
@@ -365,15 +365,15 @@ pub struct Snapshot {
 
     // Lazy doc-level materialisations. Each `OnceLock` is populated
     // by the first call to its accessor; subsequent calls within the
-    // lifetime of this `Snapshot` return the cached `Arc` for free.
+    // lifetime of this `DocSnapshot` return the cached `Arc` for free.
     doc_text: OnceLock<Arc<str>>,
     doc_line_index: OnceLock<Arc<LineIndex>>,
     doc_gaiji_spans: OnceLock<Arc<BTreeMap<u32, Arc<GaijiSpan>>>>,
 }
 
-impl fmt::Debug for Snapshot {
+impl fmt::Debug for DocSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Snapshot")
+        f.debug_struct("DocSnapshot")
             .field("version", &self.version)
             .field("paragraphs", &self.paragraphs.len())
             .field("total_bytes", &self.total_bytes)
@@ -381,7 +381,7 @@ impl fmt::Debug for Snapshot {
     }
 }
 
-impl Snapshot {
+impl DocSnapshot {
     /// Doc-wide concatenated text, materialised on first request and
     /// cached for the rest of this snapshot's lifetime. Handlers that
     /// can iterate paragraphs directly should prefer the per-paragraph
@@ -449,7 +449,7 @@ impl Snapshot {
     }
 }
 
-fn build_snapshot(buffer: &BufferState, version: u64, prior: &Snapshot) -> Arc<Snapshot> {
+fn build_snapshot(buffer: &DocBuffer, version: u64, prior: &DocSnapshot) -> Arc<DocSnapshot> {
     // Per-paragraph rebuild: for each paragraph in the new buffer,
     // try to reuse the prior snapshot's paragraph by tree-id match
     // (cheap: `Arc::clone` if matched, full materialisation if not).
@@ -482,16 +482,16 @@ fn build_snapshot(buffer: &BufferState, version: u64, prior: &Snapshot) -> Arc<S
         paragraphs.push(snap);
     }
     if paragraphs.is_empty() {
-        // Defensive: should never happen because BufferState
-        // guarantees at least one paragraph, but Snapshot's
+        // Defensive: should never happen because DocBuffer
+        // guarantees at least one paragraph, but DocSnapshot's
         // accessors degrade gracefully if it does.
         paragraphs.push(Arc::new(build_paragraph_snapshot(
-            &MutParagraph::new(Rope::new()),
+            &ParagraphBuffer::new(Rope::new()),
             0,
         )));
         starts.push(0);
     }
-    Arc::new(Snapshot {
+    Arc::new(DocSnapshot {
         paragraphs: paragraphs.into(),
         paragraph_starts: starts.into(),
         total_bytes: acc,
@@ -502,9 +502,12 @@ fn build_snapshot(buffer: &BufferState, version: u64, prior: &Snapshot) -> Arc<S
     })
 }
 
-fn empty_snapshot() -> Arc<Snapshot> {
-    let empty_para = Arc::new(build_paragraph_snapshot(&MutParagraph::new(Rope::new()), 0));
-    Arc::new(Snapshot {
+fn empty_snapshot() -> Arc<DocSnapshot> {
+    let empty_para = Arc::new(build_paragraph_snapshot(
+        &ParagraphBuffer::new(Rope::new()),
+        0,
+    ));
+    Arc::new(DocSnapshot {
         paragraphs: Arc::from(vec![empty_para]),
         paragraph_starts: Arc::from(vec![0u32]),
         total_bytes: 0,
@@ -516,12 +519,12 @@ fn empty_snapshot() -> Arc<Snapshot> {
 }
 
 // =====================================================================
-// DocState orchestrator
+// OpenDocument orchestrator
 // =====================================================================
 
-pub struct DocState {
-    buffer: Mutex<BufferState>,
-    snapshot: ArcSwap<Snapshot>,
+pub struct OpenDocument {
+    buffer: Mutex<DocBuffer>,
+    snapshot: ArcSwap<DocSnapshot>,
     edit_version: AtomicU64,
     pub metrics: Arc<Metrics>,
     /// Abort handle for the most recently scheduled debounced publish
@@ -530,21 +533,21 @@ pub struct DocState {
     debounce_task: Mutex<Option<AbortHandle>>,
 }
 
-impl fmt::Debug for DocState {
+impl fmt::Debug for OpenDocument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DocState")
+        f.debug_struct("OpenDocument")
             .field("edit_version", &self.edit_version.load(Ordering::Relaxed))
             .field("snapshot_version", &self.snapshot.load().version)
             .finish_non_exhaustive()
     }
 }
 
-impl DocState {
-    /// Build a new `DocState` and synchronously compute the initial
+impl OpenDocument {
+    /// Build a new `OpenDocument` and synchronously compute the initial
     /// snapshot.
     #[must_use]
     pub fn new(text: String) -> Arc<Self> {
-        let buffer = BufferState::new(text);
+        let buffer = DocBuffer::new(text);
         let initial = build_snapshot(&buffer, 0, &empty_snapshot());
         let state = Arc::new(Self {
             buffer: Mutex::new(buffer),
@@ -559,7 +562,7 @@ impl DocState {
 
     /// Wait-free read of the current snapshot.
     #[must_use]
-    pub fn snapshot(&self) -> Arc<Snapshot> {
+    pub fn snapshot(&self) -> Arc<DocSnapshot> {
         self.snapshot.load_full()
     }
 
@@ -591,7 +594,7 @@ impl DocState {
     }
 
     /// Apply a batch of edits and ratchet the snapshot.
-    pub fn apply_changes(self: &Arc<Self>, edits: &[LocalTextEdit]) -> Option<u64> {
+    pub fn apply_changes(self: &Arc<Self>, edits: &[ByteEdit]) -> Option<u64> {
         // Hold the buffer mutex only across the actual edit; drop it
         // explicitly before the metrics + version + snapshot-rebuild
         // tail so concurrent readers don't queue behind this writer
@@ -632,7 +635,7 @@ impl DocState {
         self.install_if_newer(&candidate);
     }
 
-    fn install_if_newer(&self, candidate: &Arc<Snapshot>) -> bool {
+    fn install_if_newer(&self, candidate: &Arc<DocSnapshot>) -> bool {
         let mut installed = false;
         self.snapshot.rcu(|current| {
             if candidate.version >= current.version {
@@ -690,7 +693,7 @@ impl DocState {
         }
     }
 
-    /// Subset of `Snapshot::paragraph_at` exposed via `&self` for
+    /// Subset of `DocSnapshot::paragraph_at` exposed via `&self` for
     /// tests that want to assert routing without holding the buffer
     /// mutex. Reads through `snapshot.load()`.
     #[cfg(test)]
@@ -710,8 +713,8 @@ fn slow_parse_threshold_us() -> u64 {
 mod tests {
     use super::*;
 
-    fn doc(text: &str) -> Arc<DocState> {
-        DocState::new(text.to_owned())
+    fn doc(text: &str) -> Arc<OpenDocument> {
+        OpenDocument::new(text.to_owned())
     }
 
     #[test]
@@ -727,7 +730,7 @@ mod tests {
     fn apply_changes_ratchets_edit_version() {
         let state = doc("hello");
         let v = state
-            .apply_changes(&[LocalTextEdit::new(5..5, " world".to_owned())])
+            .apply_changes(&[ByteEdit::new(5..5, " world".to_owned())])
             .expect("valid edit");
         assert_eq!(v, 1);
         assert_eq!(state.edit_version(), 1);
@@ -749,7 +752,7 @@ mod tests {
     #[test]
     fn rejected_edit_leaves_state_unchanged() {
         let state = doc("あ");
-        let edit = LocalTextEdit::new(1..2, String::new());
+        let edit = ByteEdit::new(1..2, String::new());
         assert!(state.apply_changes(&[edit]).is_none());
         let snap = state.snapshot();
         assert_eq!(&**snap.doc_text(), "あ");
@@ -787,7 +790,7 @@ mod tests {
         // Insert inside paragraph 1.
         let mid_para1 = "段落1\n\n段".len();
         state
-            .apply_changes(&[LocalTextEdit::new(mid_para1..mid_para1, "X".to_owned())])
+            .apply_changes(&[ByteEdit::new(mid_para1..mid_para1, "X".to_owned())])
             .unwrap();
         let snap_after = state.snapshot();
 
@@ -843,12 +846,12 @@ mod tests {
         for chunk in chunks {
             let pos = expected.len();
             state
-                .apply_changes(&[LocalTextEdit::new(pos..pos, chunk.to_owned())])
+                .apply_changes(&[ByteEdit::new(pos..pos, chunk.to_owned())])
                 .expect("valid edit");
             expected.push_str(chunk);
         }
         assert_eq!(&**state.snapshot().doc_text(), &expected);
-        // And a fresh DocState built from the same final text must
+        // And a fresh OpenDocument built from the same final text must
         // produce the same paragraph shape.
         let cold = doc(&expected);
         assert_eq!(
@@ -868,7 +871,7 @@ mod tests {
         assert_eq!(pre.paragraphs.len(), 2);
         // Delete the entire `\n\n` boundary.
         let blank_at = "段落1".len();
-        let edit = LocalTextEdit::new(blank_at..blank_at + 2, String::new());
+        let edit = ByteEdit::new(blank_at..blank_at + 2, String::new());
         state.apply_changes(&[edit]).expect("valid edit");
         let post = state.snapshot();
         assert_eq!(&**post.doc_text(), "段落1段落2");
@@ -882,7 +885,7 @@ mod tests {
     fn insert_inside_blank_line_preserves_two_paragraphs() {
         let state = doc("一\n\n二");
         let blank_at = "一\n".len();
-        let edit = LocalTextEdit::new(blank_at..blank_at, "\n".to_owned());
+        let edit = ByteEdit::new(blank_at..blank_at, "\n".to_owned());
         state.apply_changes(&[edit]).expect("valid edit");
         let snap = state.snapshot();
         // Three newlines in a row → still two paragraphs.
@@ -911,7 +914,7 @@ mod tests {
     fn append_at_eof_is_accepted() {
         let state = doc("hello");
         let len = "hello".len();
-        let edit = LocalTextEdit::new(len..len, " world".to_owned());
+        let edit = ByteEdit::new(len..len, " world".to_owned());
         assert!(state.apply_changes(&[edit]).is_some());
         assert_eq!(&**state.snapshot().doc_text(), "hello world");
     }
@@ -924,9 +927,9 @@ mod tests {
     fn batched_edits_compose_in_source_order() {
         let state = doc("AAAA BBBB CCCC");
         let edits = vec![
-            LocalTextEdit::new(0..4, "aa".to_owned()),
-            LocalTextEdit::new(5..9, "bb".to_owned()),
-            LocalTextEdit::new(10..14, "cc".to_owned()),
+            ByteEdit::new(0..4, "aa".to_owned()),
+            ByteEdit::new(5..9, "bb".to_owned()),
+            ByteEdit::new(10..14, "cc".to_owned()),
         ];
         state.apply_changes(&edits).expect("valid batch");
         assert_eq!(&**state.snapshot().doc_text(), "aa bb cc");

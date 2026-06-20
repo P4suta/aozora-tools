@@ -32,10 +32,9 @@ use std::thread;
 
 use aozora_fmt::format_source;
 use aozora_lsp::internals::{
-    DocState, LineIndex, LocalTextEdit, byte_offset_to_position, completion_at,
-    compute_diagnostics, document_symbols, emmet_completions, folding_ranges, format_edits,
-    format_on_type, hover_at, linked_editing_at, position_to_byte_offset, snippet_completions,
-    wrap_selection_actions,
+    ByteEdit, LineIndex, OpenDocument, byte_offset_to_position, completion_at, compute_diagnostics,
+    document_symbols, emmet_completions, folding_ranges, format_edits, format_on_type, hover_at,
+    linked_editing_at, position_to_byte_offset, snippet_completions, wrap_selection_actions,
 };
 use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
@@ -288,14 +287,14 @@ impl Xorshift {
 #[test]
 fn random_insert_burst_matches_string_oracle() {
     let mut rng = Xorshift::new(0xA0_20_BA_FE);
-    let state = DocState::new(String::new());
+    let state = OpenDocument::new(String::new());
     let mut oracle = String::new();
     for _ in 0..200 {
         let len = oracle.len();
         let insert_at = rng.range(0, len);
         let ch = (b'a' + ((rng.next() % 26) as u8)) as char;
         let chunk = ch.to_string();
-        let edit = LocalTextEdit::new(insert_at..insert_at, chunk.clone());
+        let edit = ByteEdit::new(insert_at..insert_at, chunk.clone());
         state.apply_changes(&[edit]).expect("valid insert");
         oracle.insert_str(insert_at, &chunk);
     }
@@ -309,7 +308,7 @@ fn random_insert_burst_matches_string_oracle() {
 fn random_replace_burst_matches_string_oracle() {
     let seed = "段落1\n\n段落2\n\n段落3\n\n段落4";
     let mut rng = Xorshift::new(0xDE_AD_BE_EF);
-    let state = DocState::new(seed.to_owned());
+    let state = OpenDocument::new(seed.to_owned());
     let mut oracle = seed.to_owned();
     for _ in 0..100 {
         let len = oracle.len();
@@ -336,7 +335,7 @@ fn random_replace_burst_matches_string_oracle() {
             let ch = (b'A' + ((rng.next() % 26) as u8)) as char;
             ch.to_string()
         };
-        let edit = LocalTextEdit::new(start..end, new_text.clone());
+        let edit = ByteEdit::new(start..end, new_text.clone());
         if state.apply_changes(&[edit]).is_some() {
             oracle.replace_range(start..end, &new_text);
         }
@@ -355,7 +354,7 @@ fn random_replace_burst_matches_string_oracle() {
 /// at the start; readers loop loading + assertion.
 #[test]
 fn snapshot_reads_under_write_pressure_stay_consistent() {
-    let state = DocState::new("seed\n\nseed".to_owned());
+    let state = OpenDocument::new("seed\n\nseed".to_owned());
     let stop = Arc::new(AtomicBool::new(false));
 
     let writer_state = Arc::clone(&state);
@@ -365,7 +364,7 @@ fn snapshot_reads_under_write_pressure_stay_consistent() {
             if writer_stop.load(Ordering::Relaxed) {
                 break;
             }
-            _ = writer_state.apply_changes(&[LocalTextEdit::new(0..0, "X".to_owned())]);
+            _ = writer_state.apply_changes(&[ByteEdit::new(0..0, "X".to_owned())]);
             // Force the snapshot rebuild to happen inline
             // (otherwise it's queued on the blocking pool and
             // readers would always race the same stale snapshot).
@@ -384,7 +383,7 @@ fn snapshot_reads_under_write_pressure_stay_consistent() {
                     break;
                 }
                 let snap = reader_state.snapshot();
-                // Snapshot version is monotone — readers should
+                // DocSnapshot version is monotone — readers should
                 // never see it go backwards.
                 assert!(snap.version >= last_seen_version);
                 last_seen_version = snap.version;

@@ -1,7 +1,7 @@
 //! `textDocument/inlayHint` handler — cache-driven, lock-free reads.
 //!
 //! Walks the pre-extracted [`crate::gaiji_spans::GaijiSpan`] list that
-//! `DocState` keeps current under the write lock, and emits a small
+//! `OpenDocument` keeps current under the write lock, and emits a small
 //! "→ glyph" inlay just *after* every `※［＃…］` span whose
 //! description+mencode resolve through [`aozora_encoding::gaiji::lookup`].
 //!

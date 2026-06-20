@@ -21,7 +21,7 @@
 //! ## Lifecycle
 //!
 //! Built when [`LineIndex::new`] is called against a fresh source. The
-//! `DocState` rebuilds the index on every `did_change` (cheap —
+//! `OpenDocument` rebuilds the index on every `did_change` (cheap —
 //! a single SIMD `memchr` pass over the full text). Reads are
 //! immutable so the index is shared across concurrent LSP
 //! handlers without locking.

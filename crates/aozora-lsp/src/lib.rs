@@ -34,7 +34,6 @@ mod formatting;
 mod gaiji_spans;
 mod half_width_emmet;
 mod hover;
-mod incremental;
 mod inlay_hints;
 mod line_index;
 mod linked_editing;
@@ -47,6 +46,7 @@ mod semantic_tokens;
 mod state;
 mod structured_snippets;
 mod text_edit;
+mod tree_sitter_doc;
 
 use std::io;
 
@@ -54,7 +54,7 @@ use tokio::io::{stdin, stdout};
 use tower_lsp::{LspService, Server};
 use tracing_subscriber::EnvFilter;
 
-use crate::backend::Backend;
+use crate::backend::AozoraLanguageServer;
 
 pub use cli::Cli;
 
@@ -81,9 +81,9 @@ pub async fn run() {
     // here at `LspService` build-time because tower-lsp's `LanguageServer`
     // trait only covers spec-defined methods; custom methods go on the
     // builder.
-    let (service, socket) = LspService::build(Backend::new)
-        .custom_method("aozora/renderHtml", Backend::render_html)
-        .custom_method("aozora/gaijiSpans", Backend::gaiji_spans)
+    let (service, socket) = LspService::build(AozoraLanguageServer::new)
+        .custom_method("aozora/renderHtml", AozoraLanguageServer::render_html)
+        .custom_method("aozora/gaijiSpans", AozoraLanguageServer::gaiji_spans)
         .finish();
     // tower-lsp's default concurrency cap is 4. After a didChange, VS Code
     // routinely fires 5+ concurrent requests (codeAction, inlayHint,
@@ -124,16 +124,16 @@ pub mod internals {
     pub use crate::gaiji_spans::{GaijiSpan, extract_gaiji_spans_from_tree};
     pub use crate::half_width_emmet::emmet_completions;
     pub use crate::hover::hover_at;
-    pub use crate::incremental::{IncrementalDoc, input_edit};
     pub use crate::inlay_hints::inlay_hints;
     pub use crate::line_index::LineIndex;
     pub use crate::linked_editing::linked_editing_at;
     pub use crate::on_type_formatting::{TRIGGERS as ON_TYPE_TRIGGERS, format_on_type};
-    pub use crate::paragraph::{MAX_PARAGRAPH_BYTES, MutParagraph, ParagraphSnapshot};
+    pub use crate::paragraph::{MAX_PARAGRAPH_BYTES, ParagraphBuffer, ParagraphSnapshot};
     pub use crate::parse_cache::{ParseCache, ReparseStats};
     pub use crate::position::{byte_offset_to_position, position_to_byte_offset};
     pub use crate::semantic_tokens::{legend as semantic_token_legend, semantic_tokens_full};
-    pub use crate::state::{BufferState, DocState, Snapshot};
+    pub use crate::state::{DocBuffer, DocSnapshot, OpenDocument};
     pub use crate::structured_snippets::snippet_completions;
-    pub use crate::text_edit::{EditError, LocalTextEdit, apply_edits};
+    pub use crate::text_edit::{ByteEdit, EditError, apply_edits};
+    pub use crate::tree_sitter_doc::{TreeSitterDoc, input_edit};
 }

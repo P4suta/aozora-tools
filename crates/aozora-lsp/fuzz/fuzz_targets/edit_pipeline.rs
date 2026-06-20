@@ -16,7 +16,7 @@
 
 use libfuzzer_sys::fuzz_target;
 
-use aozora_lsp::internals::{LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset};
+use aozora_lsp::internals::{ByteEdit, apply_edits, byte_offset_to_position, position_to_byte_offset};
 
 fuzz_target!(|data: &[u8]| {
     let text = String::from_utf8_lossy(data).into_owned();
@@ -28,7 +28,7 @@ fuzz_target!(|data: &[u8]| {
         let a = u16::from_le_bytes([data[0], data[1]]) as usize;
         let b = u16::from_le_bytes([data[2], data[3]]) as usize;
         let repl = String::from_utf8_lossy(&data[4..data.len().min(16)]).into_owned();
-        let edits = [LocalTextEdit::new(a..b, repl)];
+        let edits = [ByteEdit::new(a..b, repl)];
         let _ = apply_edits(&text, &edits);
     }
 

@@ -8,8 +8,8 @@
 //!
 //! `aozora::Document` owns a `bumpalo::Bump` whose interior `Cell`s
 //! make it `!Sync`. The LSP backend wraps every per-document state
-//! in `Arc<DashMap<Url, DocState>>`, which requires `DocState: Sync`.
-//! Stashing a `Document` inside `DocState` therefore cannot work
+//! in `Arc<DashMap<Url, OpenDocument>>`, which requires `OpenDocument: Sync`.
+//! Stashing a `Document` inside `OpenDocument` therefore cannot work
 //! across threads. Instead, [`ParseCache`] stores the latest text
 //! and re-parses with a fresh `Document` whenever a request handler
 //! needs the [`AozoraTree`]. The corpus median document re-parses in
@@ -40,7 +40,7 @@ pub(crate) const MAX_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 
 /// Per-call statistics emitted by [`ParseCache::reparse`].
 ///
-/// The caller (typically the LSP backend's `DocState`) feeds these
+/// The caller (typically the LSP backend's `OpenDocument`) feeds these
 /// into the per-document `Metrics` so parse latency
 /// and cache fields are observable from a third party reading the
 /// log. `cache_hits` / `cache_misses` are set to `0` / `1` for every
@@ -65,7 +65,7 @@ pub struct ReparseStats {
 #[derive(Debug, Default, Clone)]
 pub struct ParseCache {
     /// Latest source text. Owned so reads don't have to borrow back
-    /// into the parent `DocState`.
+    /// into the parent `OpenDocument`.
     text: String,
     /// Diagnostics from the most recent [`Self::reparse`]. Empty
     /// until the first parse.
@@ -145,7 +145,7 @@ impl ParseCache {
     /// called yet (text is empty).
     ///
     /// The Document is built on the stack inside this call so its
-    /// `!Sync` arena does not leak into the surrounding `DocState`.
+    /// `!Sync` arena does not leak into the surrounding `OpenDocument`.
     /// Re-parse cost is paid per call; for keystroke-rate UIs the
     /// new bumpalo pipeline absorbs this comfortably (sub-ms median
     /// on the corpus).

@@ -1,5 +1,5 @@
 //! Concurrent-access regression tests for the LSP backend's
-//! `Arc<DashMap<Url, DocState>>` surface.
+//! `Arc<DashMap<Url, OpenDocument>>` surface.
 //!
 //! Drive the public `ParseCache` directly from multiple threads
 //! and assert: independent threads' parses never deadlock, every
