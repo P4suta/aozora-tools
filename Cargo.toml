@@ -2,6 +2,7 @@
 resolver = "3"
 # Explicit list (no glob): `crates/aozora-tools-book/` is an mdbook tree, not a crate.
 members = [
+    "crates/aozora-cli",
     "crates/aozora-diagnostics",
     "crates/aozora-fmt",
     "crates/aozora-lsp",
@@ -48,10 +49,16 @@ walkdir  = "2.5"   # deterministic, symlink-loop-safe directory recursion
 anstream = "1.0"   # TTY-aware stdout wrapper (already in-graph via clap)
 anstyle  = "1.0"   # styling primitives for diff colouring
 
-# CLI asset generation (xtask): shell completions + man pages
+# CLI asset generation (xtask + `aozora completions`/`man`): completions + man
 clap_complete         = "4.6"
 clap_complete_nushell = "4.6"
 clap_mangen           = "0.3"
+
+# `aozora` CLI terminal UX: rustc-style diagnostics, file-watch, browser preview
+annotate-snippets     = "0.11"   # rustc's renderer: CJK-width-aware carets, anstyle-native
+notify-debouncer-mini = "0.4"    # debounced FS watcher (re-exports notify) for --watch
+ctrlc                 = "3.4"     # SIGINT → AtomicBool for clean `--watch` teardown
+opener                = "0.7"     # `render --open`: launch the default browser
 
 # Build-time: read the locked `aozora` parser rev for `--version`.
 toml = "0.8"

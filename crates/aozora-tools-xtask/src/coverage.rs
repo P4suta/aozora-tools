@@ -38,14 +38,14 @@ use crate::expect_status;
 ///
 /// - `aozora-tools-xtask/src/.*` — developer tooling, not shipped to
 ///   end users; testing it like production code would be ceremonial.
-/// - `aozora-(lsp|fmt)/src/main\.rs` — process entry points that do
+/// - `aozora-(lsp|fmt|cli)/src/main\.rs` — process entry points that do
 ///   `clap::Parser::parse()` and dispatch to library code which is
 ///   covered through other tests. Coverage of `fn main` itself is
 ///   not load-bearing.
 ///
 /// Centralising the pattern here means CI and local runs can't
 /// drift on which files are in / out of the denominator.
-const IGNORE_FILENAME_REGEX: &str = r"aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs";
+const IGNORE_FILENAME_REGEX: &str = r"aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs";
 
 #[derive(Args, Debug)]
 #[allow(

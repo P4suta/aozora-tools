@@ -259,7 +259,7 @@ jobs:
         # — see `crates/aozora-tools-xtask/src/coverage.rs::IGNORE_FILENAME_REGEX`
         # which keeps this exact same pattern in lockstep with local runs.
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           # `cargo llvm-cov report --lcov --output-path …/lcov.info`
           # does not auto-create the parent directory; without this
@@ -280,7 +280,7 @@ jobs:
 
       - name: Coverage summary → job summary
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           {
             echo '## Coverage'
@@ -304,7 +304,7 @@ jobs:
         # under the measured numbers so a routine refactor doesn't trip
         # the gate while a real coverage regression still does.
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           cargo llvm-cov report \
             --fail-under-lines 93 \
