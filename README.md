@@ -1,5 +1,19 @@
 # aozora-tools
 
+> [!IMPORTANT]
+> **This repository has been consolidated into
+> [`P4suta/aozora`](https://github.com/P4suta/aozora) and archived (2026-06-21).**
+> All development continues there. The contents moved as follows:
+>
+> - `aozora-fmt`, `aozora-lsp`, `aozora-diagnostics`, `tree-sitter-aozora`
+>   → [`aozora/crates/*`](https://github.com/P4suta/aozora/tree/main/crates)
+> - VS Code extension
+>   → [`aozora/editors/vscode`](https://github.com/P4suta/aozora/tree/main/editors/vscode)
+>
+> Rationale: [aozora ADR 0016](https://github.com/P4suta/aozora/blob/main/docs/adr/0016-consolidate-tooling-into-the-aozora-monorepo.md).
+> This repo is kept read-only as a historical record; the text below describes
+> its state at archival time.
+
 Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) — the formatter, LSP server, tree-sitter grammar, and VS Code extension.
 
 <p align="center">
