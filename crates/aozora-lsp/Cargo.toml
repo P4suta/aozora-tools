@@ -21,6 +21,7 @@ path = "src/lib.rs"
 
 [dependencies]
 aozora             = { workspace = true }
+aozora-diagnostics = { workspace = true }   # shared diagnostic catalogue (describe/payload)
 aozora-encoding    = { workspace = true }
 tree-sitter-aozora = { workspace = true }
 tree-sitter        = "0.26"

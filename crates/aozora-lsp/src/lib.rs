@@ -73,8 +73,7 @@ pub(crate) fn build_service() -> (LspService<AozoraLanguageServer>, ClientSocket
         .finish()
 }
 
-/// Run the `aozora-lsp` daemon: parse argv, install the stderr tracing
-/// subscriber, then serve LSP over stdio until the client disconnects.
+/// Run the `aozora-lsp` daemon: parse argv, then [`serve`] over stdio.
 ///
 /// argv is handled first so clap prints and exits for `--version` /
 /// `--help` (and on a usage error) *before* the JSON-RPC stream opens, so
@@ -82,7 +81,17 @@ pub(crate) fn build_service() -> (LspService<AozoraLanguageServer>, ClientSocket
 /// (and ignored) for editor compatibility.
 pub async fn run() {
     let _cli = Cli::parse_args();
+    serve().await;
+}
 
+/// Serve the language server over stdio until the client disconnects.
+///
+/// Installs the stderr tracing subscriber, builds the service (with the
+/// `aozora/*` custom methods), and serves. This is [`run`] minus argv parsing:
+/// the `aozora` umbrella binary parses argv itself (so `aozora lsp --help`
+/// works and stdout stays clean) and then calls `serve` directly, while the
+/// standalone `aozora-lsp` binary goes through `run`.
+pub async fn serve() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn")),

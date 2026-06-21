@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
 
 /// Crate version annotated with the pinned upstream `aozora` parser, e.g.
 /// `0.4.1 (aozora a53c632 / v0.4.1)`. The rev/tag are baked in by `build.rs`.
@@ -30,6 +30,11 @@ const LONG_ABOUT: &str = concat!(
 );
 
 /// Idempotent formatter for aozora-flavored-markdown.
+///
+/// A thin [`Parser`] newtype around [`FmtArgs`]. The standalone `aozora-fmt`
+/// binary and `xtask gen-assets` (via `Cli::command()`) use this; the `aozora`
+/// umbrella reuses [`FmtArgs`] directly as a flattened subcommand. Keeping the
+/// flags in a separate [`Args`] struct lets both share one definition.
 #[derive(Parser, Debug)]
 #[command(
     name = "aozora-fmt",
@@ -37,11 +42,20 @@ const LONG_ABOUT: &str = concat!(
     long_about = LONG_ABOUT,
     version = LONG_VERSION
 )]
+pub struct Cli {
+    /// The formatter flags, shared with `aozora fmt`.
+    #[command(flatten)]
+    pub(crate) args: FmtArgs,
+}
+
+/// The formatter's argument surface, shared between the standalone `aozora-fmt`
+/// binary ([`Cli`]) and the `aozora fmt` subcommand.
+#[derive(Args, Debug)]
 #[allow(
     clippy::struct_excessive_bools,
     reason = "a clap flag struct: each bool is an independent CLI switch, collapsed into Mode by mode()"
 )]
-pub struct Cli {
+pub struct FmtArgs {
     /// Files or directories to format. Use `-`, or omit, to read stdin.
     #[arg(value_name = "PATH")]
     paths: Vec<PathBuf>,
@@ -71,9 +85,12 @@ pub struct Cli {
     color: ColorChoice,
 }
 
-/// When to emit ANSI colour in `--diff` output.
+/// When to emit ANSI colour in terminal output (diffs, diagnostics, …).
+///
+/// Re-exported from the crate root so the `aozora` CLI's `lint`/`render`
+/// subcommands share one colour policy with the formatter.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-pub(crate) enum ColorChoice {
+pub enum ColorChoice {
     /// Colour when stdout is a terminal (honours `NO_COLOR`).
     Auto,
     /// Always colour, even when piped.
@@ -104,7 +121,7 @@ pub(crate) enum CheckReport {
     Json,
 }
 
-impl Cli {
+impl FmtArgs {
     /// The positional path arguments (possibly including `-` for stdin).
     pub(crate) fn paths(&self) -> &[PathBuf] {
         &self.paths

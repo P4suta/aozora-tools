@@ -259,7 +259,7 @@ jobs:
         # — see `crates/aozora-tools-xtask/src/coverage.rs::IGNORE_FILENAME_REGEX`
         # which keeps this exact same pattern in lockstep with local runs.
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           # `cargo llvm-cov report --lcov --output-path …/lcov.info`
           # does not auto-create the parent directory; without this
@@ -269,6 +269,13 @@ jobs:
           # so the artifact upload at the end of the job has a
           # consistent path to read from on every run.
           mkdir -p target/llvm-cov/html
+          # Drop any instrumented binaries / .profraw restored from the cache.
+          # `report` scans the whole llvm-cov target for objects + profraw, so a
+          # stale binary from a previous workspace shape (e.g. main, before a new
+          # member crate existed) gets double-counted — inflating the region
+          # denominator and sinking the percentage. A clean start makes the run
+          # deterministic and cache-independent (matches a local `llvm-cov clean`).
+          cargo llvm-cov clean --workspace
           cargo llvm-cov nextest \
             --workspace --all-features --no-report \
             --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
@@ -280,7 +287,7 @@ jobs:
 
       - name: Coverage summary → job summary
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           {
             echo '## Coverage'
@@ -304,7 +311,7 @@ jobs:
         # under the measured numbers so a routine refactor doesn't trip
         # the gate while a real coverage regression still does.
         env:
-          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
+          IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt|cli)/src/main\.rs'
         run: |
           cargo llvm-cov report \
             --fail-under-lines 93 \

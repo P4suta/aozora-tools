@@ -1,0 +1,310 @@
+#compdef aozora
+
+autoload -U is-at-least
+
+_aozora() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+":: :_aozora_commands" \
+"*::: :->aozora" \
+&& ret=0
+    case $state in
+    (aozora)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:aozora-command-$line[1]:"
+        case $line[1] in
+            (fmt)
+_arguments "${_arguments_options[@]}" : \
+'--color=[When to colourise --diff output]:WHEN:((auto\:"Colour when stdout is a terminal (honours \`NO_COLOR\`)"
+always\:"Always colour, even when piped"
+never\:"Never colour"))' \
+'(-w --write -l --list)--check[Verify inputs are already formatted; exit 1 if any would change]' \
+'(--check --diff --json)-w[Rewrite files in place (no-op when already canonical)]' \
+'(--check --diff --json)--write[Rewrite files in place (no-op when already canonical)]' \
+'(-w --write -l --list --json)--diff[Print a unified diff for every file that would change. Implies --check]' \
+'(--check --diff --json)-l[List only the paths that would change (gofmt -l). Combine with -w]' \
+'(--check --diff --json)--list[List only the paths that would change (gofmt -l). Combine with -w]' \
+'(-w --write -l --list --diff)--json[Emit the --check result as machine-readable JSON. Implies --check]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'*::paths -- Files or directories to format. Use `-`, or omit, to read stdin:_files' \
+&& ret=0
+;;
+(lint)
+_arguments "${_arguments_options[@]}" : \
+'--color=[When to colourise output]:WHEN:((auto\:"Colour when stdout is a terminal (honours \`NO_COLOR\`)"
+always\:"Always colour, even when piped"
+never\:"Never colour"))' \
+'(-q --quiet --watch)--json[Emit machine-readable JSON instead of rendered diagnostics]' \
+'-q[Print one terse line per diagnostic\: \`path\:line\:col\: sev\[code\]\: message\`]' \
+'--quiet[Print one terse line per diagnostic\: \`path\:line\:col\: sev\[code\]\: message\`]' \
+'-W[Treat warnings as errors for the exit code]' \
+'--error-on-warning[Treat warnings as errors for the exit code]' \
+'--watch[Re-run on every file change (clears the screen, like a dev server)]' \
+'--stats[Print a one-line summary (files, diagnostics, elapsed) to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'*::paths -- Files or directories to lint. Use `-`, or omit, to read stdin:_files' \
+&& ret=0
+;;
+(check)
+_arguments "${_arguments_options[@]}" : \
+'--color=[When to colourise output]:WHEN:((auto\:"Colour when stdout is a terminal (honours \`NO_COLOR\`)"
+always\:"Always colour, even when piped"
+never\:"Never colour"))' \
+'(-q --quiet --watch)--json[Emit machine-readable JSON instead of rendered diagnostics]' \
+'-q[Print one terse line per diagnostic\: \`path\:line\:col\: sev\[code\]\: message\`]' \
+'--quiet[Print one terse line per diagnostic\: \`path\:line\:col\: sev\[code\]\: message\`]' \
+'-W[Treat warnings as errors for the exit code]' \
+'--error-on-warning[Treat warnings as errors for the exit code]' \
+'--watch[Re-run on every file change (clears the screen, like a dev server)]' \
+'--stats[Print a one-line summary (files, diagnostics, elapsed) to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'*::paths -- Files or directories to lint. Use `-`, or omit, to read stdin:_files' \
+&& ret=0
+;;
+(render)
+_arguments "${_arguments_options[@]}" : \
+'-o+[Write HTML to FILE instead of stdout]:FILE:_files' \
+'--output=[Write HTML to FILE instead of stdout]:FILE:_files' \
+'--color=[When to colourise error output]:WHEN:((auto\:"Colour when stdout is a terminal (honours \`NO_COLOR\`)"
+always\:"Always colour, even when piped"
+never\:"Never colour"))' \
+'--standalone[Wrap the fragment in a standalone HTML5 document (vertical-writing CSS)]' \
+'--open[Open the rendered HTML in the default browser (implies --standalone)]' \
+'--stats[Print render stats (bytes in/out, elapsed) to stderr]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::path -- The file to render. Use `-`, or omit, to read stdin:_files' \
+&& ret=0
+;;
+(explain)
+_arguments "${_arguments_options[@]}" : \
+'--color=[When to colourise output]:WHEN:((auto\:"Colour when stdout is a terminal (honours \`NO_COLOR\`)"
+always\:"Always colour, even when piped"
+never\:"Never colour"))' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::code -- The diagnostic code (e.g. `aozora\:\:unclosed-bracket`, or just `unclosed-bracket`). Omit to list every code:_default' \
+&& ret=0
+;;
+(lsp)
+_arguments "${_arguments_options[@]}" : \
+'--stdio[Accepted for editor compatibility; the server always speaks stdio]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+'-V[Print version]' \
+'--version[Print version]' \
+':shell -- The shell to generate a completion script for:((bash\:"Bash"
+zsh\:"Zsh"
+fish\:"Fish"
+powershell\:"PowerShell"
+nushell\:"Nushell"))' \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'::command -- Render the page for this subcommand (e.g. `lint`). Omit for the top-level `aozora` page:_default' \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+":: :_aozora__subcmd__help_commands" \
+"*::: :->help" \
+&& ret=0
+
+    case $state in
+    (help)
+        words=($line[1] "${words[@]}")
+        (( CURRENT += 1 ))
+        curcontext="${curcontext%:*:*}:aozora-help-command-$line[1]:"
+        case $line[1] in
+            (fmt)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(lint)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(render)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(explain)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(lsp)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(completions)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(man)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(help)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+        esac
+    ;;
+esac
+;;
+        esac
+    ;;
+esac
+}
+
+(( $+functions[_aozora_commands] )) ||
+_aozora_commands() {
+    local commands; commands=(
+'fmt:Format aozora documents (idempotent canonicaliser)' \
+'lint:Lint aozora documents and print diagnostics to the terminal' \
+'check:Lint aozora documents and print diagnostics to the terminal' \
+'render:Render an aozora document to HTML' \
+'explain:Explain a diagnostic code (e.g. \`aozora\:\:unclosed-bracket\`)' \
+'lsp:Run the language server over stdio (for editors)' \
+'completions:Print a shell completion script to stdout' \
+'man:Print a man page (troff) to stdout' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'aozora commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__completions_commands] )) ||
+_aozora__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora completions commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__explain_commands] )) ||
+_aozora__subcmd__explain_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora explain commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__fmt_commands] )) ||
+_aozora__subcmd__fmt_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora fmt commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help_commands] )) ||
+_aozora__subcmd__help_commands() {
+    local commands; commands=(
+'fmt:Format aozora documents (idempotent canonicaliser)' \
+'lint:Lint aozora documents and print diagnostics to the terminal' \
+'render:Render an aozora document to HTML' \
+'explain:Explain a diagnostic code (e.g. \`aozora\:\:unclosed-bracket\`)' \
+'lsp:Run the language server over stdio (for editors)' \
+'completions:Print a shell completion script to stdout' \
+'man:Print a man page (troff) to stdout' \
+'help:Print this message or the help of the given subcommand(s)' \
+    )
+    _describe -t commands 'aozora help commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__completions_commands] )) ||
+_aozora__subcmd__help__subcmd__completions_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help completions commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__explain_commands] )) ||
+_aozora__subcmd__help__subcmd__explain_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help explain commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__fmt_commands] )) ||
+_aozora__subcmd__help__subcmd__fmt_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help fmt commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__help_commands] )) ||
+_aozora__subcmd__help__subcmd__help_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help help commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__lint_commands] )) ||
+_aozora__subcmd__help__subcmd__lint_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help lint commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__lsp_commands] )) ||
+_aozora__subcmd__help__subcmd__lsp_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help lsp commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__man_commands] )) ||
+_aozora__subcmd__help__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help man commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__help__subcmd__render_commands] )) ||
+_aozora__subcmd__help__subcmd__render_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora help render commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__lint_commands] )) ||
+_aozora__subcmd__lint_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora lint commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__lsp_commands] )) ||
+_aozora__subcmd__lsp_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora lsp commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__man_commands] )) ||
+_aozora__subcmd__man_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora man commands' commands "$@"
+}
+(( $+functions[_aozora__subcmd__render_commands] )) ||
+_aozora__subcmd__render_commands() {
+    local commands; commands=()
+    _describe -t commands 'aozora render commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_aozora" ]; then
+    _aozora "$@"
+else
+    compdef _aozora aozora
+fi

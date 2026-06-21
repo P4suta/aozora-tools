@@ -37,9 +37,13 @@ impl Outcome {
     }
 }
 
-/// Build the stdout stream for diff output, honouring `--color`. `anstream`
+/// Build the stdout stream for coloured output, honouring `--color`. `anstream`
 /// strips ANSI when the choice (or TTY detection, for `auto`) says no colour.
-pub(crate) fn auto_stdout(color: ColorChoice) -> AutoStream<io::Stdout> {
+///
+/// Re-exported from the crate root so the `aozora` CLI's terminal renderers
+/// share one TTY/`NO_COLOR` policy with the formatter's diffs.
+#[must_use]
+pub fn auto_stdout(color: ColorChoice) -> AutoStream<io::Stdout> {
     match color {
         ColorChoice::Auto => AutoStream::auto(io::stdout()),
         ColorChoice::Always => AutoStream::always(io::stdout()),

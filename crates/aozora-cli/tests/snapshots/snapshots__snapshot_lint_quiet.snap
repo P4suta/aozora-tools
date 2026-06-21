@@ -1,0 +1,5 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run_stdin(&[\"lint\", \"--quiet\", \"--color\", \"never\", \"-\"], UNCLOSED)"
+---
+<stdin>:1:3: error[aozora::unclosed-bracket]: 閉じられていない `［` があります。

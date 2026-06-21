@@ -81,6 +81,17 @@
         "category": "Aozora"
       },
       {
+        "command": "aozora.exportHtml",
+        "title": "Aozora: Export HTML…",
+        "category": "Aozora",
+        "enablement": "editorLangId == aozora"
+      },
+      {
+        "command": "aozora.lintWorkspace",
+        "title": "Aozora: Lint workspace",
+        "category": "Aozora"
+      },
+      {
         "command": "aozora.openNotationGuide",
         "title": "Aozora: 記法ガイドを開く",
         "category": "Aozora"
@@ -153,6 +164,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "aozora.exportHtml",
+          "when": "editorLangId == aozora",
+          "group": "navigation@2"
+        },
+        {
           "submenu": "aozora.wrapMenu",
           "when": "editorLangId == aozora && editorHasSelection",
           "group": "1_modification@1"
@@ -163,6 +179,11 @@
           "command": "aozora.openPreview",
           "when": "editorLangId == aozora",
           "group": "navigation"
+        },
+        {
+          "command": "aozora.exportHtml",
+          "when": "editorLangId == aozora",
+          "group": "navigation@15"
         },
         {
           "command": "aozora.showOutline",
@@ -224,6 +245,11 @@
           "type": "string",
           "default": "aozora-lsp",
           "description": "Path to the aozora-lsp executable. Defaults to looking it up on PATH."
+        },
+        "aozora.cli.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the `aozora` CLI used by 'Aozora: Lint workspace'. Empty = look up `aozora` on PATH."
         },
         "aozora.trace.server": {
           "type": "string",

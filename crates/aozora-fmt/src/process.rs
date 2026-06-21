@@ -49,17 +49,36 @@ pub(crate) fn write_back(path: &Path, fmt: &Formatted) -> Result<()> {
     fs::write(path, &fmt.new).with_context(|| format!("writing {}", path.display()))
 }
 
-/// Format `source`, converting an upstream parser panic into a clean error
-/// instead of a process abort (via `panic = "unwind"` and `catch_unwind`).
-/// In `--write` mode this guarantees no file is touched after a panic.
-pub(crate) fn format_guarded(source: &str) -> Result<String> {
-    // Silence the default hook so a caught panic doesn't also print
-    // "thread 'main' panicked …"; we report it ourselves below.
+/// Marker error returned by [`guard`] when the wrapped closure panicked.
+///
+/// Callers turn this into a domain-specific message (the formatter says "no
+/// files were modified"; the CLI's `render` says "no output was produced").
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Panicked;
+
+/// Run `f`, turning an upstream `aozora` parser panic into a typed [`Panicked`].
+///
+/// Instead of a process abort, the panic is caught (via `panic = "unwind"` and
+/// `catch_unwind`). The default panic hook is silenced for the duration so a
+/// caught panic doesn't also print "thread 'main' panicked …"; the caller
+/// reports it instead. Shared with the `aozora` CLI (`render`, `lint`) so every
+/// entry point that drives the parser gets the same no-abort guarantee.
+///
+/// # Errors
+///
+/// Returns [`Panicked`] if `f` unwinds from a panic.
+pub fn guard<T>(f: impl FnOnce() -> T) -> Result<T, Panicked> {
     let prev_hook = take_hook();
     set_hook(Box::new(|_| {}));
-    let result = catch_unwind(AssertUnwindSafe(|| format_source(source)));
+    let result = catch_unwind(AssertUnwindSafe(f));
     set_hook(prev_hook);
-    result.map_err(|_| {
+    result.map_err(|_| Panicked)
+}
+
+/// Format `source` under [`guard`]. In `--write` mode the no-abort guarantee
+/// means no file is touched after a panic.
+pub(crate) fn format_guarded(source: &str) -> Result<String> {
+    guard(|| format_source(source)).map_err(|_| {
         anyhow!(
             "the formatter panicked while processing this input; no files were \
              modified. This is a bug — please report it at \
@@ -94,6 +113,17 @@ mod tests {
             out.starts_with('｜'),
             "explicit delimiter expected: {out:?}"
         );
+    }
+
+    #[test]
+    fn guard_returns_value_for_non_panicking_closure() {
+        assert_eq!(guard(|| 2 + 2).expect("no panic"), 4);
+    }
+
+    #[test]
+    fn guard_converts_panic_into_marker_error() {
+        let result = guard(|| -> i32 { panic!("boom") });
+        assert_eq!(result, Err(Panicked));
     }
 
     #[test]

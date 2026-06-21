@@ -24,6 +24,14 @@ mod report;
 
 pub use cli::Cli;
 
+// Shared CLI plumbing, re-exported for the `aozora` umbrella crate so its
+// `lint`/`render` subcommands reuse the formatter's path discovery, colour
+// policy, and panic guard instead of re-implementing them.
+pub use cli::{ColorChoice, FmtArgs};
+pub use discover::{Input, Resolved, resolve};
+pub use process::{Panicked, guard};
+pub use report::auto_stdout;
+
 /// Compiles and runs the fenced Rust example in this crate's `README.md` as a
 /// doctest, so the documented public API (`format_source`) can't silently
 /// drift from the code. `#[cfg(doctest)]` means the item exists only while
@@ -33,8 +41,7 @@ pub use cli::Cli;
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
-use cli::{CheckReport, ColorChoice, Mode};
-use discover::{Input, Resolved};
+use cli::{CheckReport, Mode};
 use report::Outcome;
 
 /// Canonicalise an aozora source string.
@@ -50,7 +57,14 @@ pub fn format_source(source: &str) -> String {
 /// exit code (0 success, 1 `--check` would reformat, 2 error).
 #[must_use]
 pub fn run(cli: &Cli) -> ExitCode {
-    match dispatch(cli) {
+    run_args(&cli.args)
+}
+
+/// Run the formatter for already-parsed [`FmtArgs`] — the entry point the
+/// `aozora fmt` subcommand calls. Returns the same exit codes as [`run`].
+#[must_use]
+pub fn run_args(args: &FmtArgs) -> ExitCode {
+    match dispatch(args) {
         Ok(outcome) => outcome.exit_code(),
         Err(err) => {
             eprintln!("aozora-fmt: {err:#}");
@@ -59,16 +73,16 @@ pub fn run(cli: &Cli) -> ExitCode {
     }
 }
 
-fn dispatch(cli: &Cli) -> Result<Outcome> {
-    let mode = cli.mode();
-    match discover::resolve(cli.paths())? {
-        Input::Stdin => run_stdin(cli, &mode),
-        Input::Files(resolved) => run_files(cli, &mode, &resolved),
+fn dispatch(args: &FmtArgs) -> Result<Outcome> {
+    let mode = args.mode();
+    match resolve(args.paths())? {
+        Input::Stdin => run_stdin(args, &mode),
+        Input::Files(resolved) => run_files(args, &mode, &resolved),
     }
 }
 
 /// Single-source path: read stdin once, then apply the mode.
-fn run_stdin(cli: &Cli, mode: &Mode) -> Result<Outcome> {
+fn run_stdin(args: &FmtArgs, mode: &Mode) -> Result<Outcome> {
     let mut old = String::new();
     io::stdin()
         .read_to_string(&mut old)
@@ -87,7 +101,7 @@ fn run_stdin(cli: &Cli, mode: &Mode) -> Result<Outcome> {
             }
             Ok(Outcome::Ok)
         }
-        Mode::Check(report) => stdin_check(report, cli.color(), &old, &new),
+        Mode::Check(report) => stdin_check(report, args.color(), &old, &new),
     }
 }
 
@@ -105,7 +119,7 @@ fn stdin_check(report: &CheckReport, color: ColorChoice, old: &str, new: &str) -
             }
         }
         CheckReport::Diff if changed => {
-            let mut out = report::auto_stdout(color);
+            let mut out = auto_stdout(color);
             report::write_diff(&mut out, "<stdin>", old, new)?;
             out.flush()?;
         }
@@ -123,7 +137,7 @@ fn stdin_check(report: &CheckReport, color: ColorChoice, old: &str, new: &str) -
 }
 
 /// Multi-source path: dispatch the resolved file set by mode.
-fn run_files(cli: &Cli, mode: &Mode, resolved: &Resolved) -> Result<Outcome> {
+fn run_files(args: &FmtArgs, mode: &Mode, resolved: &Resolved) -> Result<Outcome> {
     match mode {
         Mode::Stdout => run_stdout(resolved),
         Mode::Write { list } => Ok(discovery_base(resolved).max(run_write(&resolved.files, *list))),
@@ -131,11 +145,11 @@ fn run_files(cli: &Cli, mode: &Mode, resolved: &Resolved) -> Result<Outcome> {
         Mode::Check(CheckReport::Json) => report::run_check_json(resolved),
         Mode::Check(CheckReport::Diff) => {
             let base = discovery_base(resolved);
-            Ok(base.max(run_check(cli.color(), &resolved.files, true)?))
+            Ok(base.max(run_check(args.color(), &resolved.files, true)?))
         }
         Mode::Check(CheckReport::Plain) => {
             let base = discovery_base(resolved);
-            Ok(base.max(run_check(cli.color(), &resolved.files, false)?))
+            Ok(base.max(run_check(args.color(), &resolved.files, false)?))
         }
     }
 }
@@ -191,7 +205,7 @@ fn run_check(color: ColorChoice, files: &[PathBuf], diff: bool) -> Result<Outcom
             })
         }));
     }
-    let mut out = report::auto_stdout(color);
+    let mut out = auto_stdout(color);
     let outcome = fold_files(files, |path| {
         let fmt = process::read_and_format(path)?;
         Ok(if fmt.changed() {

@@ -21,6 +21,7 @@ import {
 } from "vscode-languageclient/node";
 
 import { registerCanonicalizeAtCursorCommand } from "./canonicalize";
+import { registerCliCommands } from "./cliCommands";
 import { registerDeletePair } from "./deletePair";
 import { registerGaijiFold } from "./gaijiFold";
 import { registerNotationGuideCommand } from "./notationGuide";
@@ -162,6 +163,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // users can normalise `［＃ぼうてん］` → `［＃傍点］` without
   // hunting for the lightbulb.
   registerCanonicalizeAtCursorCommand(context, client);
+
+  // `Aozora: Export HTML…` renders the document to a standalone HTML file via
+  // the LSP, and `Aozora: Lint workspace` runs the `aozora` CLI's batch linter
+  // — bringing the new CLI surfaces (render / lint) into the editor.
+  registerCliCommands(context, client);
 
   try {
     await client.start();

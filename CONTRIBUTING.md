@@ -60,6 +60,12 @@ drift check, and the VS Code `bun run check`. `just ci` runs the same
 set in one shot. For the bacon edit loop, profiling, and sanitizers see
 [`contrib/dev.md`](./crates/aozora-tools-book/src/contrib/dev.md).
 
+To dogfood the `aozora` CLI against the bundled fixtures, `just demo`
+runs `lint` + `explain` + `render` over `samples/`; `just lint-samples`,
+`just render-sample`, and `just explain <code>` are the individual
+recipes. Touching a binary's arguments? Re-run `just gen-assets` and
+commit the regenerated `assets/` so the drift check stays green.
+
 Opening the repo root in VS Code picks up `.vscode/` (recommended
 extensions, rust-analyzer wired to clippy, and one-click debug for
 `aozora-fmt` and `aozora-lsp`). `aozora-lsp` is a stdio server, so the
