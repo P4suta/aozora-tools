@@ -2,6 +2,7 @@
 resolver = "3"
 # Explicit list (no glob): `crates/aozora-tools-book/` is an mdbook tree, not a crate.
 members = [
+    "crates/aozora-diagnostics",
     "crates/aozora-fmt",
     "crates/aozora-lsp",
     "crates/aozora-tools-xtask",
@@ -29,6 +30,8 @@ aozora          = { version = "0.4.1", git = "https://github.com/P4suta/aozora.g
 aozora-encoding = { version = "0.4.1", git = "https://github.com/P4suta/aozora.git", rev = "a53c632b1d1be4bfcbce7de010ab5b0843e98cc0" }
 
 # Internal workspace members
+# Renderer-agnostic diagnostic catalogue shared by the LSP and the CLI.
+aozora-diagnostics = { version = "0.4.1", path = "crates/aozora-diagnostics" }
 aozora-fmt         = { version = "0.4.1", path = "crates/aozora-fmt" }
 # Used by xtask (gen-assets) to reach `Cli::command()` for completions/man.
 aozora-lsp         = { version = "0.4.1", path = "crates/aozora-lsp" }

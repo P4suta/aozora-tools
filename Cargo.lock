@@ -110,6 +110,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aozora-diagnostics"
+version = "0.4.1"
+dependencies = [
+ "aozora",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "aozora-encoding"
 version = "0.4.1"
 source = "git+https://github.com/P4suta/aozora.git?rev=a53c632b1d1be4bfcbce7de010ab5b0843e98cc0#a53c632b1d1be4bfcbce7de010ab5b0843e98cc0"
@@ -143,6 +152,7 @@ name = "aozora-lsp"
 version = "0.4.1"
 dependencies = [
  "aozora",
+ "aozora-diagnostics",
  "aozora-encoding",
  "aozora-fmt",
  "arc-swap",
