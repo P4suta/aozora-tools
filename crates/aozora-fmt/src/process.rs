@@ -10,6 +10,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use crate::format_source;
 
 /// A formatted file: the original bytes and the canonical form.
+#[derive(Debug)]
 pub(crate) struct Formatted {
     pub(crate) old: String,
     pub(crate) new: String,
@@ -65,4 +66,122 @@ pub(crate) fn format_guarded(source: &str) -> Result<String> {
              https://github.com/P4suta/aozora-tools/issues"
         )
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::env;
+    use std::path::PathBuf;
+    use std::process;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// A unique scratch path under the OS temp dir. A per-test counter
+    /// keeps parallel test threads from colliding on the same file.
+    fn scratch(name: &str) -> PathBuf {
+        static SEQ: AtomicU32 = AtomicU32::new(0);
+        let n = SEQ.fetch_add(1, Ordering::Relaxed);
+        let mut path = env::temp_dir();
+        path.push(format!("aozora-fmt-process-{}-{n}-{name}", process::id()));
+        path
+    }
+
+    #[test]
+    fn format_guarded_canonicalises_ruby() {
+        let out = format_guarded("日本《にほん》").expect("format ok");
+        assert!(
+            out.starts_with('｜'),
+            "explicit delimiter expected: {out:?}"
+        );
+    }
+
+    #[test]
+    fn formatted_changed_reflects_difference() {
+        let same = Formatted {
+            old: "x".to_owned(),
+            new: "x".to_owned(),
+        };
+        let diff = Formatted {
+            old: "x".to_owned(),
+            new: "y".to_owned(),
+        };
+        assert!(!same.changed());
+        assert!(diff.changed());
+    }
+
+    #[test]
+    fn read_and_format_reads_then_canonicalises() {
+        let path = scratch("read.afm");
+        fs::write(&path, "日本《にほん》").expect("seed file");
+        let fmt = read_and_format(&path).expect("read+format");
+        assert_eq!(fmt.old, "日本《にほん》");
+        assert!(fmt.new.starts_with('｜'));
+        assert!(fmt.changed());
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn read_and_format_errors_on_missing_file() {
+        let path = scratch("missing.afm");
+        let err = read_and_format(&path).expect_err("missing file must error");
+        assert!(
+            err.to_string().contains("reading"),
+            "error should name the read step: {err:#}",
+        );
+    }
+
+    #[test]
+    fn write_back_noop_leaves_file_untouched_and_uncreated() {
+        let path = scratch("noop.afm");
+        let fmt = Formatted {
+            old: "same".to_owned(),
+            new: "same".to_owned(),
+        };
+        write_back(&path, &fmt).expect("noop write_back");
+        assert!(
+            !path.exists(),
+            "unchanged formatting must not create or touch the file",
+        );
+    }
+
+    #[test]
+    fn write_back_rewrites_when_changed() {
+        let path = scratch("write.afm");
+        fs::write(&path, "日本《にほん》").expect("seed file");
+        let fmt = read_and_format(&path).expect("read+format");
+        write_back(&path, &fmt).expect("write_back");
+        let written = fs::read_to_string(&path).expect("read back");
+        assert_eq!(written, fmt.new);
+        assert!(written.starts_with('｜'));
+        fs::remove_file(&path).ok();
+    }
+
+    /// The idempotency guard is the formatter's anti-corruption seatbelt:
+    /// if a (hypothetically non-idempotent) canonical form does not survive
+    /// a second pass, `write_back` must refuse to write rather than persist
+    /// a form it can't reproduce. We simulate that by handing it a
+    /// `Formatted` whose `new` is deliberately *not* canonical, so the
+    /// second pass differs.
+    #[test]
+    fn write_back_refuses_non_idempotent_output_and_preserves_file() {
+        let path = scratch("guard.afm");
+        fs::write(&path, "original").expect("seed file");
+        let fmt = Formatted {
+            old: "original".to_owned(),
+            // Non-canonical on purpose: format_guarded(new) != new.
+            new: "日本《にほん》".to_owned(),
+        };
+        let err = write_back(&path, &fmt).expect_err("non-idempotent output must be refused");
+        assert!(
+            err.to_string().contains("idempotent"),
+            "guard message should mention idempotency: {err:#}",
+        );
+        assert_eq!(
+            fs::read_to_string(&path).expect("read back"),
+            "original",
+            "the original file must be left byte-for-byte intact",
+        );
+        fs::remove_file(&path).ok();
+    }
 }

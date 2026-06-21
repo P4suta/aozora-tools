@@ -51,12 +51,27 @@ mod tree_sitter_doc;
 use std::io;
 
 use tokio::io::{stdin, stdout};
-use tower_lsp::{LspService, Server};
+use tower_lsp::{ClientSocket, LspService, Server};
 use tracing_subscriber::EnvFilter;
 
 use crate::backend::AozoraLanguageServer;
 
 pub use cli::Cli;
+
+/// Build the `LspService` with the aozora custom methods (`aozora/renderHtml`,
+/// `aozora/gaijiSpans`) wired onto the builder — tower-lsp's `LanguageServer`
+/// trait only covers spec-defined methods, so custom ones go here.
+///
+/// Factored out of [`run`] so the in-crate end-to-end harness
+/// (`backend::e2e`) builds the server exactly the way the daemon does; the
+/// custom-method routing is therefore exercised by tests and can't silently
+/// drift from production.
+pub(crate) fn build_service() -> (LspService<AozoraLanguageServer>, ClientSocket) {
+    LspService::build(AozoraLanguageServer::new)
+        .custom_method("aozora/renderHtml", AozoraLanguageServer::render_html)
+        .custom_method("aozora/gaijiSpans", AozoraLanguageServer::gaiji_spans)
+        .finish()
+}
 
 /// Run the `aozora-lsp` daemon: parse argv, install the stderr tracing
 /// subscriber, then serve LSP over stdio until the client disconnects.
@@ -77,14 +92,7 @@ pub async fn run() {
 
     let stdin = stdin();
     let stdout = stdout();
-    // Custom requests `aozora/renderHtml` and `aozora/gaijiSpans` are wired
-    // here at `LspService` build-time because tower-lsp's `LanguageServer`
-    // trait only covers spec-defined methods; custom methods go on the
-    // builder.
-    let (service, socket) = LspService::build(AozoraLanguageServer::new)
-        .custom_method("aozora/renderHtml", AozoraLanguageServer::render_html)
-        .custom_method("aozora/gaijiSpans", AozoraLanguageServer::gaiji_spans)
-        .finish();
+    let (service, socket) = build_service();
     // tower-lsp's default concurrency cap is 4. After a didChange, VS Code
     // routinely fires 5+ concurrent requests (codeAction, inlayHint,
     // renderHtml, plus repeat codeActions either side of the cursor); the

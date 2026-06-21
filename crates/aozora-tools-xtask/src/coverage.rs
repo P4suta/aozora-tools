@@ -230,8 +230,22 @@ fn gate(flag: &str, min: u32) -> Result<(), String> {
     )
 }
 
+/// `cargo` for the coverage subcommands, pinned to the repo toolchain.
+///
+/// Coverage must run under the toolchain pinned in `rust-toolchain.toml`:
+/// that's the one carrying the `llvm-tools-preview` component
+/// `cargo-llvm-cov` shells out to. rustup resolves a `RUSTUP_TOOLCHAIN`
+/// env var *ahead* of `rust-toolchain.toml`, so a stray export — a CI
+/// runner that pins a toolchain, a contributor with a global override —
+/// silently shadows the pin and swaps in a toolchain that may be the wrong
+/// version or lack `llvm-tools-preview`, surfacing as a confusing
+/// `rustc X is not supported` or "llvm-tools not found". Clearing it from
+/// the child environment makes the `rust-toolchain.toml` pin authoritative
+/// for every coverage subprocess.
 fn cargo() -> Command {
-    Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+    let mut cmd = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()));
+    cmd.env_remove("RUSTUP_TOOLCHAIN");
+    cmd
 }
 
 fn ensure_llvm_cov_installed() -> Result<(), String> {

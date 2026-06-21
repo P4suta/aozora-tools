@@ -987,4 +987,39 @@ mod tests {
             Some(snap.paragraphs.len() - 1)
         );
     }
+
+    /// Growing a single paragraph past [`MAX_PARAGRAPH_BYTES`] via an
+    /// in-paragraph insert must trigger `maybe_resegment_around` and hard-
+    /// split it, so one runaway never-blank-line paragraph can't balloon
+    /// unboundedly (the tree-sitter reparse cost is paragraph-local).
+    #[test]
+    fn in_paragraph_growth_past_cap_resegments() {
+        // Just under the cap → exactly one paragraph (no blank lines).
+        let base = "a".repeat(MAX_PARAGRAPH_BYTES - 100);
+        let state = doc(&base);
+        assert_eq!(
+            state.snapshot().paragraphs.len(),
+            1,
+            "an under-cap run is a single paragraph",
+        );
+        // Push it over the cap. With no blank line to split on, the hard
+        // cap in `paragraph_byte_ranges` is the only thing that can re-split.
+        let pos = base.len();
+        state
+            .apply_changes(&[ByteEdit::new(pos..pos, "b".repeat(300))])
+            .expect("in-bounds insert applies");
+        assert!(
+            state.snapshot().paragraphs.len() >= 2,
+            "over-cap paragraph must re-split, got {}",
+            state.snapshot().paragraphs.len(),
+        );
+    }
+
+    #[test]
+    fn doc_snapshot_debug_is_concise() {
+        let state = doc("a\n\nb");
+        let rendered = format!("{:?}", state.snapshot());
+        assert!(rendered.contains("DocSnapshot"), "{rendered}");
+        assert!(rendered.contains("version"), "{rendered}");
+    }
 }

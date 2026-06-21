@@ -205,8 +205,8 @@ jobs:
   # Region coverage is the closest stable analogue — LLVM emits one
   # MC region per `if` / `match` arm, so each branch counts
   # independently. The gate uses `--fail-under-regions` instead of
-  # `--fail-under-branches`. A PR that drives line coverage below 80%
-  # or region coverage below 70% fails the gate step.
+  # `--fail-under-branches`. A PR that drives line coverage below 93%
+  # or region coverage below 93% fails the gate step.
   coverage:
     name: coverage (llvm-cov, line + region)
     runs-on: ubuntu-latest
@@ -291,17 +291,24 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: gate (line ≥ 80%, region ≥ 70%)
+      - name: gate (line ≥ 93%, region ≥ 93%)
         # Hard gate: a PR that takes coverage below either floor will
         # fail this step. Region coverage is the stable-toolchain
         # analogue of branch coverage; `--fail-under-branches` is
         # nightly-only.
+        #
+        # Floors raised from 80/70 to 93/93 after the multi-angle test
+        # expansion (the in-process tower-lsp e2e harness, the fmt unit
+        # tests, the diagnostics/code-action catalogues) took the
+        # workspace to ~96% line / ~96% region. Floors sit a few points
+        # under the measured numbers so a routine refactor doesn't trip
+        # the gate while a real coverage regression still does.
         env:
           IGNORE_FILENAME_REGEX: 'aozora-tools-xtask/src/.*|aozora-(lsp|fmt)/src/main\.rs'
         run: |
           cargo llvm-cov report \
-            --fail-under-lines 80 \
-            --fail-under-regions 70 \
+            --fail-under-lines 93 \
+            --fail-under-regions 93 \
             --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
 
       - name: Upload coverage artifact (lcov + html)

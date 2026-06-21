@@ -305,12 +305,38 @@ fn forward_bouten_action(uri: &Url, selection: Range, selected: &str) -> CodeAct
 
 #[cfg(test)]
 mod tests {
+    use std::slice;
+
     use tower_lsp::lsp_types::Position;
 
     use super::*;
 
     fn fake_uri() -> Url {
         Url::parse("file:///fake.afm").expect("valid URL")
+    }
+
+    /// A diagnostic carrying a serialised quick-fix payload, the shape the
+    /// `code_action` handler receives from the editor.
+    fn diag_with_payload(payload: DiagnosticPayload) -> Diagnostic {
+        Diagnostic {
+            range: Range::new(Position::new(0, 0), Position::new(0, 2)),
+            data: Some(serde_json::to_value(payload).expect("serialise payload")),
+            ..Diagnostic::default()
+        }
+    }
+
+    /// The `new_text` of an action's single edit.
+    fn single_edit_text(action: &CodeActionOrCommand) -> String {
+        let CodeActionOrCommand::CodeAction(ca) = action else {
+            panic!("expected CodeAction");
+        };
+        ca.edit
+            .as_ref()
+            .and_then(|e| e.changes.as_ref())
+            .and_then(|c| c.values().next())
+            .and_then(|edits| edits.first())
+            .map(|edit| edit.new_text.clone())
+            .expect("one edit")
     }
 
     fn extract_change_count(action: &CodeActionOrCommand) -> usize {
@@ -400,6 +426,90 @@ mod tests {
             .map(|e| e.new_text.as_str())
             .collect();
         assert_eq!(edits, vec!["｜", "《《》》"]);
+    }
+
+    // -----------------------------------------------------------------
+    // quick_fix_actions — the diagnostic-driven fix path.
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn quick_fix_unclosed_bracket_inserts_close_delimiter() {
+        let diag = diag_with_payload(DiagnosticPayload::UnclosedBracket {
+            pair_kind: SerializablePairKind::Bracket,
+            expected_close: "］".to_owned(),
+        });
+        let actions = quick_fix_actions(&fake_uri(), slice::from_ref(&diag));
+        assert_eq!(actions.len(), 1);
+        let CodeActionOrCommand::CodeAction(ca) = &actions[0] else {
+            unreachable!()
+        };
+        assert_eq!(ca.kind, Some(CodeActionKind::QUICKFIX));
+        assert_eq!(ca.is_preferred, Some(true));
+        assert!(ca.title.contains('］'), "title: {}", ca.title);
+        assert_eq!(single_edit_text(&actions[0]), "］");
+    }
+
+    #[test]
+    fn quick_fix_unmatched_close_deletes_the_stray_delimiter() {
+        let diag = diag_with_payload(DiagnosticPayload::UnmatchedClose {
+            pair_kind: SerializablePairKind::Ruby,
+        });
+        let actions = quick_fix_actions(&fake_uri(), slice::from_ref(&diag));
+        assert_eq!(actions.len(), 1);
+        let CodeActionOrCommand::CodeAction(ca) = &actions[0] else {
+            unreachable!()
+        };
+        assert!(ca.title.contains("削除"), "title: {}", ca.title);
+        // A deletion edit replaces the span with the empty string.
+        assert_eq!(single_edit_text(&actions[0]), "");
+    }
+
+    #[test]
+    fn quick_fix_pua_deletes_the_codepoint() {
+        let diag = diag_with_payload(DiagnosticPayload::SourceContainsPua { codepoint: 0xE001 });
+        let actions = quick_fix_actions(&fake_uri(), slice::from_ref(&diag));
+        assert_eq!(actions.len(), 1);
+        let CodeActionOrCommand::CodeAction(ca) = &actions[0] else {
+            unreachable!()
+        };
+        assert!(ca.title.contains("U+E001"), "title: {}", ca.title);
+        assert_eq!(single_edit_text(&actions[0]), "");
+    }
+
+    #[test]
+    fn residual_annotation_marker_offers_no_quick_fix() {
+        let diag = diag_with_payload(DiagnosticPayload::ResidualAnnotationMarker);
+        assert!(quick_fix_actions(&fake_uri(), slice::from_ref(&diag)).is_empty());
+    }
+
+    #[test]
+    fn diagnostic_without_payload_is_skipped() {
+        let diag = Diagnostic {
+            range: Range::new(Position::new(0, 0), Position::new(0, 1)),
+            ..Diagnostic::default()
+        };
+        assert!(quick_fix_actions(&fake_uri(), slice::from_ref(&diag)).is_empty());
+    }
+
+    #[test]
+    fn diagnostic_with_unparsable_payload_is_skipped() {
+        let diag = Diagnostic {
+            range: Range::new(Position::new(0, 0), Position::new(0, 1)),
+            data: Some(serde_json::json!({ "kind": "not-a-known-payload" })),
+            ..Diagnostic::default()
+        };
+        assert!(quick_fix_actions(&fake_uri(), slice::from_ref(&diag)).is_empty());
+    }
+
+    #[test]
+    fn multiple_diagnostics_produce_multiple_fixes() {
+        let diags = vec![
+            diag_with_payload(DiagnosticPayload::SourceContainsPua { codepoint: 0xE001 }),
+            diag_with_payload(DiagnosticPayload::UnmatchedClose {
+                pair_kind: SerializablePairKind::Bracket,
+            }),
+        ];
+        assert_eq!(quick_fix_actions(&fake_uri(), &diags).len(), 2);
     }
 
     #[test]
