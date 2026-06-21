@@ -36,6 +36,9 @@ aozora-diagnostics = { version = "0.4.1", path = "crates/aozora-diagnostics" }
 aozora-fmt         = { version = "0.4.1", path = "crates/aozora-fmt" }
 # Used by xtask (gen-assets) to reach `Cli::command()` for completions/man.
 aozora-lsp         = { version = "0.4.1", path = "crates/aozora-lsp" }
+# The `aozora` umbrella CLI: fmt / lint / render / explain / lsp subcommands.
+# (xtask reaches its `Cli::command()` for the umbrella's completions + man.)
+aozora-cli         = { version = "0.4.1", path = "crates/aozora-cli" }
 # Explicit version (not path-only) so cargo-deny's `bans.wildcards = "deny"` accepts it.
 tree-sitter-aozora = { version = "0.4.1", path = "crates/tree-sitter-aozora" }
 

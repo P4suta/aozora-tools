@@ -25,8 +25,10 @@ repository hosts the editor-surface tooling that consumes them.
 
 | Crate | Purpose |
 |---|---|
-| [`crates/aozora-fmt`](./crates/aozora-fmt) | `aozora-fmt` CLI — idempotent formatter built on `Document::parse ∘ AozoraTree::serialize`. |
-| [`crates/aozora-lsp`](./crates/aozora-lsp) | `aozora-lsp` — Language Server Protocol implementation (tower-lsp). Publishes diagnostics, formatting, hover (gaiji), `linkedEditingRange` (paired delimiters), completion (slug catalogue), folding ranges, document symbols, semantic tokens, `aozora.canonicalizeSlug` workspace command, plus the `aozora/renderHtml` and `aozora/gaijiSpans` custom requests the VS Code extension consumes. |
+| [`crates/aozora-cli`](./crates/aozora-cli) | `aozora` — the unified CLI: `fmt`, `lint` (terminal diagnostics), `render` (HTML), `explain`, and `lsp` subcommands. |
+| [`crates/aozora-fmt`](./crates/aozora-fmt) | `aozora-fmt` CLI — idempotent formatter built on `Document::parse ∘ AozoraTree::serialize`. Also reused as `aozora fmt`. |
+| [`crates/aozora-lsp`](./crates/aozora-lsp) | `aozora-lsp` — Language Server Protocol implementation (tower-lsp). Publishes diagnostics, formatting, hover (gaiji), `linkedEditingRange` (paired delimiters), completion (slug catalogue), folding ranges, document symbols, semantic tokens, `aozora.canonicalizeSlug` workspace command, plus the `aozora/renderHtml` and `aozora/gaijiSpans` custom requests the VS Code extension consumes. Also reachable as `aozora lsp`. |
+| [`crates/aozora-diagnostics`](./crates/aozora-diagnostics) | Renderer-agnostic diagnostic catalogue (codes, severities, messages, `explain` prose) shared by `aozora-lsp` and the CLI. |
 | [`crates/tree-sitter-aozora`](./crates/tree-sitter-aozora) | Tree-sitter grammar for incremental parsing inside `aozora-lsp`; usable from any tree-sitter host. |
 | [`crates/aozora-tools-xtask`](./crates/aozora-tools-xtask) | Repo automation (sanitizers harness, CPU-online introspection for bench scheduling). |
 
@@ -99,8 +101,15 @@ Rust toolchain (1.96.0, see `rust-toolchain.toml`) and
 # Native cargo build (host toolchain).
 cargo build --workspace
 cargo test  --workspace --all-targets
-cargo run   --bin aozora-fmt -- sample.txt
-cargo run   --bin aozora-lsp                   # speaks LSP on stdio
+
+# The unified `aozora` CLI.
+cargo run   --bin aozora -- fmt sample.txt          # format
+cargo run   --bin aozora -- lint samples/           # terminal diagnostics
+cargo run   --bin aozora -- explain aozora::unmatched-close
+cargo run   --bin aozora -- render sample.txt       # HTML
+cargo run   --bin aozora -- lsp                     # speaks LSP on stdio
+
+# (the standalone `aozora-fmt` / `aozora-lsp` binaries also still exist)
 
 # VS Code extension
 cd editors/vscode
@@ -116,7 +125,8 @@ before any push lands.
 
 ## Install
 
-Pre-built `aozora-fmt` + `aozora-lsp` binaries are attached to every
+Pre-built `aozora` (umbrella) + `aozora-fmt` + `aozora-lsp` binaries are
+attached to every
 GitHub Release for five targets — **Linux** (x86_64, arm64), **macOS**
 (Intel, Apple silicon), and **Windows** (x86_64) — built by
 [cargo-dist](https://opensource.axo.dev/cargo-dist/). Grab an archive
@@ -126,13 +136,16 @@ release. Checksums are attached alongside.
 
 Each archive also bundles shell completions (bash, zsh, fish, PowerShell,
 Nushell) under `completions/` and man pages under `man/`. The installer
-scripts place only the binaries; see the
+scripts place only the binaries; for a binary-only install you can also
+generate these at runtime with `aozora completions <shell>` and
+`aozora man`, or see the
 [handbook install guide](https://p4suta.github.io/aozora-tools/getting-started/install.html#shell-completions-and-man-pages)
-for where to drop the completions and man pages.
+for where to drop the bundled files.
 
 Or build from source:
 
 ```sh
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-cli
 cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-fmt
 cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-lsp
 ```
@@ -147,10 +160,11 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked
   independently on its Marketplace cadence; it bundles whatever
   `aozora-lsp` build is current at release time.
 - **crates.io publish order** (verified with `cargo publish --dry-run`):
-  `tree-sitter-aozora` and `aozora-fmt` first, then `aozora-lsp` (it
-  depends on both — `tree-sitter-aozora` as a normal dep, `aozora-fmt` as
-  a dev-dep). `aozora-tools-xtask` is `publish = false`. The
-  `aozora` / `aozora-encoding` git pins resolve to their crates.io
+  `aozora-diagnostics` and `tree-sitter-aozora` and `aozora-fmt` first,
+  then `aozora-lsp` (it depends on `tree-sitter-aozora` + `aozora-diagnostics`
+  as normal deps and `aozora-fmt` as a dev-dep), then `aozora-cli` last (it
+  depends on all of the above). `aozora-tools-xtask` is `publish = false`.
+  The `aozora` / `aozora-encoding` git pins resolve to their crates.io
   `0.4.x` releases on publish — cargo drops the `git` / `rev` and keeps
   the `version`, so no git dependency reaches the published manifest.
 

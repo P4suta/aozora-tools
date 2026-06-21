@@ -136,7 +136,7 @@ pub struct LintArgs {
     #[arg(long, conflicts_with_all = ["quiet", "watch"])]
     pub json: bool,
 
-    /// Print one terse line per diagnostic (path:line:col: sev[code]: message).
+    /// Print one terse line per diagnostic: `path:line:col: sev[code]: message`.
     #[arg(long, short = 'q')]
     pub quiet: bool,
 

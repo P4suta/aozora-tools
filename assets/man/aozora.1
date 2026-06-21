@@ -1,0 +1,57 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH aozora 1  "aozora 0.4.1 (aozora a53c632 / v0.4.1)" 
+.SH NAME
+aozora \- Authoring tools for aozora\-flavored\-markdown
+.SH SYNOPSIS
+\fBaozora\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Authoring tools for aozora\-flavored\-markdown (青空文庫 notation).
+.PP
+Run `aozora <command> \-\-help` for details. Common commands:
+  aozora fmt      canonicalise documents (idempotent formatter)
+  aozora lint     report diagnostics in the terminal
+  aozora render   render a document to HTML
+  aozora explain  explain a diagnostic code
+  aozora lsp      run the language server (for editors)
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+aozora\-fmt(1)
+Format aozora documents (idempotent canonicaliser)
+.TP
+aozora\-lint(1)
+Lint aozora documents and print diagnostics to the terminal
+.TP
+aozora\-render(1)
+Render an aozora document to HTML
+.TP
+aozora\-explain(1)
+Explain a diagnostic code (e.g. `aozora::unclosed\-bracket`)
+.TP
+aozora\-lsp(1)
+Run the language server over stdio (for editors)
+.TP
+aozora\-completions(1)
+Print a shell completion script to stdout
+.TP
+aozora\-man(1)
+Print a man page (troff) to stdout
+.TP
+aozora\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH EXTRA
+Examples:
+  aozora fmt \-w chapter.afm                 format a file in place
+  aozora lint samples/                      lint a directory
+  aozora lint \-\-json doc.afm | jq           machine\-readable diagnostics
+  aozora explain aozora::unclosed\-bracket   explain a diagnostic code
+  aozora render doc.afm > doc.html          render to HTML
+.SH VERSION
+v0.4.1 (aozora a53c632 / v0.4.1)

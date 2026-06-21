@@ -24,6 +24,10 @@ type Binary = (&'static str, fn() -> Command);
 /// `xtask` itself is internal (`publish = false`), so it is deliberately
 /// excluded.
 const BINARIES: &[Binary] = &[
+    // The umbrella binary first: its completions/man cover every subcommand
+    // (fmt/lint/render/explain/lsp/…). The standalone fmt/lsp binaries still
+    // ship, so their completions/man are kept too.
+    ("aozora", aozora_cli::Cli::command),
     ("aozora-fmt", aozora_fmt::Cli::command),
     ("aozora-lsp", aozora_lsp::Cli::command),
 ];

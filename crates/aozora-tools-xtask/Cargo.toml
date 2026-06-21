@@ -20,6 +20,7 @@ serde_json = { workspace = true }
 flate2     = "1"
 
 # gen-assets: reach each binary's `Cli::command()` to render completions + man.
+aozora-cli            = { workspace = true }
 aozora-fmt            = { workspace = true }
 aozora-lsp            = { workspace = true }
 clap_complete         = { workspace = true }

@@ -11,6 +11,13 @@
 - [Formatter quickstart](getting-started/fmt.md)
 - [Troubleshooting](getting-started/troubleshooting.md)
 
+# The aozora CLI
+
+- [Overview & subcommands](cli/overview.md)
+- [Linting (terminal diagnostics)](cli/lint.md)
+- [Rendering to HTML](cli/render.md)
+- [Explaining diagnostics](cli/explain.md)
+
 # aozora-fmt (formatter)
 
 - [Overview](fmt/overview.md)

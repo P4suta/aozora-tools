@@ -181,6 +181,27 @@ gen-assets-check:
 ci: fmt-check clippy test doc deny shear gen-assets-check
     @echo "ci: all gates passed"
 
+# --- aozora CLI demos (dogfood against samples/) ----------------------------
+
+# Lint the bundled samples (`diagnostics.afm` reports one error on purpose, so
+# `|| true` keeps the recipe itself green).
+lint-samples:
+    cargo run -q --bin aozora -- lint samples/ || true
+
+# Render a sample (or any FILE) to HTML on stdout.
+render-sample FILE="samples/ruby.afm":
+    cargo run -q --bin aozora -- render {{FILE}}
+
+# Explain a diagnostic code, e.g. `just explain aozora::unmatched-close`.
+explain CODE:
+    cargo run -q --bin aozora -- explain {{CODE}}
+
+# One-shot showcase of the CLI against samples/ (lint + explain + render).
+demo:
+    cargo run -q --bin aozora -- lint samples/diagnostics.afm || true
+    cargo run -q --bin aozora -- explain aozora::unmatched-close
+    cargo run -q --bin aozora -- render samples/ruby.afm
+
 # --- fuzzing -----------------------------------------------------------------
 #
 # cargo-fuzz harnesses live under `crates/<crate>/fuzz/` as nightly-only
