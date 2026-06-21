@@ -1,0 +1,33 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run_stdin(&[\"lint\", \"--json\", \"-\"], UNCLOSED)"
+---
+{
+  "version": 1,
+  "ok": false,
+  "files": [
+    {
+      "path": "<stdin>",
+      "status": "diagnostics",
+      "diagnostics": [
+        {
+          "code": "aozora::unclosed-bracket",
+          "severity": "error",
+          "message": "閉じられていない `［` があります。\n\nどこかに対応する `］` を必ず置いてください。aozora 記法では一行内で閉じるのが基本です。\n\n例: `［＃改ページ］`",
+          "span": {
+            "byte_start": 6,
+            "byte_end": 9
+          },
+          "start": {
+            "line": 1,
+            "column": 3
+          },
+          "end": {
+            "line": 1,
+            "column": 4
+          }
+        }
+      ]
+    }
+  ]
+}

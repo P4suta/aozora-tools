@@ -1,0 +1,17 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run(&[\"explain\", \"--color\", \"never\", \"unclosed-bracket\"])"
+---
+aozora::unclosed-bracket
+
+閉じられていない開き括弧
+
+aozora 記法では `［` … `］`、`《` … `》`、`「` … `」` などの括弧ペアは原則として同じ行の中で閉じる必要があります。閉じ括弧が見つからないまま行が終わると、注記やルビの範囲が確定できず、後段の整形・HTML 化が破綻します。
+
+ヒント: 注記 `［＃…］` の中身が `改ページ` などの登録済みキーワードか確認してください。未登録の場合は aozora::residual-annotation-marker も併せて出ることがあります。
+
+  問題のある例:
+    本文［＃改ページ
+
+  直した例:
+    本文［＃改ページ］

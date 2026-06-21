@@ -1,0 +1,15 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run_stdin(&[\"lint\", \"--color\", \"never\", \"-\"], UNCLOSED)"
+---
+error: 閉じられていない `［` があります。
+ --> <stdin>:1:3
+  |
+1 | 本文［＃改ページ
+  |     ^^
+  |
+  = note: どこかに対応する `］` を必ず置いてください。aozora 記法では一行内で閉じるのが基本です。
+          
+          例: `［＃改ページ］`
+  = note: aozora::unclosed-bracket
+  = help: run `aozora explain aozora::unclosed-bracket`

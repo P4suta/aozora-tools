@@ -47,5 +47,8 @@ clap_mangen           = { workspace = true }
 toml  = { workspace = true }   # parse Cargo.lock for the aozora rev
 serde = { workspace = true }
 
+[dev-dependencies]
+insta = "1"   # snapshot tests for rendered lint/explain/render output
+
 [lints]
 workspace = true

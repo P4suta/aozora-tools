@@ -1,0 +1,5 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run_stdin(&[\"render\", \"-\"], \"｜日本《にほん》\")"
+---
+<p><ruby>日本<rp>(</rp><rt>にほん</rt><rp>)</rp></ruby></p>

@@ -1,0 +1,14 @@
+---
+source: crates/aozora-cli/tests/snapshots.rs
+expression: "run(&[\"explain\", \"--color\", \"never\"])"
+---
+診断コード一覧 (詳細は `aozora explain <code>`):
+
+  aozora::source-contains-pua            私用領域文字がソースに紛れ込んでいる
+  aozora::unclosed-bracket               閉じられていない開き括弧
+  aozora::unmatched-close                対応する開き括弧のない閉じ括弧
+  aozora::residual-annotation-marker     未分類の ［＃…］ 注記
+  aozora::unregistered-sentinel          未登録の内部 sentinel（パイプライン内部エラー）
+  aozora::registry-out-of-order          プレースホルダーレジストリの順序破壊（パイプライン内部エラー）
+  aozora::registry-position-mismatch     プレースホルダーレジストリの位置不一致（パイプライン内部エラー）
+  aozora::unknown-diagnostic             未対応の診断

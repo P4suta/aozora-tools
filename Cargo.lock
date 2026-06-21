@@ -136,6 +136,7 @@ dependencies = [
  "clap_complete_nushell",
  "clap_mangen",
  "ctrlc",
+ "insta",
  "notify-debouncer-mini",
  "opener",
  "serde",
