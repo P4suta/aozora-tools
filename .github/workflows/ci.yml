@@ -139,12 +139,12 @@ jobs:
   # type / borrow checker. The `rust` job above covers the actual
   # test run on the canonical channel.
   msrv:
-    # This job name is a REQUIRED status check in the main branch ruleset,
-    # so it must match the ruleset's required-check context EXACTLY. If you
-    # bump the Rust version in the name below, update the ruleset's required
-    # check to match (Settings → Rules → main-branch-protection), or the
-    # name mismatch will silently block every merge.
-    name: msrv (Rust 1.96.0 cargo check)
+    # Version-agnostic on purpose: this job name is a REQUIRED status check
+    # in the main branch ruleset (context `msrv (cargo check)`). Keeping the
+    # Rust version OUT of the name means an MSRV bump touches only the
+    # toolchain step below + rust-toolchain.toml — never the ruleset. Keep
+    # this name in sync with the ruleset's required-check context.
+    name: msrv (cargo check)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
