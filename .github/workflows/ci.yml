@@ -97,14 +97,15 @@ jobs:
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: nextest
-        # `--features aozora-lsp/shuttle-tests` enables the
-        # randomized-schedule concurrency checker
-        # (`crates/aozora-lsp/tests/shuttle_doc_state.rs`). Without it
-        # that test would only execute inside the `coverage` job (which
-        # uses `--all-features`), so a coverage-side regression could
-        # mask a shuttle failure. The default 1,000 iterations finish
-        # in a few seconds; nightly cron raises `AOZORA_SHUTTLE_ITERS`.
-        run: cargo nextest run --workspace --all-targets --features aozora-lsp/shuttle-tests --locked
+        # `--all-features` turns on both `aozora-lsp` test gates:
+        #  * `internals` — required by the integration tests, benches, and
+        #    examples that reach the internal API (guardian, smoke, …).
+        #    Without it nextest SILENTLY SKIPS them (`required-features`).
+        #  * `shuttle-tests` — the randomized-schedule concurrency checker
+        #    in `crates/aozora-lsp/tests/shuttle_doc_state.rs`.
+        # The default 1,000 shuttle iterations finish in a few seconds;
+        # nightly cron raises `AOZORA_SHUTTLE_ITERS`.
+        run: cargo nextest run --workspace --all-targets --all-features --locked
 
       - name: doc test
         run: cargo test --doc --workspace --locked
@@ -126,7 +127,7 @@ jobs:
       - name: assets up to date (completions + man)
         run: cargo run -p aozora-tools-xtask --locked -- gen-assets --check
 
-  # MSRV gate. The workspace declares `rust-version = "1.95.0"` in
+  # MSRV gate. The workspace declares `rust-version = "1.96.0"` in
   # `Cargo.toml` and pins the same channel in `rust-toolchain.toml`;
   # this job verifies that the codebase actually compiles on that
   # exact toolchain. Without it, a contributor (or a future channel
@@ -138,16 +139,21 @@ jobs:
   # type / borrow checker. The `rust` job above covers the actual
   # test run on the canonical channel.
   msrv:
-    name: msrv (Rust 1.95.0 cargo check)
+    # This job name is a REQUIRED status check in the main branch ruleset,
+    # so it must match the ruleset's required-check context EXACTLY. If you
+    # bump the Rust version in the name below, update the ruleset's required
+    # check to match (Settings → Rules → main-branch-protection), or the
+    # name mismatch will silently block every merge.
+    name: msrv (Rust 1.96.0 cargo check)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Install Rust 1.95.0
+      - name: Install Rust 1.96.0
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.95.0
+          toolchain: 1.96.0
 
       - name: Install mold linker
         uses: rui314/setup-mold@v1

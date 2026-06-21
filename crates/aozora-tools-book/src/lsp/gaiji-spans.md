@@ -3,9 +3,8 @@
 Returns every gaiji (外字) reference in the document along with the
 resolved Unicode character. Drives the VS Code extension's
 inline-fold decorations (`※［＃...］` collapses to the resolved
-glyph in-line) and is the underlying data source for the
-[`aozora_lsp::inlay_hints`](https://p4suta.github.io/aozora-tools/aozora_lsp/inlay_hints/index.html)
-library entry that generic LSP clients can use.
+glyph in-line). Any LSP client can consume this request directly for
+the same data.
 
 ## Request
 
@@ -59,18 +58,17 @@ for the codes.
 
 ## Performance
 
-The data is computed off the latest `Snapshot` (no extra parse).
+The data is computed off the latest `DocSnapshot` (no extra parse).
 Response wire size scales with the span count, so clients that can
 should consume spans incrementally. The VS Code extension consumes
 the whole array in one pass and uses the LSP `Range` to drive
 `vscode.window.createTextEditorDecorationType`.
 
-## When to use the library entry instead
+## Relationship to `textDocument/inlayHint`
 
-Generic LSP clients that use `inlay_hints` already do something
-similar: the `aozora_lsp::inlay_hints::compute` function returns
-the same data shaped as `lsp_types::InlayHint` so it lands directly
-in `textDocument/inlayHint` responses. Use the custom request when
-the editor wants the raw span data (e.g. for non-inlay decorations
-like inline-fold). Use inlay hints when the editor's standard inlay
-surface is the right rendering channel.
+The server deliberately does **not** advertise `textDocument/inlayHint`:
+the VS Code extension renders the resolved glyph through
+`gaijiSpans`-driven decorations, and a parallel inlay layer duplicated
+the visual. Clients that want the resolved-gaiji data consume
+`aozora/gaijiSpans` directly and shape it however they like — inlay
+hints, inline folds, hovers, etc.

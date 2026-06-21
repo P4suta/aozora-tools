@@ -19,7 +19,7 @@
 //!   percentile tracking with a bounded relative error (we use 3
 //!   significant digits, max value 1e9 µs = 1000 s).
 //! - **`Metrics::snapshot()`** returns a [`MetricsSnapshot`] with the
-//!   current counter values + the histogram percentiles. Snapshot
+//!   current counter values + the histogram percentiles. `MetricsSnapshot`
 //!   is `Serialize` so future telemetry exports (Prometheus, OTLP,
 //!   etc.) can be added behind a feature flag without changing the
 //!   recording sites.
@@ -63,7 +63,7 @@ pub struct Metrics {
     pub cache_hit_total: AtomicU64,
     /// Cumulative cache misses.
     pub cache_miss_total: AtomicU64,
-    /// Live entries in the segment cache after the last reparse.
+    /// Live entries in the parse cache after the last reparse.
     pub cache_entries: AtomicU64,
     /// Approximate cache memory: sum of segment text bytes that
     /// remained in the cache after the last reparse. Useful for

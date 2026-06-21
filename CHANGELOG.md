@@ -46,7 +46,7 @@ once 1.0 ships.
   0/1/2 exit contract is preserved (`crates/aozora-fmt/src/{cli,discover,process,report}.rs`).
 - **`--version` reports the embedded `aozora` parser.** Both binaries
   print `<semver> (aozora <rev> / <tag>)`, e.g.
-  `aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)`, reading the pinned rev
+  `aozora-fmt 0.4.1 (aozora a53c632 / v0.4.1)`, reading the pinned rev
   from `Cargo.lock` at build time (`crates/aozora-{fmt,lsp}/build.rs`).
 - **`aozora-lsp` argv handling.** The daemon now answers `--version`
   and `--help` (which also documents `RUST_LOG` and
@@ -94,7 +94,7 @@ once 1.0 ships.
   a shuttle failure.
 - **CI `msrv` job** — `cargo check --workspace --all-features
   --all-targets --locked` against the declared
-  `rust-version = "1.95.0"`. Catches MSRV regressions that the
+  `rust-version = "1.96.0"`. Catches MSRV regressions that the
   canonical-toolchain `rust` job would miss.
 - **Fuzzing** (`just fuzz-*`, `.github/workflows/fuzz.yml`): cargo-fuzz
   harnesses `aozora-fmt/format_idempotent` and
@@ -116,6 +116,31 @@ once 1.0 ships.
 
 ### Changed
 
+- **MSRV / pinned toolchain bumped `1.95.0` → `1.96.0`** across
+  `rust-toolchain.toml`, the `rust-version`, `clippy.toml` `msrv`, the mise
+  manifest, and the CI MSRV gate.
+- **`aozora-lsp` public API reduced to `Cli` + `run()`.** The crate used to
+  re-export ~50 internal types and functions at its root purely so its own
+  tests and benches could reach them. They now live behind a
+  `#[doc(hidden)]` `internals` module (no semver guarantee), gated for the
+  test/bench/example targets by a new `internals` Cargo feature. Internal
+  names were tidied too: `Snapshot`→`DocSnapshot`,
+  `MutParagraph`→`ParagraphBuffer`, `BufferState`→`DocBuffer`,
+  `DocState`→`OpenDocument`, `LocalTextEdit`→`ByteEdit`,
+  `IncrementalDoc`→`TreeSitterDoc`, `Backend`→`AozoraLanguageServer`,
+  `SegmentCache`→`ParseCache`, and the three `compute_diagnostics*`
+  functions collapsed to `diagnostics_for_source` + `diagnostics_from_aozora`.
+- **Workspace version unified with the `aozora` parser (`0.1.3` → `0.4.1`).**
+  The tools printed a confusing `0.1.3 (aozora … / v0.4.1)` mismatch; every
+  crate now mirrors the pinned parser version and is bumped in lockstep with
+  the `aozora` rev. `tree-sitter-aozora` inherits the workspace version (the
+  npm grammar package matches); the VS Code extension keeps its independent
+  Marketplace version.
+- **`aozora-lsp` dropped its runtime dependency on `aozora-fmt`** — the
+  formatting handler calls `aozora` directly (byte-identical output),
+  removing `aozora-fmt` + `similar`/`walkdir`/`anyhow` from the server's
+  dependency tree. `tree-sitter-aozora` is now publishable, so the whole
+  workspace can ship to crates.io.
 - **`aozora` / `aozora-encoding` dependency bumped `v0.3.0` → `v0.4.0`**,
   picking up the upstream pre-release security hardening (FFI/WASM
   oversized-input rejection, PUA-sentinel neutralisation, parser

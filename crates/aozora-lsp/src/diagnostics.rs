@@ -107,33 +107,23 @@ impl SerializablePairKind {
 
 /// Parse `source` and return its diagnostics in LSP shape.
 #[must_use]
-pub fn compute_diagnostics(source: &str) -> Vec<Diagnostic> {
+pub fn diagnostics_for_source(source: &str) -> Vec<Diagnostic> {
     let document = Document::new(source);
     let tree = document.parse();
-    compute_diagnostics_from_iter(source, tree.diagnostics())
+    diagnostics_from_aozora(source, tree.diagnostics())
 }
 
-/// Map a set of pre-computed [`AozoraDiagnostic`]s to LSP diagnostics.
+/// Map a slice of pre-computed `aozora` [`AozoraDiagnostic`]s to LSP diagnostics.
+///
+/// The LSP backend's `publishDiagnostics` path uses this with the diagnostics
+/// already held in the parse cache, skipping a re-parse.
 #[must_use]
-pub fn compute_diagnostics_from_iter(
-    source: &str,
-    diagnostics: &[AozoraDiagnostic],
-) -> Vec<Diagnostic> {
+pub fn diagnostics_from_aozora(source: &str, diagnostics: &[AozoraDiagnostic]) -> Vec<Diagnostic> {
     let line_index = LineIndex::new(source);
     diagnostics
         .iter()
         .map(|d| to_lsp(source, &line_index, d))
         .collect()
-}
-
-/// Backwards-compat alias used by the LSP backend's
-/// `publishDiagnostics` path.
-#[must_use]
-pub fn compute_diagnostics_from_parsed(
-    source: &str,
-    diagnostics: &[AozoraDiagnostic],
-) -> Vec<Diagnostic> {
-    compute_diagnostics_from_iter(source, diagnostics)
 }
 
 fn to_lsp(source: &str, line_index: &LineIndex, d: &AozoraDiagnostic) -> Diagnostic {
@@ -351,18 +341,18 @@ mod tests {
 
     #[test]
     fn plain_text_has_no_diagnostics() {
-        assert!(compute_diagnostics("hello world").is_empty());
+        assert!(diagnostics_for_source("hello world").is_empty());
     }
 
     #[test]
     fn canonical_ruby_has_no_diagnostics() {
-        assert!(compute_diagnostics("｜日本《にほん》").is_empty());
+        assert!(diagnostics_for_source("｜日本《にほん》").is_empty());
     }
 
     #[test]
     fn source_contains_pua_message_explains_what_to_do() {
         let src = "abc\u{E001}def";
-        let diags = compute_diagnostics(src);
+        let diags = diagnostics_for_source(src);
         let pua = diags
             .iter()
             .find(|d| {
@@ -386,7 +376,7 @@ mod tests {
     fn unclosed_bracket_message_carries_example_and_close_char() {
         // `［＃改ページ` (no closing ］) — must surface as UnclosedBracket.
         let src = "本文［＃改ページ";
-        let diags = compute_diagnostics(src);
+        let diags = diagnostics_for_source(src);
         let unclosed = diags
             .iter()
             .find(|d| {
@@ -412,7 +402,7 @@ mod tests {
     fn unmatched_close_message_lists_three_causes() {
         // `］` without a leading `［` — surfaces as UnmatchedClose.
         let src = "本文 ］";
-        let diags = compute_diagnostics(src);
+        let diags = diagnostics_for_source(src);
         let unmatched = diags
             .iter()
             .find(|d| {
@@ -433,7 +423,7 @@ mod tests {
     #[test]
     fn diagnostic_carries_aozora_lsp_source_tag() {
         let src = "abc\u{E001}def";
-        let diags = compute_diagnostics(src);
+        let diags = diagnostics_for_source(src);
         assert!(
             diags
                 .iter()

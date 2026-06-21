@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, ValueEnum};
 
 /// Crate version annotated with the pinned upstream `aozora` parser, e.g.
-/// `0.1.3 (aozora a53c632 / v0.4.1)`. The rev/tag are baked in by `build.rs`.
+/// `0.4.1 (aozora a53c632 / v0.4.1)`. The rev/tag are baked in by `build.rs`.
 const LONG_VERSION: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (aozora ",

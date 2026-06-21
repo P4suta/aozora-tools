@@ -15,12 +15,12 @@ use std::ops::Range;
 
 /// A single text edit: replace `range` in the source with `new_text`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalTextEdit {
+pub struct ByteEdit {
     pub range: Range<usize>,
     pub new_text: String,
 }
 
-impl LocalTextEdit {
+impl ByteEdit {
     #[must_use]
     pub const fn new(range: Range<usize>, new_text: String) -> Self {
         Self { range, new_text }
@@ -45,7 +45,7 @@ pub enum EditError {
     UnsortedOrOverlapping { prev_end: usize, next_start: usize },
 }
 
-/// Splice every `LocalTextEdit` in `edits` into `source` and return
+/// Splice every `ByteEdit` in `edits` into `source` and return
 /// the resulting string.
 ///
 /// `edits` must be sorted by `range.start` and non-overlapping. Each
@@ -57,7 +57,7 @@ pub enum EditError {
 /// Returns [`EditError`] when an edit is inverted, out-of-bounds,
 /// crosses a UTF-8 char boundary, or overlaps a prior edit. No partial
 /// application happens — `source` is unchanged on error.
-pub fn apply_edits(source: &str, edits: &[LocalTextEdit]) -> Result<String, EditError> {
+pub fn apply_edits(source: &str, edits: &[ByteEdit]) -> Result<String, EditError> {
     // Pre-validate every edit so we can emit a single Result<String, _>
     // without partial application.
     let mut prev_end = 0usize;
@@ -122,21 +122,21 @@ mod tests {
     #[test]
     fn single_replacement() {
         let src = "hello, world";
-        let edit = LocalTextEdit::new(7..12, "rust".to_owned());
+        let edit = ByteEdit::new(7..12, "rust".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "hello, rust");
     }
 
     #[test]
     fn pure_insertion() {
         let src = "abcdef";
-        let edit = LocalTextEdit::new(3..3, "_X_".to_owned());
+        let edit = ByteEdit::new(3..3, "_X_".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "abc_X_def");
     }
 
     #[test]
     fn pure_deletion() {
         let src = "abcdef";
-        let edit = LocalTextEdit::new(2..4, String::new());
+        let edit = ByteEdit::new(2..4, String::new());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "abef");
     }
 
@@ -144,9 +144,9 @@ mod tests {
     fn multiple_sorted_edits_compose() {
         let src = "AAAA BBBB CCCC";
         let edits = vec![
-            LocalTextEdit::new(0..4, "aa".to_owned()),
-            LocalTextEdit::new(5..9, "bb".to_owned()),
-            LocalTextEdit::new(10..14, "cc".to_owned()),
+            ByteEdit::new(0..4, "aa".to_owned()),
+            ByteEdit::new(5..9, "bb".to_owned()),
+            ByteEdit::new(10..14, "cc".to_owned()),
         ];
         assert_eq!(apply_edits(src, &edits).unwrap(), "aa bb cc");
     }
@@ -155,8 +155,8 @@ mod tests {
     fn overlapping_edits_fail() {
         let src = "AAAA BBBB";
         let edits = vec![
-            LocalTextEdit::new(0..5, "x".to_owned()),
-            LocalTextEdit::new(3..7, "y".to_owned()),
+            ByteEdit::new(0..5, "x".to_owned()),
+            ByteEdit::new(3..7, "y".to_owned()),
         ];
         let err = apply_edits(src, &edits).unwrap_err();
         assert!(matches!(err, EditError::UnsortedOrOverlapping { .. }));
@@ -164,14 +164,14 @@ mod tests {
 
     #[test]
     fn out_of_bounds_fail() {
-        let err = apply_edits("abc", &[LocalTextEdit::new(0..99, String::new())]).unwrap_err();
+        let err = apply_edits("abc", &[ByteEdit::new(0..99, String::new())]).unwrap_err();
         assert!(matches!(err, EditError::OutOfBounds { .. }));
     }
 
     #[test]
     fn cross_char_boundary_fail() {
         // 「あ」 is 3 UTF-8 bytes. Range 1..2 sits inside it.
-        let err = apply_edits("あ", &[LocalTextEdit::new(1..2, String::new())]).unwrap_err();
+        let err = apply_edits("あ", &[ByteEdit::new(1..2, String::new())]).unwrap_err();
         assert!(matches!(err, EditError::NonCharBoundary { .. }));
     }
 
@@ -180,7 +180,7 @@ mod tests {
         // Construct an inverted range explicitly — `5..2` would
         // trigger clippy::reversed_empty_ranges, so we build the
         // Range struct from its endpoints.
-        let edit = LocalTextEdit {
+        let edit = ByteEdit {
             range: Range { start: 5, end: 2 },
             new_text: String::new(),
         };
@@ -192,14 +192,14 @@ mod tests {
     fn multibyte_replacement_at_char_boundary() {
         // Replace `あ` (3 bytes) with `い` (3 bytes).
         let src = "あいう";
-        let edit = LocalTextEdit::new(0..3, "い".to_owned());
+        let edit = ByteEdit::new(0..3, "い".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "いいう");
     }
 
     #[test]
     fn empty_range_at_eof_appends() {
         let src = "abc";
-        let edit = LocalTextEdit::new(3..3, "DEF".to_owned());
+        let edit = ByteEdit::new(3..3, "DEF".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "abcDEF");
     }
 
@@ -213,8 +213,8 @@ mod tests {
     fn two_inserts_at_same_offset_apply_in_source_order() {
         let src = "X";
         let edits = vec![
-            LocalTextEdit::new(0..0, "a".to_owned()),
-            LocalTextEdit::new(0..0, "b".to_owned()),
+            ByteEdit::new(0..0, "a".to_owned()),
+            ByteEdit::new(0..0, "b".to_owned()),
         ];
         assert_eq!(apply_edits(src, &edits).unwrap(), "abX");
     }
@@ -227,8 +227,8 @@ mod tests {
     fn adjacent_edits_compose() {
         let src = "ABCD";
         let edits = vec![
-            LocalTextEdit::new(0..2, "x".to_owned()),
-            LocalTextEdit::new(2..4, "y".to_owned()),
+            ByteEdit::new(0..2, "x".to_owned()),
+            ByteEdit::new(2..4, "y".to_owned()),
         ];
         assert_eq!(apply_edits(src, &edits).unwrap(), "xy");
     }
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn multibyte_replacement_at_start_preserves_tail() {
         let src = "あいう";
-        let edit = LocalTextEdit::new(0..3, "X".to_owned());
+        let edit = ByteEdit::new(0..3, "X".to_owned());
         assert_eq!(apply_edits(src, &[edit]).unwrap(), "Xいう");
     }
 
@@ -252,8 +252,8 @@ mod tests {
     fn delete_then_insert_in_separate_edits_produces_expected_text() {
         let src = "ABCDEF";
         let edits = vec![
-            LocalTextEdit::new(0..2, String::new()),
-            LocalTextEdit::new(4..4, "XYZ".to_owned()),
+            ByteEdit::new(0..2, String::new()),
+            ByteEdit::new(4..4, "XYZ".to_owned()),
         ];
         // Remove "AB" (0..2), then insert "XYZ" at 4 (= "F" position).
         assert_eq!(apply_edits(src, &edits).unwrap(), "CDXYZEF");

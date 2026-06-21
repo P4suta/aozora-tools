@@ -88,7 +88,7 @@ Output excerpt:
    34175    7.2%  ts_subtree_compress
    26614    5.6%  ts_subtree_release
    21526    4.5%  stack__iter
-   17244    3.6%  aozora_lsp::state::DocState::rebuild_snapshot_now
+   17244    3.6%  aozora_lsp::state::OpenDocument::rebuild_snapshot_now
    13996    3.0%  aozora_lsp::line_index::LineIndex::new
 ```
 

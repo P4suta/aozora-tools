@@ -10,7 +10,7 @@ the [`aozora`](https://github.com/P4suta/aozora) parser ecosystem.
    pinned toolchain and installs the git hooks for you. Working on your
    own machine is equally first-class: `cargo`, `bun`, `typos` etc. run
    directly, provisioned by `mise` (`just bootstrap`). Either way Rust is
-   pinned by `rust-toolchain.toml` (1.95.0) — `rustup` /
+   pinned by `rust-toolchain.toml` (1.96.0) — `rustup` /
    `dtolnay/rust-toolchain` picks it up automatically, and `just doctor`
    reports any gaps.
 2. **Justify every suppression.** A `#[allow(...)]` must carry a

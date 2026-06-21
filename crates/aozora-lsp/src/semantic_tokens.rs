@@ -250,7 +250,7 @@ mod tests {
 
     use ropey::Rope;
 
-    use crate::paragraph::{MutParagraph, build_paragraph_snapshot, paragraph_byte_ranges};
+    use crate::paragraph::{ParagraphBuffer, build_paragraph_snapshot, paragraph_byte_ranges};
 
     fn paragraphs_for(src: &str) -> Vec<Arc<ParagraphSnapshot>> {
         let mut parser = tree_sitter::Parser::new();
@@ -262,7 +262,7 @@ mod tests {
         let mut out: Vec<Arc<ParagraphSnapshot>> = Vec::new();
         for range in ranges {
             let slice = rope.byte_slice(range.clone()).to_string();
-            let mut p = MutParagraph::new(Rope::from(slice));
+            let mut p = ParagraphBuffer::new(Rope::from(slice));
             p.reparse(&mut parser);
             out.push(Arc::new(build_paragraph_snapshot(&p, range.start)));
         }

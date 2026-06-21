@@ -27,9 +27,9 @@ use std::hint::black_box;
 use std::path::Path;
 use std::sync::Arc;
 
-use aozora_lsp::{
-    DocState, GaijiSpan, IncrementalDoc, LineIndex, LocalTextEdit, apply_edits, inlay_hints,
-    input_edit,
+use aozora_lsp::internals::{
+    ByteEdit, GaijiSpan, LineIndex, OpenDocument, TreeSitterDoc, apply_edits,
+    extract_gaiji_spans_from_tree, inlay_hints, input_edit,
 };
 use criterion::measurement::WallTime;
 use criterion::{BatchSize, BenchmarkGroup, Criterion, criterion_group, criterion_main};
@@ -58,7 +58,7 @@ fn bench_apply_changes(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
     let mut g = c.benchmark_group("apply_changes");
     g.sample_size(20);
-    // NOTE: outside a tokio runtime, `DocState::apply_changes` falls
+    // NOTE: outside a tokio runtime, `OpenDocument::apply_changes` falls
     // back to a synchronous snapshot rebuild — so this measurement
     // captures the full end-to-end cost (buffer mutate + TS apply_edit
     // + snapshot rebuild). In production the rebuild runs on the
@@ -66,19 +66,19 @@ fn bench_apply_changes(c: &mut Criterion) {
     // we measure the worst-case wall here on purpose.
     g.bench_function("insert_one_char_bouten_6mb", |b| {
         b.iter_batched(
-            || DocState::new(text.clone()),
+            || OpenDocument::new(text.clone()),
             |state| {
-                _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+                _ = state.apply_changes(&[ByteEdit::new(0..0, " ".to_owned())]);
             },
             BatchSize::PerIteration,
         );
     });
     g.bench_function("burst_100_inserts_bouten_6mb", |b| {
         b.iter_batched(
-            || DocState::new(text.clone()),
+            || OpenDocument::new(text.clone()),
             |state| {
                 for _ in 0..100 {
-                    _ = state.apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())]);
+                    _ = state.apply_changes(&[ByteEdit::new(0..0, " ".to_owned())]);
                 }
             },
             BatchSize::PerIteration,
@@ -94,10 +94,9 @@ fn bench_apply_changes(c: &mut Criterion) {
     g.bench_function("insert_one_char_mid_doc_bouten_6mb", |b| {
         let mid_offset = nearest_char_boundary(&text, text.len() / 2);
         b.iter_batched(
-            || DocState::new(text.clone()),
+            || OpenDocument::new(text.clone()),
             move |state| {
-                _ = state
-                    .apply_changes(&[LocalTextEdit::new(mid_offset..mid_offset, " ".to_owned())]);
+                _ = state.apply_changes(&[ByteEdit::new(mid_offset..mid_offset, " ".to_owned())]);
             },
             BatchSize::PerIteration,
         );
@@ -118,12 +117,12 @@ fn nearest_char_boundary(text: &str, target: usize) -> usize {
 
 fn bench_inlay(c: &mut Criterion) {
     let text = load_fixture("bouten.afm");
-    let state = DocState::new(text);
+    let state = OpenDocument::new(text);
     let snap = state.snapshot();
     // `inlay_hints` (the public library helper for editors that prefer
     // server-side inlay) takes a sorted slice — collect from the
     // snapshot's BTreeMap once. Production reads use the BTreeMap
-    // directly via `Snapshot::gaiji_spans.values()`; this bench is the
+    // directly via `DocSnapshot::gaiji_spans.values()`; this bench is the
     // only consumer of the slice form.
     let spans: Vec<Arc<GaijiSpan>> = snap.doc_gaiji_spans().values().cloned().collect();
     let range = full_range_for(snap.doc_text(), snap.doc_line_index());
@@ -174,13 +173,13 @@ fn bench_gaiji_span_extract(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("gaiji_span_extract_bouten_6mb", |b| {
         b.iter_batched(
             || {
-                let doc = IncrementalDoc::new();
+                let doc = TreeSitterDoc::new();
                 doc.parse_full(text);
                 doc
             },
             |doc| {
                 let spans = doc
-                    .with_tree(|tree| aozora_lsp::extract_gaiji_spans_for_bench(tree, text))
+                    .with_tree(|tree| extract_gaiji_spans_from_tree(tree, text))
                     .unwrap_or_else(|| Arc::from(Vec::new()));
                 black_box(spans);
             },
@@ -192,7 +191,7 @@ fn bench_gaiji_span_extract(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
 fn bench_ts_parse_full(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("ts_parse_full_bouten_6mb", |b| {
         b.iter_batched(
-            IncrementalDoc::new,
+            TreeSitterDoc::new,
             |doc| {
                 doc.parse_full(text);
                 black_box(doc);
@@ -208,7 +207,7 @@ fn bench_ts_parse_full(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
 /// and `push_str`s the entire prefix + tail every edit.
 fn bench_apply_edits_insert(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
     g.bench_function("apply_edits_insert_one_char_bouten_6mb", |b| {
-        let edit = vec![LocalTextEdit::new(0..0, " ".to_owned())];
+        let edit = vec![ByteEdit::new(0..0, " ".to_owned())];
         b.iter(|| {
             let new_text = apply_edits(text, &edit).expect("valid edit");
             black_box(new_text);
@@ -223,7 +222,7 @@ fn bench_ts_apply_edit_offset_0(g: &mut BenchmarkGroup<'_, WallTime>, text: &str
     g.bench_function("ts_apply_edit_offset_0_bouten_6mb", |b| {
         b.iter_batched(
             || {
-                let doc = IncrementalDoc::new();
+                let doc = TreeSitterDoc::new();
                 doc.parse_full(text);
                 doc
             },
@@ -249,7 +248,7 @@ fn bench_ts_apply_edit_mid_doc(g: &mut BenchmarkGroup<'_, WallTime>, text: &str)
         let mid = nearest_char_boundary(text, text.len() / 2);
         b.iter_batched(
             || {
-                let doc = IncrementalDoc::new();
+                let doc = TreeSitterDoc::new();
                 doc.parse_full(text);
                 doc
             },
@@ -276,7 +275,7 @@ fn bench_ts_parse_60kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) {
         let slice_end = nearest_char_boundary(text, 60 * 1024);
         let small = &text[..slice_end];
         b.iter_batched(
-            IncrementalDoc::new,
+            TreeSitterDoc::new,
             |doc| {
                 doc.parse_full(small);
                 black_box(doc);
@@ -291,7 +290,7 @@ fn bench_ts_parse_600kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) 
         let slice_end = nearest_char_boundary(text, 600 * 1024);
         let small = &text[..slice_end];
         b.iter_batched(
-            IncrementalDoc::new,
+            TreeSitterDoc::new,
             |doc| {
                 doc.parse_full(small);
                 black_box(doc);
@@ -305,7 +304,7 @@ fn bench_ts_parse_600kb_slice(g: &mut BenchmarkGroup<'_, WallTime>, text: &str) 
 /// snapshot. Two measurements:
 ///
 /// - `snapshot_load_solo` — `state.snapshot()` against a quiescent
-///   `DocState`. Should be sub-microsecond (single atomic load + Arc
+///   `OpenDocument`. Should be sub-microsecond (single atomic load + Arc
 ///   bump).
 /// - `snapshot_load_under_write_pressure` — same call while a
 ///   background thread hammers `apply_changes` on the same state.
@@ -326,7 +325,7 @@ fn bench_concurrent_reads(c: &mut Criterion) {
     g.sample_size(20);
 
     g.bench_function("snapshot_load_solo_bouten_6mb", |b| {
-        let state = DocState::new(text.clone());
+        let state = OpenDocument::new(text.clone());
         b.iter(|| {
             let snap = state.snapshot();
             black_box(snap);
@@ -334,18 +333,18 @@ fn bench_concurrent_reads(c: &mut Criterion) {
     });
 
     g.bench_function("snapshot_load_under_write_pressure_bouten_6mb", |b| {
-        let state = DocState::new(text.clone());
+        let state = OpenDocument::new(text.clone());
         let stop = Arc::new(AtomicBool::new(false));
         let writer_state = Arc::clone(&state);
         let writer_stop = Arc::clone(&stop);
         // Spawn a writer thread that loops `apply_changes`. The
-        // synchronous fall-back inside DocState::apply_changes means
+        // synchronous fall-back inside OpenDocument::apply_changes means
         // each write spends ~270 ms holding the buffer mutex; reads
         // hitting the snapshot must be unaffected.
         let writer = thread::spawn(move || {
             let mut i = 0usize;
             while !writer_stop.load(Ordering::Relaxed) {
-                _ = writer_state.apply_changes(&[LocalTextEdit::new(i..i, " ".to_owned())]);
+                _ = writer_state.apply_changes(&[ByteEdit::new(i..i, " ".to_owned())]);
                 i += 2; // Skip ahead each round to avoid edits stacking on each other
             }
         });

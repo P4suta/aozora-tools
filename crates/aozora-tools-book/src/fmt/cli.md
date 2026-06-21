@@ -28,7 +28,7 @@ recursive walk find the files.
 | `--json`          | Emit the `--check` result as a machine-readable JSON object. Implies `--check`. |
 | `--color <WHEN>`  | Colourise `--diff` output: `auto` (default — colour when stdout is a TTY, honouring `NO_COLOR`), `always`, or `never`. |
 | `-h`, `--help`    | Print help. |
-| `-V`, `--version` | Print the formatter's semver **and** the pinned `aozora` parser rev/tag, e.g. `aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)`. |
+| `-V`, `--version` | Print the formatter's semver **and** the pinned `aozora` parser rev/tag, e.g. `aozora-fmt 0.4.1 (aozora a53c632 / v0.4.1)`. |
 
 Default mode (no `--check`/`--write`/`--list`): write the canonicalised
 form to stdout. This only accepts a **single** input; pointing it at two

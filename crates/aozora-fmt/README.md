@@ -57,7 +57,7 @@ same function so editors and CI gates land on identical output.
 ## Install
 
 ```sh
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-fmt
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-fmt
 ```
 
 Or download a pre-built binary from

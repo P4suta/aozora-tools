@@ -8,7 +8,7 @@ the LSP uses.
 | Surface | Direction | Detail |
 |---|---|---|
 | [`aozora/renderHtml`](render-html.md) | client → server | Returns rendered HTML for the document at a given version. The VS Code extension drives the preview pane with this; other clients can do the same. |
-| [`aozora/gaijiSpans`](gaiji-spans.md) | client → server | Returns every resolvable gaiji span in the document plus its resolved character. The VS Code extension drives inline-fold decorations with this; generic LSP clients can use the same data via `aozora_lsp::inlay_hints`. |
+| [`aozora/gaijiSpans`](gaiji-spans.md) | client → server | Returns every resolvable gaiji span in the document plus its resolved character. The VS Code extension drives inline-fold decorations with this; any LSP client can consume it directly for the same data. |
 | [`aozora.canonicalizeSlug`](commands.md) | client → server (via `workspace/executeCommand`) | Rewrites the slug at the cursor to its canonical form. |
 
 ## Stability

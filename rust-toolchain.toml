@@ -1,5 +1,5 @@
 [toolchain]
-channel    = "1.95.0"
+channel    = "1.96.0"
 # `llvm-tools-preview` ships the `llvm-profdata` / `llvm-cov` binaries
 # `cargo-llvm-cov` shells out to. Keeping it in the pinned toolchain
 # means contributors get coverage with `rustup-init` alone and CI

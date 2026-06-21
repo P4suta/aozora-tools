@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn classify_owner_pins_categories() {
         assert_eq!(
-            classify_owner("aozora_lsp::state::DocState::new"),
+            classify_owner("aozora_lsp::state::OpenDocument::new"),
             "aozora_lsp"
         );
         assert_eq!(classify_owner("ts_parser_parse"), "tree_sitter (C)");

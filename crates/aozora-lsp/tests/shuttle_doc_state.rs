@@ -1,4 +1,4 @@
-//! Shuttle randomized-schedule check for the LSP `DocState` lifecycle.
+//! Shuttle randomized-schedule check for the LSP `OpenDocument` lifecycle.
 //!
 //! # Why shuttle, not loom
 //!
@@ -9,10 +9,10 @@
 //! library-internal schedules without finding bugs at our layer.
 //!
 //! Shuttle randomly samples interleavings of `std::thread::spawn`-
-//! based concurrent code. We use it to model the **`DocState`
+//! based concurrent code. We use it to model the **`OpenDocument`
 //! lifecycle**: 2 threads each performing a randomised op sequence
 //! (open / change / close / read) on a shared
-//! `Arc<DashMap<Url, DocState>>`. Across `N = 10_000` iterations
+//! `Arc<DashMap<Url, OpenDocument>>`. Across `N = 10_000` iterations
 //! shuttle explores enough of the interleaving space to surface
 //! schedule-dependent bugs before they reach production.
 //!
@@ -43,7 +43,7 @@
 use std::collections::HashMap;
 use std::env;
 
-use aozora_lsp::{LocalTextEdit, apply_edits};
+use aozora_lsp::internals::{ByteEdit, apply_edits};
 use shuttle::sync::{Arc, Mutex as ShuttleMutex};
 use shuttle::thread;
 use tower_lsp::lsp_types::Url;
@@ -87,7 +87,7 @@ impl ShuttleDoc {
             parsed_normalized_len,
         }
     }
-    fn apply(&mut self, edits: &[LocalTextEdit]) {
+    fn apply(&mut self, edits: &[ByteEdit]) {
         if let Ok(t) = apply_edits(&self.text, edits) {
             self.text = t;
             self.parsed_normalized_len = parsed_state_proxy(&self.text);
@@ -170,12 +170,12 @@ fn lifecycle_iteration() {
         if let Some(doc) = doc_map_get(&docs, &uri_a) {
             doc.lock()
                 .unwrap()
-                .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
+                .apply(&[ByteEdit::new(0..0, "T1.".to_owned())]);
         }
         if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
-                .apply(&[LocalTextEdit::new(0..0, "T1.".to_owned())]);
+                .apply(&[ByteEdit::new(0..0, "T1.".to_owned())]);
         }
         if let Some(doc) = doc_map_get(&docs, &uri_a) {
             doc.lock()
@@ -194,14 +194,14 @@ fn lifecycle_iteration() {
         if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
-                .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
+                .apply(&[ByteEdit::new(0..0, "T2.".to_owned())]);
         }
         // T2 may close A at any time relative to T1's writes.
         doc_map_remove(&docs, &uri_a);
         if let Some(doc) = doc_map_get(&docs, &uri_b) {
             doc.lock()
                 .unwrap()
-                .apply(&[LocalTextEdit::new(0..0, "T2.".to_owned())]);
+                .apply(&[ByteEdit::new(0..0, "T2.".to_owned())]);
         }
     });
 
@@ -238,10 +238,10 @@ fn iters_to_run() -> usize {
         .unwrap_or(1000)
 }
 
-/// Invariant: the `DocState` lifecycle stays consistent under any
+/// Invariant: the `OpenDocument` lifecycle stays consistent under any
 /// interleaving of 2 threads' op sequences (open/change/close).
 /// Reproduces: preventive — primary refactor safety net for any
-/// future change to backend.rs that touches `DashMap` or `DocState`
+/// future change to backend.rs that touches `DashMap` or `OpenDocument`
 /// access patterns.
 #[test]
 fn shuttle_doc_state_lifecycle_consistent_under_random_schedules() {

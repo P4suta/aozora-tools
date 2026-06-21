@@ -2,7 +2,7 @@
 //! rebuild on a real-world large document.
 //!
 //! Loads `samples/bouten.afm` (6.3 MB, 24 k gaiji), opens a
-//! `DocState`, and times two single-character edits at different
+//! `OpenDocument`, and times two single-character edits at different
 //! positions to compare cold vs incremental rebuild paths:
 //!
 //! - Edit 1 (cold path)            — at offset 0, every byte shifts.
@@ -23,7 +23,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use aozora_lsp::{DocState, LocalTextEdit};
+use aozora_lsp::internals::{ByteEdit, OpenDocument};
 
 /// Synthesise a gaiji-rich document by repeating a `※[#…]` block.
 /// `count` blocks → roughly `count * 60` bytes of gaiji content +
@@ -71,10 +71,10 @@ fn measure_corpus_doc() {
         path.display(),
     );
 
-    // Cold-start cost (DocState::new)
+    // Cold-start cost (OpenDocument::new)
     let t = Instant::now();
-    let state = DocState::new(text);
-    println!("DocState::new: {:?}", t.elapsed());
+    let state = OpenDocument::new(text);
+    println!("OpenDocument::new: {:?}", t.elapsed());
 
     let initial_spans = state.snapshot().doc_gaiji_spans().len();
     println!("initial gaiji spans: {initial_spans}");
@@ -83,7 +83,7 @@ fn measure_corpus_doc() {
     // for changed_ranges (everything shifts).
     let t = Instant::now();
     state
-        .apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(0..0, " ".to_owned())])
         .unwrap();
     println!("apply_changes (offset 0, cold path): {:?}", t.elapsed());
     let v1_spans = state.snapshot().doc_gaiji_spans().len();
@@ -98,7 +98,7 @@ fn measure_corpus_doc() {
 
     let t = Instant::now();
     state
-        .apply_changes(&[LocalTextEdit::new(mid_offset..mid_offset, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(mid_offset..mid_offset, " ".to_owned())])
         .unwrap();
     println!(
         "apply_changes (mid-doc @ {mid_offset}, incremental path): {:?}",
@@ -115,7 +115,7 @@ fn measure_corpus_doc() {
     let next_offset = nearest_char_boundary(&state, mid_offset + 1);
     let t = Instant::now();
     state
-        .apply_changes(&[LocalTextEdit::new(next_offset..next_offset, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(next_offset..next_offset, " ".to_owned())])
         .unwrap();
     println!(
         "apply_changes (mid-doc @ {next_offset} again, incremental path): {:?}",
@@ -136,15 +136,15 @@ fn main() {
     println!("synth doc: {} bytes ({mb}.{tenths} MiB)", gaiji_text.len());
 
     let t = Instant::now();
-    let g_state = DocState::new(gaiji_text);
-    println!("  DocState::new: {:?}", t.elapsed());
+    let g_state = OpenDocument::new(gaiji_text);
+    println!("  OpenDocument::new: {:?}", t.elapsed());
     let g_initial = g_state.snapshot().doc_gaiji_spans().len();
     println!("  initial gaiji spans: {g_initial}");
 
     // Cold path on synth doc
     let t = Instant::now();
     g_state
-        .apply_changes(&[LocalTextEdit::new(0..0, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(0..0, " ".to_owned())])
         .unwrap();
     println!(
         "  apply_changes (offset 0, cold-degenerate): {:?}",
@@ -159,7 +159,7 @@ fn main() {
 
     let t = Instant::now();
     g_state
-        .apply_changes(&[LocalTextEdit::new(mid..mid, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(mid..mid, " ".to_owned())])
         .unwrap();
     println!(
         "  apply_changes (mid-doc @ {mid}, incremental path): {:?}",
@@ -171,7 +171,7 @@ fn main() {
     let mid_next = nearest_char_boundary(&g_state, mid + 1);
     let t = Instant::now();
     g_state
-        .apply_changes(&[LocalTextEdit::new(mid_next..mid_next, " ".to_owned())])
+        .apply_changes(&[ByteEdit::new(mid_next..mid_next, " ".to_owned())])
         .unwrap();
     println!(
         "  apply_changes (mid-doc @ {mid_next} again, incremental path): {:?}",
@@ -181,7 +181,7 @@ fn main() {
     println!("  post-edits gaiji spans: {g_final}");
 }
 
-fn nearest_char_boundary(state: &DocState, target: usize) -> usize {
+fn nearest_char_boundary(state: &OpenDocument, target: usize) -> usize {
     let snap = state.snapshot();
     let mut idx = target.min(snap.doc_text().len());
     while idx > 0 && !snap.doc_text().is_char_boundary(idx) {

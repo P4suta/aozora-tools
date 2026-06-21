@@ -11,15 +11,15 @@
 //!
 //! ## Structure
 //!
-//! - [`MutParagraph`] — writers' single-paragraph state. Lives
-//!   inside `BufferState::paragraphs`. Mutable text + tree.
+//! - [`ParagraphBuffer`] — writers' single-paragraph state. Lives
+//!   inside `DocBuffer::paragraphs`. Mutable text + tree.
 //! - [`ParagraphSnapshot`] — readers' single-paragraph view.
 //!   Immutable, `Arc`-shareable across snapshot generations.
 //!   Carries pre-computed line index + gaiji spans (with
 //!   doc-absolute byte offsets).
 //! - [`paragraph_byte_ranges`] — the splitter: takes a `&Rope` and
 //!   returns the byte ranges of each paragraph (`\n\n` boundaries).
-//! - [`build_paragraph_snapshot`] — promote a `MutParagraph` plus
+//! - [`build_paragraph_snapshot`] — promote a `ParagraphBuffer` plus
 //!   its byte-range-in-doc into a fully-populated immutable
 //!   `ParagraphSnapshot`.
 //!
@@ -46,17 +46,17 @@ use crate::line_index::LineIndex;
 /// would grow a paragraph past the cap trigger a re-segmentation.
 pub const MAX_PARAGRAPH_BYTES: usize = 64 * 1024;
 
-/// Mutable single-paragraph state. Owned by [`crate::state::BufferState`].
+/// Mutable single-paragraph state. Owned by [`crate::state::DocBuffer`].
 #[derive(Debug)]
-pub struct MutParagraph {
+pub struct ParagraphBuffer {
     pub text: Rope,
     pub tree: Option<Tree>,
 }
 
-impl MutParagraph {
+impl ParagraphBuffer {
     /// Build from owned text + a fresh tree (cold-start path).
     /// Caller is responsible for invoking the parser; we don't hold
-    /// one because the parser lives on `BufferState` (one per doc).
+    /// one because the parser lives on `DocBuffer` (one per doc).
     #[must_use]
     pub const fn new(text: Rope) -> Self {
         Self { text, tree: None }
@@ -93,7 +93,7 @@ impl MutParagraph {
 
 /// Immutable per-paragraph snapshot.
 ///
-/// Held inside `Arc` inside [`crate::state::Snapshot::paragraphs`].
+/// Held inside `Arc` inside [`crate::state::DocSnapshot::paragraphs`].
 /// Carries the data each LSP request handler needs to operate against
 /// this paragraph without touching the writer side.
 ///
@@ -145,7 +145,7 @@ pub struct ParagraphSnapshot {
     /// Snapshot of the tree's root id at build time. Re-using a
     /// `ParagraphSnapshot` across snapshot generations is keyed on
     /// `tree_id` matching the live paragraph's tree id (see
-    /// `crate::state::Snapshot::rebuild_now`).
+    /// `crate::state::DocSnapshot::rebuild_now`).
     pub tree_id: Option<usize>,
 }
 
@@ -153,7 +153,7 @@ pub struct ParagraphSnapshot {
 /// plus its document-absolute byte offset.
 #[must_use]
 pub(crate) fn build_paragraph_snapshot(
-    paragraph: &MutParagraph,
+    paragraph: &ParagraphBuffer,
     byte_offset: usize,
 ) -> ParagraphSnapshot {
     let text_string = paragraph.text.to_string();
@@ -207,7 +207,7 @@ impl ParagraphSnapshot {
     /// generations) and whose gaiji-span list is rebuilt with
     /// shifted offsets.
     ///
-    /// Snapshot rebuilds use this for paragraphs whose tree didn't
+    /// `DocSnapshot` rebuilds use this for paragraphs whose tree didn't
     /// change but whose absolute position shifted because a
     /// preceding paragraph grew or shrank.
     #[must_use]
@@ -395,7 +395,7 @@ mod tests {
         parser
             .set_language(&tree_sitter_aozora::LANGUAGE.into())
             .unwrap();
-        let mut p = MutParagraph::new(rope("※［＃「a」、X］"));
+        let mut p = ParagraphBuffer::new(rope("※［＃「a」、X］"));
         p.reparse(&mut parser);
         let snap = build_paragraph_snapshot(&p, 1000);
         assert_eq!(snap.byte_range.start, 1000);
@@ -452,18 +452,18 @@ mod tests {
         }
     }
 
-    /// End-to-end pin for the same bug: constructing a `BufferState`
+    /// End-to-end pin for the same bug: constructing a `DocBuffer`
     /// from a giant multi-byte stream went through `Rope::byte_slice`
     /// against the (formerly mid-codepoint) ranges and panicked.
     /// Documents this scale exist in the wild — `tsumi-to-batsu-x100`
     /// is one of the workspace's own benchmark fixtures.
     #[test]
     fn doc_state_handles_giant_multibyte_paragraph_without_panic() {
-        use crate::state::DocState;
+        use crate::state::OpenDocument;
         // 30 000 あ's = ~90 KB without any newline — single-paragraph
-        // stress for `BufferState::new`'s `paragraph_from_rope_slice`.
+        // stress for `DocBuffer::new`'s `paragraph_from_rope_slice`.
         let s: String = "あ".repeat(30_000);
-        let state = DocState::new(s.clone());
+        let state = OpenDocument::new(s.clone());
         // Round-trip text equality is the strongest possible check
         // that no bytes were dropped or misaligned.
         assert_eq!(&**state.snapshot().doc_text(), &s);

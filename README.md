@@ -7,7 +7,7 @@ Authoring support for [aozora-bunko notation](https://github.com/P4suta/aozora) 
   <a href="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml"><img alt="docs deploy" src="https://github.com/P4suta/aozora-tools/actions/workflows/docs.yml/badge.svg"></a>
   <a href="https://github.com/P4suta/aozora-tools/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/P4suta/aozora-tools?display_name=tag&sort=semver"></a>
   <a href="./LICENSE-APACHE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue"></a>
-  <a href="./rust-toolchain.toml"><img alt="msrv" src="https://img.shields.io/badge/rust-1.95%2B-orange"></a>
+  <a href="./rust-toolchain.toml"><img alt="msrv" src="https://img.shields.io/badge/rust-1.96%2B-orange"></a>
 </p>
 
 <p align="center">
@@ -58,9 +58,8 @@ editors get every other capability through the standard LSP surface.
   - `aozora/renderHtml` — VS Code preview WebView consumes this.
   - `aozora/gaijiSpans` — every resolvable gaiji span in the
     document; the VS Code extension uses it to drive inline-fold
-    decorations (resolved glyph next to `※［＃…］`). Generic LSP
-    clients can opt into the same data via the
-    `aozora_lsp::inlay_hints` library entry instead.
+    decorations (resolved glyph next to `※［＃…］`). Any LSP client
+    can consume `aozora/gaijiSpans` directly for the same data.
 
 See the [handbook](https://p4suta.github.io/aozora-tools/) for the
 LSP capability surface, custom protocol extensions, and the
@@ -76,7 +75,7 @@ you land in a ready workspace. Run `just doctor` any time to confirm.
 
 **Host toolchain (also fully supported).** Prefer your own machine? You
 need [`rustup`](https://rustup.rs/) (reads `rust-toolchain.toml` → Rust
-1.95.0), a C compiler (for the tree-sitter grammar), and
+1.96.0), a C compiler (for the tree-sitter grammar), and
 [`mise`](https://mise.jdx.dev/) for the rest of the pinned tools:
 
 ```sh
@@ -93,7 +92,7 @@ Both paths are documented in full in
 
 The workspace pins [`aozora`](https://github.com/P4suta/aozora) at an
 immutable commit rev (v0.4.1), so a fresh clone needs only a matching
-Rust toolchain (1.95.0, see `rust-toolchain.toml`) and
+Rust toolchain (1.96.0, see `rust-toolchain.toml`) and
 [`bun`](https://bun.sh/) for the VS Code extension.
 
 ```sh
@@ -134,8 +133,8 @@ for where to drop the completions and man pages.
 Or build from source:
 
 ```sh
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-fmt
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-lsp
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-fmt
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-lsp
 ```
 
 ## Versioning and release
@@ -147,6 +146,13 @@ cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked
 - The VS Code extension (`editors/vscode/package.json`) is versioned
   independently on its Marketplace cadence; it bundles whatever
   `aozora-lsp` build is current at release time.
+- **crates.io publish order** (verified with `cargo publish --dry-run`):
+  `tree-sitter-aozora` and `aozora-fmt` first, then `aozora-lsp` (it
+  depends on both — `tree-sitter-aozora` as a normal dep, `aozora-fmt` as
+  a dev-dep). `aozora-tools-xtask` is `publish = false`. The
+  `aozora` / `aozora-encoding` git pins resolve to their crates.io
+  `0.4.x` releases on publish — cargo drops the `git` / `rev` and keeps
+  the `version`, so no git dependency reaches the published manifest.
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for what shipped when.
 

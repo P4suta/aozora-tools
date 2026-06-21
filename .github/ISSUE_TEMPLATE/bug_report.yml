@@ -67,7 +67,7 @@ body:
     attributes:
       label: aozora-tools version
       description: "Paste the full `aozora-fmt --version` / `aozora-lsp --version` line — it includes the pinned `aozora` parser rev, which is essential for triage."
-      placeholder: "aozora-fmt 0.1.3 (aozora a53c632 / v0.4.1)"
+      placeholder: "aozora-fmt 0.4.1 (aozora a53c632 / v0.4.1)"
     validations:
       required: true
 
@@ -76,7 +76,7 @@ body:
     attributes:
       label: Rust toolchain
       description: "`rustc --version`"
-      placeholder: rustc 1.95.0 (59807616e 2026-04-14)
+      placeholder: rustc 1.96.0 (ac68faa20 2026-05-25)
 
   - type: input
     id: editor

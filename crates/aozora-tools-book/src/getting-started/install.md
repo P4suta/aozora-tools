@@ -68,7 +68,7 @@ profile; Nushell users `source` `completions/aozora-fmt.nu`.
 ## From source
 
 Requires the Rust toolchain pinned in [`rust-toolchain.toml`](https://github.com/P4suta/aozora-tools/blob/main/rust-toolchain.toml)
-(currently 1.95.0).
+(currently 1.96.0).
 
 ```sh
 # Both binaries:
@@ -76,7 +76,7 @@ cargo install --git https://github.com/P4suta/aozora-tools --locked aozora-fmt
 cargo install --git https://github.com/P4suta/aozora-tools --locked aozora-lsp
 
 # Or pin to a specific tag:
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-fmt
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-fmt
 ```
 
 `--locked` makes cargo honour the workspace `Cargo.lock`, which pins

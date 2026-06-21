@@ -13,7 +13,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-aozora-lsp = { path = ".." }
+# `internals` exposes the byte-edit / position API the fuzz target drives.
+aozora-lsp = { path = "..", features = ["internals"] }
 
 # Detach from the parent workspace.
 [workspace]

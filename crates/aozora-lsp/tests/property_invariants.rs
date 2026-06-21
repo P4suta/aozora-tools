@@ -24,8 +24,9 @@
 //!    input with no gap and no overlap; concatenating the slices
 //!    reconstructs the source byte-for-byte.
 
-use aozora_lsp::{
-    LineIndex, LocalTextEdit, apply_edits, byte_offset_to_position, position_to_byte_offset,
+use aozora_lsp::internals::{
+    ByteEdit, LineIndex, OpenDocument, apply_edits, byte_offset_to_position,
+    position_to_byte_offset,
 };
 use proptest::collection::vec as proptest_vec;
 use proptest::prelude::*;
@@ -120,7 +121,7 @@ proptest! {
         let len = text.len();
         if len == 0 {
             // Insertion-only at byte 0 of empty text.
-            let edit = LocalTextEdit::new(0..0, replacement.clone());
+            let edit = ByteEdit::new(0..0, replacement.clone());
             let out = apply_edits(&text, &[edit]).expect("valid edit");
             prop_assert_eq!(out, replacement);
             return Ok(());
@@ -128,14 +129,14 @@ proptest! {
         // Find a small char-boundary range somewhere in the middle.
         let start = next_char_boundary(&text, len / 4);
         let end = next_char_boundary(&text, len / 2);
-        let edit = LocalTextEdit::new(start..end, replacement.clone());
+        let edit = ByteEdit::new(start..end, replacement.clone());
         let out = apply_edits(&text, &[edit]).expect("valid edit");
         let expected = format!("{}{}{}", &text[..start], replacement, &text[end..]);
         prop_assert_eq!(out, expected);
     }
 
     /// `paragraph_byte_ranges` (exercised end-to-end through
-    /// `DocState::new`) must round-trip the source: concatenating
+    /// `OpenDocument::new`) must round-trip the source: concatenating
     /// every paragraph's text reproduces the original byte-for-byte.
     /// And `doc_text()` should equal the input.
     ///
@@ -143,7 +144,7 @@ proptest! {
     /// shape (zero, one, or many `\n\n` boundaries).
     #[test]
     fn doc_state_round_trips_arbitrary_text(text in realistic_text_strategy()) {
-        let state = aozora_lsp::DocState::new(text.clone());
+        let state = OpenDocument::new(text.clone());
         let snap = state.snapshot();
         prop_assert_eq!(&**snap.doc_text(), text.as_str());
     }

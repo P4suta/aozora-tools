@@ -22,13 +22,13 @@ editor (Neovim, Helix, Emacs, Zed, …).
 | `textDocument/semanticTokens`    | Syntax-aware highlighting derived from the tree-sitter tree. |
 | `workspace/executeCommand`       | `aozora.canonicalizeSlug` — canonicalise the slug at a given range. |
 | `aozora/renderHtml` *(custom)*   | Returns HTML for the active document. Drives the VS Code preview pane. |
-| `aozora/gaijiSpans` *(custom)*   | Every resolvable gaiji in the document with `range` + resolved glyph; the VS Code extension uses it for inline-fold decorations. Plain-LSP clients can call `aozora_lsp::inlay_hints` from a library context for the same data. |
+| `aozora/gaijiSpans` *(custom)*   | Every resolvable gaiji in the document with `range` + resolved glyph; the VS Code extension uses it for inline-fold decorations. Any LSP client can consume this request directly for the same data. |
 
 `textDocument/inlayHint` is intentionally **not** advertised — the VS
 Code extension already renders the resolved-gaiji glyph through
 `aozora/gaijiSpans`-driven decorations, and adding an LSP inlay layer
-duplicated the visual. Editors that want the same data over standard
-LSP can call `aozora_lsp::inlay_hints` from a library context.
+duplicated the visual. Editors that want the same data consume the
+`aozora/gaijiSpans` custom request.
 
 ## Architecture (one-liner)
 
@@ -80,7 +80,7 @@ Profiling pipeline (samply) is documented in the
 ## Install
 
 ```sh
-cargo install --git https://github.com/P4suta/aozora-tools --tag v0.1.3 --locked aozora-lsp
+cargo install --git https://github.com/P4suta/aozora-tools --tag v0.4.1 --locked aozora-lsp
 ```
 
 Or grab a pre-built binary from
