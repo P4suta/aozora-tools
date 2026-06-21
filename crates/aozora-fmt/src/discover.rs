@@ -9,8 +9,11 @@ use walkdir::{DirEntry, WalkDir};
 use crate::cli::is_stdin;
 
 /// The resolved input source.
+///
+/// Re-exported from the crate root (with [`resolve`]) so the `aozora` CLI's
+/// `lint` subcommand reuses the formatter's exact path-discovery rules.
 #[derive(Debug)]
-pub(crate) enum Input {
+pub enum Input {
     /// Read a single document from stdin.
     Stdin,
     /// A set of files discovered from the path arguments.
@@ -20,9 +23,12 @@ pub(crate) enum Input {
 /// Files to process plus any non-fatal discovery errors (a `walkdir`
 /// traversal error, say) accumulated rather than aborting the whole run.
 #[derive(Debug, Default)]
-pub(crate) struct Resolved {
-    pub(crate) files: Vec<PathBuf>,
-    pub(crate) errors: Vec<String>,
+pub struct Resolved {
+    /// The discovered source files, sorted and de-duplicated.
+    pub files: Vec<PathBuf>,
+    /// Non-fatal discovery errors (e.g. a traversal error), to be reported
+    /// without aborting the run.
+    pub errors: Vec<String>,
 }
 
 /// Filename suffixes recognised as aozora sources during directory
@@ -31,7 +37,15 @@ const EXTENSIONS: &[&str] = &[".afm", ".aozora", ".aozora.txt"];
 
 /// Classify the path arguments. Returns [`Input::Stdin`] when no paths are
 /// given or the sole argument is `-`; mixing `-` with real paths is an error.
-pub(crate) fn resolve(paths: &[PathBuf]) -> Result<Input> {
+///
+/// Recurses directories for `*.afm`, `*.aozora`, and `*.aozora.txt` files,
+/// skipping `target/` and dotted entries, then sorts and de-duplicates.
+///
+/// # Errors
+///
+/// Returns an error only when `-` (stdin) is mixed with real path arguments.
+/// Per-file traversal errors are accumulated in [`Resolved::errors`] instead.
+pub fn resolve(paths: &[PathBuf]) -> Result<Input> {
     if paths.is_empty() {
         return Ok(Input::Stdin);
     }

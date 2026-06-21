@@ -24,6 +24,14 @@ mod report;
 
 pub use cli::Cli;
 
+// Shared CLI plumbing, re-exported for the `aozora` umbrella crate so its
+// `lint`/`render` subcommands reuse the formatter's path discovery, colour
+// policy, and panic guard instead of re-implementing them.
+pub use cli::ColorChoice;
+pub use discover::{Input, Resolved, resolve};
+pub use process::{Panicked, guard};
+pub use report::auto_stdout;
+
 /// Compiles and runs the fenced Rust example in this crate's `README.md` as a
 /// doctest, so the documented public API (`format_source`) can't silently
 /// drift from the code. `#[cfg(doctest)]` means the item exists only while
@@ -33,8 +41,7 @@ pub use cli::Cli;
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
-use cli::{CheckReport, ColorChoice, Mode};
-use discover::{Input, Resolved};
+use cli::{CheckReport, Mode};
 use report::Outcome;
 
 /// Canonicalise an aozora source string.
@@ -61,7 +68,7 @@ pub fn run(cli: &Cli) -> ExitCode {
 
 fn dispatch(cli: &Cli) -> Result<Outcome> {
     let mode = cli.mode();
-    match discover::resolve(cli.paths())? {
+    match resolve(cli.paths())? {
         Input::Stdin => run_stdin(cli, &mode),
         Input::Files(resolved) => run_files(cli, &mode, &resolved),
     }
@@ -105,7 +112,7 @@ fn stdin_check(report: &CheckReport, color: ColorChoice, old: &str, new: &str) -
             }
         }
         CheckReport::Diff if changed => {
-            let mut out = report::auto_stdout(color);
+            let mut out = auto_stdout(color);
             report::write_diff(&mut out, "<stdin>", old, new)?;
             out.flush()?;
         }
@@ -191,7 +198,7 @@ fn run_check(color: ColorChoice, files: &[PathBuf], diff: bool) -> Result<Outcom
             })
         }));
     }
-    let mut out = report::auto_stdout(color);
+    let mut out = auto_stdout(color);
     let outcome = fold_files(files, |path| {
         let fmt = process::read_and_format(path)?;
         Ok(if fmt.changed() {

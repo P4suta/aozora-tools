@@ -71,9 +71,12 @@ pub struct Cli {
     color: ColorChoice,
 }
 
-/// When to emit ANSI colour in `--diff` output.
+/// When to emit ANSI colour in terminal output (diffs, diagnostics, …).
+///
+/// Re-exported from the crate root so the `aozora` CLI's `lint`/`render`
+/// subcommands share one colour policy with the formatter.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
-pub(crate) enum ColorChoice {
+pub enum ColorChoice {
     /// Colour when stdout is a terminal (honours `NO_COLOR`).
     Auto,
     /// Always colour, even when piped.
