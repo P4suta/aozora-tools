@@ -27,8 +27,9 @@ categories   = ["development-tools", "command-line-utilities", "text-editors"]
 
 [workspace.dependencies]
 # Parser ecosystem (sibling repo). Pinned by immutable rev, not tag. rev = v0.4.1.
+# Single entry-point: gaiji resolution is reached via `aozora::encoding`
+# (the umbrella re-exports the internal `aozora-encoding` crate).
 aozora          = { version = "0.4.1", git = "https://github.com/P4suta/aozora.git", rev = "a53c632b1d1be4bfcbce7de010ab5b0843e98cc0" }
-aozora-encoding = { version = "0.4.1", git = "https://github.com/P4suta/aozora.git", rev = "a53c632b1d1be4bfcbce7de010ab5b0843e98cc0" }
 
 # Internal workspace members
 # Renderer-agnostic diagnostic catalogue shared by the LSP and the CLI.

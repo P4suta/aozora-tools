@@ -141,6 +141,13 @@ once 1.0 ships.
   removing `aozora-fmt` + `similar`/`walkdir`/`anyhow` from the server's
   dependency tree. `tree-sitter-aozora` is now publishable, so the whole
   workspace can ship to crates.io.
+- **Single dependency entry-point for the parser ecosystem.** The LSP
+  now reaches gaiji (外字) resolution through the `aozora` umbrella
+  (`aozora::encoding::gaiji`) instead of declaring a second git
+  dependency on the internal `aozora-encoding` crate. This drops the
+  duplicate git entry-point and decouples the tools from `aozora`'s
+  internal crate layout (`crates/aozora-lsp/src/{hover,inlay_hints,backend}.rs`,
+  root and `aozora-lsp` `Cargo.toml`).
 - **`aozora` / `aozora-encoding` dependency bumped `v0.3.0` → `v0.4.0`**,
   picking up the upstream pre-release security hardening (FFI/WASM
   oversized-input rejection, PUA-sentinel neutralisation, parser
