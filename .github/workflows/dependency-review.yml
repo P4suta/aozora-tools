@@ -56,6 +56,18 @@ jobs:
             MPL-2.0,
             Zlib
 
+          # Per-package exemptions for the GitHub-license-metadata quirk.
+          # These crates are all `MIT OR Apache-2.0` (both on our allow-list,
+          # and accepted by the authoritative `cargo deny` gate), but GitHub's
+          # dependency-graph license string for them is non-SPDX, so the action
+          # garbles it to `LicenseRef-bad-mitapache-2.0` and can't match the
+          # allow-list. Exempt them by package URL until the upstream metadata
+          # normalises.
+          allow-dependencies-licenses: >-
+            pkg:cargo/ctrlc,
+            pkg:cargo/filetime,
+            pkg:cargo/libdbus-sys
+
           # Post a summary comment only on failure so clean PRs don't
           # get a no-op drive-by from the bot.
           comment-summary-in-pr: on-failure

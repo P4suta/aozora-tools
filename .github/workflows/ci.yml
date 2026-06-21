@@ -269,6 +269,13 @@ jobs:
           # so the artifact upload at the end of the job has a
           # consistent path to read from on every run.
           mkdir -p target/llvm-cov/html
+          # Drop any instrumented binaries / .profraw restored from the cache.
+          # `report` scans the whole llvm-cov target for objects + profraw, so a
+          # stale binary from a previous workspace shape (e.g. main, before a new
+          # member crate existed) gets double-counted — inflating the region
+          # denominator and sinking the percentage. A clean start makes the run
+          # deterministic and cache-independent (matches a local `llvm-cov clean`).
+          cargo llvm-cov clean --workspace
           cargo llvm-cov nextest \
             --workspace --all-features --no-report \
             --ignore-filename-regex "$IGNORE_FILENAME_REGEX"
