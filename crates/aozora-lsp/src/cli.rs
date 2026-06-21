@@ -57,3 +57,53 @@ impl Cli {
         Self::parse()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use clap::CommandFactory;
+
+    #[test]
+    fn no_args_parse_clean() {
+        // `try_parse_from` drives the same derived parser as `parse_args`
+        // without touching the test runner's real argv.
+        Cli::try_parse_from(["aozora-lsp"]).expect("no-arg invocation parses");
+    }
+
+    #[test]
+    fn stdio_flag_is_accepted() {
+        Cli::try_parse_from(["aozora-lsp", "--stdio"]).expect("--stdio is accepted");
+    }
+
+    #[test]
+    fn unknown_flag_is_rejected() {
+        assert!(
+            Cli::try_parse_from(["aozora-lsp", "--definitely-not-a-flag"]).is_err(),
+            "an unknown flag must be a usage error",
+        );
+    }
+
+    #[test]
+    fn long_version_embeds_the_pinned_aozora_rev() {
+        // The clap command exposes the baked-in LONG_VERSION; assert it
+        // carries the upstream-parser annotation so the embed can't silently
+        // drop.
+        let version = Cli::command()
+            .get_version()
+            .expect("a version string is set")
+            .to_owned();
+        assert!(version.starts_with(env!("CARGO_PKG_VERSION")), "{version}");
+        assert!(
+            version.contains("aozora "),
+            "version names the parser: {version}"
+        );
+    }
+
+    #[test]
+    fn clap_command_is_internally_consistent() {
+        // `debug_assert` walks the whole derived command tree and panics on
+        // any malformed arg/about/version wiring.
+        Cli::command().debug_assert();
+    }
+}

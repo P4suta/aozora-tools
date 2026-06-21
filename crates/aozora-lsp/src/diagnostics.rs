@@ -433,6 +433,103 @@ mod tests {
     }
 
     #[test]
+    fn pair_kind_maps_to_serializable_for_every_variant() {
+        assert_eq!(
+            SerializablePairKind::from(PairKind::Bracket),
+            SerializablePairKind::Bracket
+        );
+        assert_eq!(
+            SerializablePairKind::from(PairKind::Ruby),
+            SerializablePairKind::Ruby
+        );
+        assert_eq!(
+            SerializablePairKind::from(PairKind::DoubleRuby),
+            SerializablePairKind::DoubleRuby
+        );
+        assert_eq!(
+            SerializablePairKind::from(PairKind::Tortoise),
+            SerializablePairKind::Tortoise
+        );
+        assert_eq!(
+            SerializablePairKind::from(PairKind::Quote),
+            SerializablePairKind::Quote
+        );
+    }
+
+    #[test]
+    fn delimiters_and_examples_cover_every_pair_kind() {
+        use SerializablePairKind::{Bracket, DoubleRuby, Quote, Ruby, Tortoise};
+        let cases = [
+            (Bracket, "［", "］"),
+            (Ruby, "《", "》"),
+            (DoubleRuby, "《《", "》》"),
+            (Tortoise, "〔", "〕"),
+            (Quote, "「", "」"),
+        ];
+        for (pk, open, close) in cases {
+            assert_eq!(pk.open_str(), open, "open_str for {pk:?}");
+            assert_eq!(pk.close_str(), close, "close_str for {pk:?}");
+            assert!(
+                example_for(pk).contains(open),
+                "example for {pk:?} should use its opener {open}",
+            );
+        }
+    }
+
+    /// The four `Internal`/`describe_*` consistency-error helpers fire on
+    /// pipeline bugs that aren't reachable from ordinary source, so drive
+    /// them directly to pin their codes / severities / non-empty bodies.
+    #[test]
+    fn internal_consistency_descriptions_carry_codes_and_severity() {
+        let span = Span::new(0, 0);
+        let cases = [
+            (
+                describe_residual_annotation_marker(span),
+                "aozora::residual-annotation-marker",
+                DiagnosticSeverity::WARNING,
+            ),
+            (
+                describe_unregistered_sentinel(span),
+                "aozora::unregistered-sentinel",
+                DiagnosticSeverity::ERROR,
+            ),
+            (
+                describe_registry_out_of_order(span),
+                "aozora::registry-out-of-order",
+                DiagnosticSeverity::ERROR,
+            ),
+            (
+                describe_registry_position_mismatch(span),
+                "aozora::registry-position-mismatch",
+                DiagnosticSeverity::ERROR,
+            ),
+        ];
+        for (described, code, severity) in cases {
+            assert_eq!(described.code, code);
+            assert_eq!(described.severity, severity);
+            assert!(!described.message.is_empty(), "{code} needs a message");
+        }
+    }
+
+    #[test]
+    fn unknown_fallback_describes_any_diagnostic_generically() {
+        // Route a real (known) diagnostic through the unknown fallback to
+        // exercise its generic `{other:?}` formatting body — the variant it
+        // normally catches (a future aozora variant) can't be constructed.
+        let doc = Document::new("abc\u{E001}def");
+        let tree = doc.parse();
+        let real = tree.diagnostics().first().expect("a diagnostic");
+        let described = describe_unknown(real);
+        assert_eq!(described.code, "aozora::unknown-diagnostic");
+        assert!(
+            described.message.contains("未対応"),
+            "{}",
+            described.message
+        );
+        assert_eq!(described.span.start, 0);
+    }
+
+    #[test]
     fn payload_round_trips_through_json() {
         let payload = DiagnosticPayload::UnclosedBracket {
             pair_kind: SerializablePairKind::Bracket,

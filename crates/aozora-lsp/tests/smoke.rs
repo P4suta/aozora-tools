@@ -1,7 +1,9 @@
 //! Smoke tests for the pure helper surface of `aozora-lsp`. The tower-lsp
-//! backend itself is not wired up here — in-process RPC testing needs
-//! a tokio runtime with stdin/stdout plumbing and is cheaper to cover
-//! by spawning the binary from an editor smoketest on demand.
+//! backend itself is driven end-to-end in `backend::e2e` (an in-crate
+//! `#[cfg(test)]` module): that harness builds the real `LspService`,
+//! drives it as a `tower::Service`, and drains the loopback `ClientSocket`
+//! — no stdin/stdout framing needed. These smoke tests stay focused on the
+//! pure `internals` helpers (diagnostics / format / hover).
 
 use aozora_lsp::internals::{diagnostics_for_source, format_edits, hover_at};
 use tower_lsp::lsp_types::{DiagnosticSeverity, HoverContents, Position};

@@ -48,14 +48,19 @@ fn realistic_text_strategy() -> impl Strategy<Value = String> {
         "\n",
         "\r\n",
         "\n\n",
+        "\r", // bare CR: stresses the LF-only line splitter
         "あ",
         "本文",
         "｜青空《あおぞら》",
+        "《《重要》》", // double ruby
+        "〔Crevez〕",   // tortoise-bracket accent
         "※［＃「desc」、X］",
         "［＃改ページ］",
         "😀", // surrogate pair
         "「abc」",
         "X\nY",
+        "\u{E001}", // PUA sentinel collision
+        "\u{feff}", // BOM
     ];
     let frag_count = 0usize..16usize;
     proptest_vec(select(fragments), frag_count).prop_map(|frags| frags.concat())

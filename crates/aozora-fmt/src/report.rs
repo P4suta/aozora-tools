@@ -179,3 +179,76 @@ pub(crate) fn run_check_json(resolved: &Resolved) -> Result<Outcome> {
     emit_json(outcome, files)?;
     Ok(outcome)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Outcome` folds with `max` to keep the most severe result, so the
+    /// ordering `Ok < WouldReformat < Error` is load-bearing.
+    #[test]
+    fn outcome_orders_by_severity() {
+        assert!(Outcome::Ok < Outcome::WouldReformat);
+        assert!(Outcome::WouldReformat < Outcome::Error);
+        assert_eq!(
+            Outcome::Ok.max(Outcome::Error).max(Outcome::WouldReformat),
+            Outcome::Error,
+        );
+    }
+
+    #[test]
+    fn write_diff_renders_unified_hunk() {
+        let mut out = Vec::new();
+        write_diff(&mut out, "label", "a\nb\nc\n", "a\nX\nc\n").expect("diff");
+        let text = String::from_utf8(out).expect("utf8");
+        assert!(text.contains("--- label"), "header: {text}");
+        assert!(text.contains("@@"), "hunk marker: {text}");
+        assert!(text.contains("-b"), "deletion: {text}");
+        assert!(text.contains("+X"), "insertion: {text}");
+        assert!(text.contains(" a"), "context line: {text}");
+    }
+
+    #[test]
+    fn write_diff_spans_multiple_hunks() {
+        // Two well-separated edits produce two `@@` groups, exercising
+        // `hunk_span`'s min/max accumulation across distinct op groups.
+        let old = "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n";
+        let new = "X\n2\n3\n4\n5\n6\n7\n8\n9\nY\n";
+        let mut out = Vec::new();
+        write_diff(&mut out, "f", old, new).expect("diff");
+        let text = String::from_utf8(out).expect("utf8");
+        // Each hunk header is `@@ -a,b +c,d @@`; count headers via the
+        // unambiguous `@@ -` prefix.
+        assert_eq!(
+            text.matches("@@ -").count(),
+            2,
+            "two separated edits make two hunks: {text}",
+        );
+    }
+
+    #[test]
+    fn write_diff_empty_when_identical() {
+        let mut out = Vec::new();
+        write_diff(&mut out, "f", "same\n", "same\n").expect("diff");
+        let text = String::from_utf8(out).expect("utf8");
+        // Only the `---` / `+++` headers, no `@@` hunks.
+        assert!(!text.contains("@@"), "no hunks for identical input: {text}");
+    }
+
+    #[test]
+    fn json_file_variants_serialise_with_expected_shape() {
+        let ok = serde_json::to_value(JsonFile::ok("a.afm".to_owned())).unwrap();
+        assert_eq!(ok["status"], "ok");
+        assert!(ok.get("message").is_none(), "ok omits message: {ok}");
+
+        let would = serde_json::to_value(JsonFile::would_reformat("b.afm".to_owned())).unwrap();
+        assert_eq!(would["status"], "would_reformat");
+        assert!(would.get("message").is_none());
+
+        let err =
+            serde_json::to_value(JsonFile::error("c.afm".to_owned(), "boom".to_owned())).unwrap();
+        assert_eq!(err["status"], "error");
+        assert_eq!(err["message"], "boom");
+        assert_eq!(err["path"], "c.afm");
+    }
+}

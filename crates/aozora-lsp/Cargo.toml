@@ -55,6 +55,17 @@ serde = { workspace = true }
 aozora-fmt = { workspace = true }
 proptest  = { workspace = true }
 criterion = { version = "0.8", features = ["html_reports"] }
+# In-process LSP harness (backend.rs `#[cfg(test)] mod e2e`): drives the
+# `LspService` as a `tower::Service` and drains the loopback `ClientSocket`.
+# `tower` gives the `Service` trait (poll_ready/call via `std::future::poll_fn`,
+# no `util` feature needed); `futures` gives `StreamExt`/`SinkExt` for the
+# socket split. Both already resolve in the lockfile via tower-lsp.
+tower     = "0.4"
+futures   = "0.3"
+# Snapshot tests (tests/snapshots.rs): lock the structured shape of
+# semantic-token deltas, the document-symbol outline, and the diagnostic
+# catalogue so a regression in any of them is a reviewable diff.
+insta     = "1"
 
 [[bench]]
 name             = "burst"
@@ -77,6 +88,14 @@ required-features = ["internals"]
 
 [[test]]
 name             = "property_invariants"
+required-features = ["internals"]
+
+[[test]]
+name             = "differential"
+required-features = ["internals"]
+
+[[test]]
+name             = "snapshots"
 required-features = ["internals"]
 
 [[test]]
